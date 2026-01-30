@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export default function Home() {
   const [item, setItem] = useState(null);
@@ -12,20 +13,32 @@ export default function Home() {
     { name: "Dragon Scale", rarity: "Legendary" },
   ];
 
-  const openChest = () => {
+  const openChest = async () => {
     setLoading(true);
-    // Simulate "rolling" for loot
-    setTimeout(() => {
-      const randomItem = lootTable[Math.floor(Math.random() * lootTable.length)];
-      setItem(randomItem);
-      setLoading(false);
-    }, 1000);
+
+    const randomItem = lootTable[Math.floor(Math.random() * lootTable.length)];
+
+    // SAVE TO DATABASE
+    const { error } = await supabase
+      .from('loot_history')
+      .insert([
+        {
+          item_name: randomItem.name,
+          rarity: randomItem.rarity,
+          player_name: "Guest Player" // We can change this to Discord name later!
+        },
+      ]);
+
+    if (error) console.log("Error saving loot:", error);
+
+    setItem(randomItem);
+    setLoading(false);
   };
 
   return (
     <main className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
       <h1 className="text-4xl font-bold mb-8 text-yellow-500">RPG Loot Room</h1>
-      
+
       <div className="bg-slate-800 p-10 rounded-xl border-2 border-yellow-600 shadow-2xl text-center min-w-[300px]">
         {item ? (
           <div className="mb-6 animate-bounce">
@@ -36,7 +49,7 @@ export default function Home() {
           <div className="mb-6 text-6xl">📦</div>
         )}
 
-        <button 
+        <button
           onClick={openChest}
           disabled={loading}
           className="bg-yellow-600 hover:bg-yellow-500 transition-colors px-6 py-3 rounded-full font-bold disabled:bg-gray-600"
@@ -46,8 +59,8 @@ export default function Home() {
       </div>
 
       {item && (
-        <button 
-          onClick={() => setItem(null)} 
+        <button
+          onClick={() => setItem(null)}
           className="mt-8 text-sm underline text-gray-400"
         >
           Reset Chest
