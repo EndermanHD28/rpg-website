@@ -13,23 +13,30 @@ export default function Home() {
     { name: "Dragon Scale", rarity: "Legendary" },
   ];
 
+  // src/app/page.js
+
   const openChest = async () => {
     setLoading(true);
 
     const randomItem = lootTable[Math.floor(Math.random() * lootTable.length)];
 
-    // SAVE TO DATABASE
-    const { error } = await supabase
+    console.log("Saving to Supabase..."); // This helps us debug!
+
+    const { data, error } = await supabase
       .from('loot_history')
       .insert([
         {
           item_name: randomItem.name,
           rarity: randomItem.rarity,
-          player_name: "Guest Player" // We can change this to Discord name later!
+          player_name: "Test Player"
         },
       ]);
 
-    if (error) console.log("Error saving loot:", error);
+    if (error) {
+      console.error("Error saving:", error.message);
+    } else {
+      console.log("Saved successfully!");
+    }
 
     setItem(randomItem);
     setLoading(false);
