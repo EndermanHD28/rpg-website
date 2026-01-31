@@ -2,6 +2,18 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
+const MASTER_DISCORD_ID = "501767960646647818"; // You'll get this when you log in
+
+export default function Page({ user }) {
+  const isMaster = user.id === MASTER_DISCORD_ID;
+
+  return (
+    <div>
+      {isMaster ? <MasterDashboard /> : <PlayerDashboard />}
+    </div>
+  )
+}
+
 export default function Home() {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(false);
