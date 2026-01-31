@@ -6,7 +6,7 @@ export function calculateDerivedStats(char) {
   const posture = (char.resistance * 0.25) + char.aptitude;
   
   // Life: (Strength + Resistance) * 4
-  const life = (char.strength + char.resistance) * 4;
+  const life = char.strength + char.resistance * 4;
 
   // Percentage stats (Cap at 100%)
   const calcPerc = (val) => Math.min((val / presence) * 100, 100).toFixed(1);
