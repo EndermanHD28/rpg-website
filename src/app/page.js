@@ -293,7 +293,22 @@ export default function Home() {
   };
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white italic uppercase tracking-widest">Carregando...</div>;
-  if (!user) return <div className="min-h-screen bg-black flex items-center justify-center"><button onClick={() => supabase.auth.signInWithOAuth({ provider: 'discord' })} className="bg-[#5865F2] text-white px-8 py-3 rounded font-black uppercase cursor-pointer transition-all hover:scale-110">Entrar com Discord</button></div>;
+  if (!user) return (
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      <button
+        onClick={() => supabase.auth.signInWithOAuth({
+          provider: 'discord',
+          options: {
+            // This dynamically gets "http://localhost:3000" or "https://your-app.vercel.app"
+            redirectTo: typeof window !== 'undefined' ? window.location.origin : ''
+          }
+        })}
+        className="bg-[#5865F2] text-white px-8 py-3 rounded font-black uppercase cursor-pointer transition-all hover:scale-110"
+      >
+        Entrar com Discord
+      </button>
+    </div>
+  );
 
   if (character?.master_editing_id && !isMaster) {
     return (
