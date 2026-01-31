@@ -48,36 +48,32 @@ export default function Home() {
     const fetchData = async () => {
       const { data: { user: activeUser } } = await supabase.auth.getUser();
       setUser(activeUser);
-
+      
       if (activeUser) {
-        // 1. Try to get the character
+        // 1. Try to get the character (maybeSingle avoids the 406 error)
         let { data: char } = await supabase.from('characters').select('*').eq('id', activeUser.id).maybeSingle();
-
-        // 2. FALLBACK: If character doesn't exist, create it manually right now
+        
+        // 2. IF MISSING: Create it manually right now
         if (!char) {
-          console.log("Character row missing. Creating fallback...");
-          const { data: newChar, error: insertError } = await supabase
+          console.log("Trigger failed. Creating character via frontend...");
+          const { data: newChar, error: err } = await supabase
             .from('characters')
             .insert([{
               id: activeUser.id,
               discord_username: activeUser.user_metadata.full_name || activeUser.user_metadata.preferred_username || 'User',
               char_name: 'Novo Recruta',
               strength: 1, resistance: 1, aptitude: 1, agility: 1, precision: 1,
-              intelligence: 1, luck: 1, charisma: 1,
-              stat_points_available: 0, dollars: 0, rank: 'E - Recruta'
+              intelligence: 1, luck: 1, charisma: 1, stat_points_available: 0
             }])
             .select()
             .single();
           
-          if (!insertError) char = newChar;
+          if (!err) char = newChar;
         }
 
-        if (char) {
-          setCharacter(char);
-          setTempChar(char);
-        }
-
-        // 3. Get own requests
+        if (char) { setCharacter(char); setTempChar(char); }
+        
+        // 3. Get requests
         const { data: req } = await supabase.from('change_requests').select('*').eq('player_id', activeUser.id).eq('status', 'pending').maybeSingle();
         setPendingRequest(req);
       }
