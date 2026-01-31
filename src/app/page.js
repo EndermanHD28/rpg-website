@@ -46,7 +46,17 @@ export default function Home() {
     getData();
   }, []);
 
-  const login = () => supabase.auth.signInWithOAuth({ provider: 'discord' });
+  const login = async () => {
+    // This variable grabs the current website address automatically
+    const currentSiteUrl = window.location.origin;
+
+    await supabase.auth.signInWithOAuth({
+      provider: 'discord',
+      options: { 
+        redirectTo: currentSiteUrl // No more hardcoding localhost!
+      }
+    });
+  };
   const logout = async () => { await supabase.auth.signOut(); window.location.reload(); };
 
   if (loading) return <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center text-white italic">Carregando Sistema...</div>;
