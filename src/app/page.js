@@ -1,89 +1,76 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-const MASTER_DISCORD_ID = "501767960646647818"; // You'll get this when you log in
-
-export default function Page({ user }) {
-  const isMaster = user.id === MASTER_DISCORD_ID;
-
-  return (
-    <div>
-      {isMaster ? <MasterDashboard /> : <PlayerDashboard />}
-    </div>
-  )
-}
-
 export default function Home() {
-  const [item, setItem] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const lootTable = [
-    { name: "Rusty Sword", rarity: "Common" },
-    { name: "Health Potion", rarity: "Common" },
-    { name: "Glowing Ember", rarity: "Rare" },
-    { name: "Dragon Scale", rarity: "Legendary" },
-  ];
+  // Check if user is logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+      setLoading(false);
+    };
+    checkUser();
+  }, []);
 
-  // src/app/page.js
-
-  const openChest = async () => {
-    setLoading(true);
-
-    const randomItem = lootTable[Math.floor(Math.random() * lootTable.length)];
-
-    console.log("Saving to Supabase..."); // This helps us debug!
-
-    const { data, error } = await supabase
-      .from('loot_history')
-      .insert([
-        {
-          item_name: randomItem.name,
-          rarity: randomItem.rarity,
-          player_name: "Test Player"
-        },
-      ]);
-
-    if (error) {
-      console.error("Error saving:", error.message);
-    } else {
-      console.log("Saved successfully!");
-    }
-
-    setItem(randomItem);
-    setLoading(false);
+  const login = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'discord',
+      options: { redirectTo: window.location.origin }
+    });
   };
 
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white text-2xl animate-pulse">Carregando RPG...</div>;
+
+  // IF NOT LOGGED IN, SHOW LOGIN SCREEN
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <h1 className="text-5xl font-bold mb-8 text-yellow-500 text-center">RPG Companion</h1>
+        <button 
+          onClick={login}
+          className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-8 py-4 rounded-lg font-bold text-xl transition-all shadow-lg"
+        >
+          Entrar com Discord
+        </button>
+      </main>
+    );
+  }
+
+  // CHECK IF MASTER (.enderu)
+  // Discord stores the username in user_metadata
+  const isMaster = user.user_metadata.preferred_username === ".enderu";
+
   return (
-    <main className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
-      <h1 className="text-4xl font-bold mb-8 text-yellow-500">RPG Loot Room</h1>
+    <main className="min-h-screen bg-slate-900 text-white p-8">
+      <header className="flex justify-between items-center mb-12 border-b border-slate-700 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-yellow-500">RPG SYSTEM</h1>
+          <p className="text-sm text-gray-400">Logado como: {user.user_metadata.full_name}</p>
+        </div>
+        <button onClick={logout} className="text-xs text-red-400 underline">Sair</button>
+      </header>
 
-      <div className="bg-slate-800 p-10 rounded-xl border-2 border-yellow-600 shadow-2xl text-center min-w-[300px]">
-        {item ? (
-          <div className="mb-6 animate-bounce">
-            <p className="text-sm uppercase tracking-widest text-gray-400">{item.rarity}</p>
-            <h2 className="text-3xl font-bold">{item.name}</h2>
-          </div>
-        ) : (
-          <div className="mb-6 text-6xl">📦</div>
-        )}
-
-        <button
-          onClick={openChest}
-          disabled={loading}
-          className="bg-yellow-600 hover:bg-yellow-500 transition-colors px-6 py-3 rounded-full font-bold disabled:bg-gray-600"
-        >
-          {loading ? "Opening..." : "OPEN CHEST"}
-        </button>
-      </div>
-
-      {item && (
-        <button
-          onClick={() => setItem(null)}
-          className="mt-8 text-sm underline text-gray-400"
-        >
-          Reset Chest
-        </button>
+      {isMaster ? (
+        <div className="bg-red-900/20 border-2 border-red-500 p-6 rounded-xl">
+          <h2 className="text-3xl font-bold text-red-500 mb-4">Mestre Dashboard</h2>
+          <p>Você está em modo Admin. Aqui você verá as fichas dos jogadores e pedidos de aprovação.</p>
+          {/* We will build the Approval List here next! */}
+        </div>
+      ) : (
+        <div className="bg-blue-900/20 border-2 border-blue-500 p-6 rounded-xl">
+          <h2 className="text-3xl font-bold text-blue-400 mb-4">Ficha de Personagem</h2>
+          <p>Bem-vindo, Jogador. Suas estatísticas aparecerão aqui.</p>
+          {/* We will build the Character Sheet here next! */}
+        </div>
       )}
     </main>
   );
