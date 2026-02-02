@@ -210,7 +210,7 @@ export default function Home() {
 
   if (!user) return (
     <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 95%)', WebkitMaskImage: 'linear-gradient(to right, #000 0%, transparent 80%)' }}></div>
+      <div className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 95%)', WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)' }}></div>
       <div className="relative z-10 text-center space-y-6">
         <h1 className="text-6xl font-black text-red-600 italic tracking-tighter uppercase leading-none">KIMETSU NO YAIBA<br /><span className="text-white text-4xl">BLOODBATH</span></h1>
         <button onClick={() => supabase.auth.signInWithOAuth({ provider: 'discord' })} className="bg-red-600 text-white px-10 py-4 rounded-full font-black uppercase hover:scale-110 transition-all border-b-4 border-red-900">Entrar com Discord</button>
