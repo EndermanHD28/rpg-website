@@ -25,3 +25,9 @@ button, select, .cursor-pointer {
   cursor: pointer !important;
   transition: all 0.2s ease;
 }
+
+.bg-bloodbath {
+  background: linear-gradient(to right, #000000 20%, rgba(0,0,0,0) 80%), url('/red-moon.jpg');
+  background-size: cover;
+  background-position: right center;
+}
