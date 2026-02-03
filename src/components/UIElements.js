@@ -16,13 +16,13 @@ export function Toast({ toasts, setToasts }) {
 
 export function Modal({ modal, closeModal }) {
   const [isCustom, setIsCustom] = useState(false);
-  const [localData, setLocalData] = useState({ name: '', rarity: 'Comum', value: 0 });
+  const [localData, setLocalData] = useState({ name: '', rarity: 'Comum', value: 0, isBackpack: false });
 
   // Reset internal state when modal opens
   useEffect(() => {
     if (modal.isOpen) {
       setIsCustom(false);
-      setLocalData({ name: '', rarity: 'Comum', value: 0 });
+      setLocalData({ name: '', rarity: 'Comum', value: 0, isBackpack: false });
     }
   }, [modal.isOpen]);
 
@@ -43,52 +43,75 @@ export function Modal({ modal, closeModal }) {
 
         {modal.fields ? (
           <div className="space-y-4 mb-6 mt-4">
+            {/* Item Name / Library Select */}
             <div className="flex gap-2 items-center">
               {isCustom ? (
                 <input
                   autoFocus
-                  type="text" placeholder="Novo Nome..."
+                  type="text" placeholder="Nome do Item..."
                   className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500"
+                  value={localData.name}
                   onChange={(e) => setLocalData({ ...localData, name: e.target.value })}
                 />
               ) : (
-                // Find the <select> for the library and ensure it looks like this:
                 <select
                   className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500 appearance-none cursor-pointer"
                   onChange={(e) => handleLibrarySelect(e.target.value)}
-                  value={localData.name} // Added value binding
+                  value={localData.name}
                 >
                   <option value="">Biblioteca de Itens...</option>
                   {modal.library?.map((i) => (
-                    <option key={i.id} value={i.name}>
-                      {i.name} ({i.rarity})
-                    </option>
+                    <option key={i.id} value={i.name}>{i.name}</option>
                   ))}
                 </select>
               )}
-              <button
-                onClick={() => setIsCustom(!isCustom)}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${isCustom ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-slate-800 border-white/10 text-gray-400'}`}
-              >
-                ✎
-              </button>
+              <button onClick={() => setIsCustom(!isCustom)} className={`p-3 rounded-xl border transition-all ${isCustom ? 'bg-yellow-500 text-black' : 'bg-slate-800 text-gray-400'}`}>✎</button>
             </div>
 
-            <select
-              disabled={!isCustom}
-              value={localData.rarity}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-30 appearance-none"
-              onChange={(e) => setLocalData({ ...localData, rarity: e.target.value })}
-            >
-              {Object.keys(modal.rarityConfig || {}).map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+            {/* TYPE SELECTION */}
+            <div className="grid grid-cols-3 gap-2">
+              {['Item', 'Equipamento', 'Consumível'].map(t => (
+                <button
+                  key={t}
+                  disabled={!isCustom}
+                  onClick={() => setLocalData({ ...localData, type: t })}
+                  className={`py-2 rounded-lg text-[10px] font-black uppercase border transition-all ${localData.type === t ? 'bg-white text-black border-white' : 'border-white/10 text-zinc-500'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
 
-            <input
-              disabled={!isCustom}
-              type="number" value={localData.value} placeholder="Valor"
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-30"
-              onChange={(e) => setLocalData({ ...localData, value: parseInt(e.target.value) || 0 })}
-            />
+            {/* SPECIAL PROPERTIES (Only if Item/Equip) */}
+            {localData.type === 'Equipamento' && (
+              <label className="flex items-center gap-3 bg-black/20 p-3 rounded-xl border border-white/5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={localData.isBackpack}
+                  onChange={(e) => setLocalData({ ...localData, isBackpack: e.target.checked })}
+                  className="accent-yellow-500"
+                />
+                <span className="text-[10px] font-black uppercase text-zinc-400">É uma Mochila?</span>
+              </label>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <select
+                disabled={!isCustom}
+                value={localData.rarity}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-30"
+                onChange={(e) => setLocalData({ ...localData, rarity: e.target.value })}
+              >
+                {Object.keys(modal.rarityConfig || {}).map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+
+              <input
+                disabled={!isCustom}
+                type="number" value={localData.value} placeholder="Valor"
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-30"
+                onChange={(e) => setLocalData({ ...localData, value: parseInt(e.target.value) || 0 })}
+              />
+            </div>
           </div>
         ) : modal.input && (
           <input
@@ -109,8 +132,8 @@ export function Modal({ modal, closeModal }) {
           <button
             onClick={() => modal.onConfirm(modal.fields ? localData : modal.inputValue)}
             className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${modal.type === 'danger'
-                ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
-                : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
+              ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
+              : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
               }`}
           >
             Confirmar

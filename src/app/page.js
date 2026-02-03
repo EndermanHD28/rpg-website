@@ -10,10 +10,12 @@ import BioGrid from '../components/BioGrid';
 import DicePanel from '../components/DicePanel';
 import { Toast, Modal } from '../components/UIElements';
 import Celebration from '../components/Celebration';
+import CombatTab from '../components/CombatTab';
 
 export default function Home() {
   // --- UI STATE ---
   const [activeTab, setActiveTab] = useState('home');
+  const [isViewingOnly, setIsViewingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'confirm', input: false, inputValue: '', fields: false });
@@ -33,10 +35,13 @@ export default function Home() {
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
   const [itemLibrary, setItemLibrary] = useState([]);
 
+  const [isCombatActive, setIsCombatActive] = useState(false);
+  const [messages, setMessages] = useState([]);
+
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
   const isActingAsMaster = isMaster && !previewAsPlayer;
   const isViewingOthers = isMaster && !!viewingTarget;
-  const activeChar = isEditing ? tempChar : character;
+  const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
 
   // --- MATH HELPERS ---
   const presence = activeChar ? (Number(activeChar.strength) || 0) + (Number(activeChar.resistance) || 0) + (Number(activeChar.aptitude) || 0) + (Number(activeChar.agility) || 0) + (Number(activeChar.precision) || 0) : 0;
@@ -59,57 +64,65 @@ export default function Home() {
   const closeModal = () => setModal(m => ({ ...m, isOpen: false, inputValue: '', fields: false }));
 
   // --- DATA FETCH & REALTIME ---
-  useEffect(() => {
+   useEffect(() => {
     const fetchData = async () => {
       const { data: libraryData } = await supabase.from('items').select('*').order('name', { ascending: true });
       setItemLibrary(libraryData || []);
+      
       const { data: { user: activeUser } } = await supabase.auth.getUser();
       setUser(activeUser);
+      
       if (activeUser) {
         const tId = viewingTarget || activeUser.id;
         const { data: char } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
         if (char) { setCharacter(char); setTempChar(char); }
       }
+
+      // Initial Master Combat State
+      const { data: masterChar } = await supabase.from('characters').select('is_in_combat').eq('id', MASTER_DISCORD_ID).maybeSingle();
+      setIsCombatActive(!!masterChar?.is_in_combat);
+      
       setLoading(false);
     };
     fetchData();
 
-    const ch = supabase.channel('db')
+    // UNIFIED REALTIME CHANNEL
+    const mainChannel = supabase.channel('game_state')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters' }, (p) => {
+        // 1. Sync Combat Mode (if Master changed it)
+        if (p.new.id === MASTER_DISCORD_ID) {
+          setIsCombatActive(p.new.is_in_combat);
+        }
+
+        // 2. Sync My Character Data
         if (p.new.id === (viewingTarget || user?.id)) {
-          setCharacter(p.new);
-          // Sync tempChar only if not currently editing to avoid overwriting player typing
+          setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
+          // If NOT editing, keep tempChar in sync for the UI
           if (!isEditing) setTempChar(p.new);
         }
 
-        // Also update the Master's list if the Master is looking at the panel
-        if (isMaster) {
-          setAllPlayers(prev => prev.map(pl => pl.id === p.new.id ? p.new : pl));
-        }
+        // 3. Sync "Lista de Caçadores" and "Combatants"
+        // We use functional updates (prev => ...) to avoid stale state issues
+        setAllPlayers(prev => prev.map(pl => pl.id === p.new.id ? p.new : pl));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
+        setMessages(prev => [...prev.slice(-49), p.new]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
         if (isMaster) {
-          if (p.eventType === 'INSERT') {
-            setRequests(prev => [...prev, p.new]);
-            setGlobalLockUntil(Date.now() + 500); // Trigger 0.5s cooldown
-          }
-          else if (p.eventType === 'UPDATE') {
-            // Update the list and filter out anything that isn't 'pending'
-            setRequests(prev => prev.map(r => r.id === p.new.id ? p.new : r).filter(r => r.status === 'pending'));
-          }
-          else if (p.eventType === 'DELETE') {
-            setRequests(prev => prev.filter(r => r.id !== p.old.id));
-            setGlobalLockUntil(Date.now() + 500); // Trigger 0.5s cooldown
-          }
+          if (p.eventType === 'INSERT') setRequests(prev => [...prev, p.new]);
+          else if (p.eventType === 'UPDATE') setRequests(prev => prev.map(r => r.id === p.new.id ? p.new : r).filter(r => r.status === 'pending'));
+          else if (p.eventType === 'DELETE') setRequests(prev => prev.filter(r => r.id !== p.old.id));
         }
-        // Update player's own pending request status
-        if (p.new?.player_id === user?.id || p.old?.player_id === user?.id) {
-          if (p.eventType === 'DELETE' || p.new.status !== 'pending') setPendingRequest(null);
-          else setPendingRequest(p.new);
-        }
-      }).subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [viewingTarget, user?.id, isEditing]);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') console.log("--- REALTIME CONNECTED ---");
+      });
+
+    return () => {
+      supabase.removeChannel(mainChannel);
+    };
+  }, [viewingTarget, user?.id, isEditing, isMaster]);
 
   useEffect(() => {
     if (activeTab === 'master' && isMaster) {
@@ -144,18 +157,51 @@ export default function Home() {
 
   // --- HANDLERS ---
   const handleStatChange = (stat, val) => {
-    if (val === "") { setTempChar({ ...tempChar, [stat]: "" }); return; }
-    const nVal = Math.max(1, parseInt(val) || 1);
+    const nVal = val === "" ? "" : parseInt(val);
     const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
-    const used = keys.reduce((acc, k) => acc + (((k === stat) ? nVal : (Number(tempChar[k]) || 1)) - character[k]), 0);
-    if (isActingAsMaster || (character.stat_points_available - used >= 0)) {
-      setTempChar({ ...tempChar, [stat]: nVal, stat_points_available: character.stat_points_available - used });
-    }
+
+    setTempChar(prev => {
+      // 1. Create the new state object for attributes
+      const nextState = {
+        ...prev,
+        [stat]: nVal
+      };
+
+      // 2. Calculate points spent based on the DIFFERENCE between 
+      // our new state (nextState) and the original baseline (character)
+      const totalSpent = keys.reduce((acc, k) => {
+        // Treat empty strings or NaN as 1 for the sake of PS calculation
+        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? 1 : Number(nextState[k]);
+        const originalVal = Number(character[k]) || 1;
+        return acc + (currentVal - originalVal);
+      }, 0);
+
+      // 3. Return the updated object with the freshly calculated PS
+      return {
+        ...nextState,
+        stat_points_available: character.stat_points_available - totalSpent
+      };
+    });
   };
 
   const toggleEditMode = async () => {
+    setIsViewingOnly(false);
     if (isEditing) {
       const sanitized = { ...tempChar };
+      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+
+      // VALIDATION 1: Check for stats lower than 1 or empty
+      const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < 1);
+      if (hasInvalidStat) {
+        showToast("Erro: Todos os atributos devem ser pelo menos 1.");
+        return;
+      }
+
+      // VALIDATION 2: Check for negative PS (Only for players)
+      if (!isActingAsMaster && sanitized.stat_points_available < 0) {
+        showToast(`Erro: Você gastou ${Math.abs(sanitized.stat_points_available)} PS a mais do que possui.`);
+        return;
+      }
 
       // Check if anything actually changed
       if (JSON.stringify(character) === JSON.stringify(sanitized)) {
@@ -172,19 +218,15 @@ export default function Home() {
           closeModal();
 
           if (isActingAsMaster) {
-            // MASTER LOGIC: Direct update to 'characters'
             const { error } = await supabase.from('characters')
               .update({ ...sanitized, master_editing_id: null })
               .eq('id', viewingTarget || user.id);
 
-            // Clear any pending requests for this player since master manually fixed it
             if (viewingTarget) {
               await supabase.from('change_requests').update({ status: 'rejected' }).eq('player_id', viewingTarget).eq('status', 'pending');
             }
-
             if (!error) showToast("Ficha Sincronizada!");
           } else {
-            // PLAYER LOGIC: Insert into 'change_requests'
             const { error } = await supabase.from('change_requests').insert({
               player_id: user.id,
               player_name: user?.user_metadata?.full_name || user?.user_metadata?.preferred_username,
@@ -192,7 +234,6 @@ export default function Home() {
               new_data: sanitized,
               status: 'pending'
             });
-
             if (!error) showToast("Pedido Enviado!");
             else showToast("Erro ao enviar pedido.");
           }
@@ -210,7 +251,7 @@ export default function Home() {
 
   if (!user) return (
     <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 95%)', WebkitMaskImage: 'linear-gradient(to right, #000 0%, transparent 95%)' }}></div>
+      <div className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 70%)', WebkitMaskImage: 'linear-gradient(to right, #000 0%, transparent 95%)' }}></div>
       <div className="relative z-10 text-center space-y-6">
         <h1 className="text-6xl font-black text-red-600 italic tracking-tighter uppercase leading-none">KIMETSU NO YAIBA<br /><span className="text-white text-4xl">BLOODBATH</span></h1>
         <button
@@ -231,10 +272,10 @@ export default function Home() {
   );
 
   return (
-    <main className="h-screen bg-black text-white flex overflow-hidden">
+    <main className="min-h-screen bg-black text-white flex items-stretch">
 
       {/* SIDEBAR */}
-      <nav className="w-64 h-full bg-zinc-950 border-r border-zinc-900 p-8 flex flex-col justify-between shrink-0 z-[100]">
+      <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 p-8 flex flex-col justify-between shrink-0 z-[100]">
         <div className="space-y-12">
           <div onClick={() => setActiveTab('home')} className="cursor-pointer">
             <h1 className="text-xl font-black text-red-600 italic leading-none uppercase">Bloodbath</h1>
@@ -243,6 +284,8 @@ export default function Home() {
           <div className="flex flex-col gap-4">
             <NavButton active={activeTab === 'home'} label="Início" onClick={() => setActiveTab('home')} />
             <NavButton active={activeTab === 'sheet'} label="Ficha" onClick={() => { setActiveTab('sheet'); setViewingTarget(null); }} />
+            <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => setActiveTab('combat')} />
+            {/* REMOVED CombatTab call from here */}
             {isMaster && !previewAsPlayer && <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => setActiveTab('master')} />}
           </div>
         </div>
@@ -270,7 +313,7 @@ export default function Home() {
       </nav>
 
       {/* CONTENT AREA */}
-      <section className="flex-1 h-full overflow-y-auto bg-zinc-950 relative">
+      <section className="flex-1 min-h-screen bg-zinc-950 relative flex flex-col">
         {activeTab === 'home' && (
           <div className="h-full flex items-center relative">
             <div className="absolute inset-0 bg-[url('/red-moon.jpg')] bg-cover bg-right opacity-70" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 80%)', WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)' }}></div>
@@ -286,16 +329,71 @@ export default function Home() {
           <div className="p-12">
             <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-8">
-                <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800 relative">
-                  <div className="absolute top-8 right-8 z-20">
-                    <button onClick={toggleEditMode} className={`px-6 py-2 rounded-full font-black text-[10px] uppercase shadow-xl ${isEditing ? 'bg-green-600' : 'bg-yellow-600 text-black'}`}>{isEditing ? "CONCLUIR" : "EDITAR"}</button>
+                {/* THE MAIN CHARACTER CARD */}
+                <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800 relative shadow-2xl">
+
+                  {/* TOP RIGHT BUTTON GROUP */}
+                  <div className="absolute top-8 right-8 z-20 flex flex-col gap-2 items-end">
+                    <button
+                      onClick={toggleEditMode}
+                      className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : 'bg-yellow-600 text-black'}`}
+                    >
+                      {isEditing ? "CONCLUIR" : "EDITAR"}
+                    </button>
+
+                    {isEditing && (
+                      <>
+                        <button
+                          onClick={() => setIsViewingOnly(!isViewingOnly)}
+                          className="w-44 bg-blue-900/40 text-blue-400 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-blue-900/60 border border-blue-900/30"
+                        >
+                          {isViewingOnly ? "VOLTAR PARA EDIÇÃO" : "VER ORIGINAL"}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setTempChar(character);
+                            setIsEditing(false);
+                            setIsViewingOnly(false);
+                          }}
+                          className="w-44 bg-red-900/40 text-red-500 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-red-900/60 cursor-pointer border border-red-900/30"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <h2 className="text-5xl font-black text-red-600 italic uppercase mb-10">{activeChar?.char_name}</h2>
-                  <BioGrid activeChar={activeChar} isEditing={isEditing} setTempChar={setTempChar} />
+
+                  {/* CHARACTER NAME (NOW EDITABLE) */}
+                  <div className="max-w-[calc(100%-180px)] mb-10">
+                    {isEditing && !isViewingOnly ? (
+                      <input
+                        type="text"
+                        value={tempChar?.char_name || ""}
+                        onChange={(e) => setTempChar({ ...tempChar, char_name: e.target.value })}
+                        className="text-5xl font-black text-red-600 italic uppercase tracking-tighter leading-tight bg-black/20 border-b-2 border-red-600/50 outline-none w-full placeholder:opacity-20"
+                        placeholder="NOME DO PERSONAGEM"
+                      />
+                    ) : (
+                      <h2 className="text-5xl font-black text-red-600 italic uppercase tracking-tighter leading-tight">
+                        {activeChar?.char_name}
+                      </h2>
+                    )}
+                    <p className="text-zinc-500 text-[10px] font-bold uppercase mt-1 italic leading-none">
+                      ID: {isViewingOthers ? character?.discord_username : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}
+                    </p>
+                  </div>
+
+                  {/* BIOGRID (Respects Peek mode) */}
+                  <BioGrid activeChar={activeChar} isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
+
+                  {/* ANOMALIAS & HABILIDADES */}
                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <TagBox label="Anomalias" list={ANOMALIAS_LIST} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing} setTempChar={setTempChar} />
-                    <TagBox label="Habilidades" list={SKILLS_LIST} activeList={activeChar?.skills} field="skills" isEditing={isEditing} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
+                    <TagBox label="Anomalias" list={ANOMALIAS_LIST} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
+                    <TagBox label="Habilidades" list={SKILLS_LIST} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
                   </div>
+
+                  {/* BOTTOM STATS BOXES */}
                   <div className="mt-12 grid grid-cols-3 gap-6 text-center">
                     <StatBox label="VIDA" value={life} color="border-red-600" textColor="text-red-500" />
                     <StatBox label="PRESENÇA" value={presence} color="border-blue-500" textColor="text-blue-500" />
@@ -355,25 +453,57 @@ export default function Home() {
                     onConfirm: async (newItem) => {
                       if (!newItem.name) return;
 
-                      const itemWithId = { ...newItem, id: Date.now() };
+                      // Explicitly mapping variables from modal
+                      const itemWithId = {
+                        ...newItem,
+                        id: Date.now(),
+                        type: newItem.type || 'Item',
+                        isBackpack: !!newItem.isBackpack, // Ensure boolean
+                        equipped: false
+                      };
+
                       const newList = [...(activeChar.inventory || []), itemWithId];
-
                       setTempChar(prev => ({ ...prev, inventory: newList }));
-
-                      // Auto-save new unique items to the global library
-                      const exists = itemLibrary.find(i => i.name.toLowerCase() === newItem.name.toLowerCase());
-                      if (!exists) {
-                        await supabase.from('items').insert([newItem]);
-                      }
 
                       if (!isEditing) {
                         await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
                       }
-
                       closeModal();
-                      showToast("Item Adicionado!");
                     }
                   })}
+                  onEquip={(idx) => {
+                    if (isCombatActive && !isActingAsMaster) {
+                      // Permission System: Send request instead of direct update
+                      const newList = [...(activeChar.inventory || [])];
+                      newList[idx].equipped = !newList[idx].equipped;
+
+                      setModal({
+                        isOpen: true,
+                        title: "Solicitar Troca",
+                        message: "O combate está ativo. Deseja pedir permissão ao Mestre para alterar este equipamento?",
+                        onConfirm: async () => {
+                          await supabase.from('change_requests').insert({
+                            player_id: user.id,
+                            player_name: user?.user_metadata?.full_name,
+                            old_data: character,
+                            new_data: { ...character, inventory: newList },
+                            status: 'pending'
+                          });
+                          showToast("Pedido de troca enviado!");
+                          closeModal();
+                        }
+                      });
+                      return;
+                    }
+
+                    // Normal Direct Update
+                    const newList = [...(activeChar.inventory || [])];
+                    newList[idx].equipped = !newList[idx].equipped;
+                    setTempChar(prev => ({ ...prev, inventory: newList }));
+                    if (!isEditing) {
+                      supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id).then();
+                    }
+                  }}
                 />
               </div>
 
@@ -382,7 +512,10 @@ export default function Home() {
                 <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl">
                   <div className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-3">
                     <h3 className="font-black text-zinc-500 text-[10px] italic">ATRIBUTOS</h3>
-                    <div className="bg-yellow-500/10 text-yellow-500 px-3 py-1 rounded border border-yellow-500/30 text-[10px] font-black font-mono leading-none">
+                    <div className={`px-3 py-1 rounded border text-[10px] font-black font-mono leading-none transition-colors ${(activeChar?.stat_points_available < 0)
+                      ? 'bg-red-600/20 text-red-500 border-red-500/50'
+                      : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'
+                      }`}>
                       {activeChar?.stat_points_available || 0} PS
                     </div>
                   </div>
@@ -405,6 +538,17 @@ export default function Home() {
           </div>
         )}
 
+        {/* ADDED THIS BLOCK HERE */}
+        {activeTab === 'combat' && (
+          <CombatTab
+            user={user}
+            allPlayers={allPlayers}
+            messages={messages}
+            isCombatActive={isCombatActive}
+            isMaster={isMaster}
+          />
+        )}
+
         {activeTab === 'master' && isMaster && (
           <div className="p-12">
             <MasterPanel
@@ -416,6 +560,8 @@ export default function Home() {
               onVisualize={(p) => { setViewingTarget(p.id); setActiveTab('sheet'); }}
               now={now}                   // Pass current time
               globalLock={globalLockUntil} // Pass the 0.5s trigger
+              isCombatActive={isCombatActive}
+              setActiveTab={setActiveTab} // <--- Pass the function here
             />
           </div>
         )}
@@ -461,7 +607,13 @@ const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, i
         {isEditing ? (
           <div className="flex items-center bg-black/40 rounded border border-white/10 overflow-hidden">
             <button onClick={() => handleStatChange(statKey, v - 1)} className="px-3 py-1 hover:bg-white/10">-</button>
-            <input type="number" value={val} onChange={(e) => handleStatChange(statKey, e.target.value)} className="w-10 text-center bg-transparent font-bold text-yellow-500 text-sm outline-none" />
+            <input
+              type="number"
+              value={val ?? ""}
+              onChange={(e) => handleStatChange(statKey, e.target.value)}
+              onFocus={(e) => e.target.select()} // Bonus: selects all text when you click the box
+              className="w-10 text-center bg-transparent font-bold text-yellow-500 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
             <button onClick={() => handleStatChange(statKey, v + 1)} className="px-3 py-1 hover:bg-white/10">+</button>
           </div>
         ) : <span className="text-yellow-500 font-mono text-lg">{v}</span>}
