@@ -123,48 +123,18 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
         {/* COMBAT MANAGER */}
         <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl flex flex-col h-full">
           <h3 className="font-black text-red-600 uppercase text-[10px] mb-2 tracking-[0.2em] italic">Gerenciador de Combate</h3>
-          <p className="text-zinc-500 text-[10px] mb-6 font-bold uppercase">Configure a iniciativa:</p>
+          <p className="text-zinc-500 text-[10px] mb-6 font-bold uppercase">Use comandos no chat para gerenciar o combate.</p>
           
-          <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-2 mb-6 max-h-[400px]">
-            {allPlayers.filter(p => p.rank !== 'Mestre').map(p => {
-              const maxLife = (p.strength || 0) + (p.resistance || 0) * 4;
-              
-              return (
-                <div key={p.id} className={`flex flex-col p-4 rounded-2xl border transition-all ${p.is_in_combat ? 'bg-red-600/10 border-red-500/40' : 'bg-black/20 border-white/5 opacity-60'}`}>
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] font-black uppercase text-white italic">{p.char_name}</span>
-                    <input 
-                      type="checkbox" 
-                      checked={!!p.is_in_combat} 
-                      onChange={() => toggleCombatant(p)} 
-                      className="w-4 h-4 accent-red-600 cursor-pointer"
-                    />
-                  </div>
-                  
-                  {/* HP STAGING AREA */}
-                  <div className="flex items-center gap-3 bg-black/40 p-2 rounded-xl border border-white/5">
-                    <span className="text-[8px] font-black text-zinc-500 uppercase shrink-0">HP Inicial:</span>
-                    <input 
-                      type="number"
-                      placeholder={maxLife}
-                      value={hpStage[p.id] ?? ""}
-                      onChange={(e) => setHpStage({...hpStage, [p.id]: parseInt(e.target.value)})}
-                      className="bg-transparent text-xs font-bold text-red-500 w-full outline-none"
-                    />
-                    <span className="text-[8px] font-black text-zinc-600 uppercase shrink-0">/ {maxLife}</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-40">
+            <span className="text-4xl">⌨️</span>
+            <p className="text-[9px] font-black uppercase tracking-widest text-center px-8">O sistema de botões e checkboxes foi substituído por comandos de chat.</p>
           </div>
 
-          <button 
-            onClick={toggleGlobalCombat}
-            className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${
-              isCombatActive ? 'bg-black text-red-600 border-red-600/50' : 'bg-red-600 text-white border-red-500'
-            }`}
+          <button
+            onClick={() => setActiveTab('combat')}
+            className="w-full py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl bg-red-600 text-white border-red-500"
           >
-            {isCombatActive ? "Encerrar Modo Combate" : "INICIAR COMBATE & IR PARA TABULEIRO"}
+            IR PARA O CHAT DE SESSÃO
           </button>
         </div>
 

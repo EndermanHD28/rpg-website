@@ -1,9 +1,12 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { handleCommand } from '../lib/commands';
 
 export default function CombatTab({ user, allPlayers, messages, isCombatActive, isMaster }) {
   const [input, setInput] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const scrollRef = useRef();
 
   const combatants = allPlayers.filter(p => p.is_in_combat && p.rank !== 'Mestre');
@@ -12,14 +15,196 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const groupMessages = (msgs) => {
+    const groups = [];
+    if (!msgs || msgs.length === 0) return groups;
+
+    msgs.forEach((m) => {
+      const lastGroup = groups[groups.length - 1];
+      const mDate = new Date(m.created_at);
+      
+      if (lastGroup && lastGroup.player_name === m.player_name) {
+        const firstInGroupDate = new Date(lastGroup.messages[0].created_at);
+        const diffMinutes = (mDate - firstInGroupDate) / (1000 * 60);
+
+        if (lastGroup.messages.length < 6 && diffMinutes < 3) {
+          lastGroup.messages.push(m);
+          return;
+        }
+      }
+
+      groups.push({
+        id: m.id,
+        player_name: m.player_name,
+        created_at: m.created_at,
+        messages: [m]
+      });
+    });
+
+    return groups;
+  };
+
+  const filteredMessages = messages.filter(m => !m.is_system || isMaster);
+  const groupedMessages = groupMessages(filteredMessages);
+
+  const validateHP = (val) => {
+    if (!val) return true;
+    if (val.toLowerCase() === 'full') return true;
+    if (val.endsWith('%')) return !isNaN(parseInt(val.replace('%', '')));
+    return !isNaN(parseInt(val));
+  };
+
+  const [commandHelp, setCommandHelp] = useState(null);
+  const [isInvalid, setIsInvalid] = useState(false);
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setInput(value);
+
+    if (!isMaster) {
+      setSuggestions([]);
+      setCommandHelp(null);
+      setIsInvalid(false);
+      return;
+    }
+
+    const parts = value.trimStart().split(/\s+/);
+    const lastWord = value.split(" ").slice(-1)[0] || "";
+
+    // 1. Mentions (Trigger if the word being typed contains @)
+    const atIndex = lastWord.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const query = lastWord.substring(atIndex + 1).toLowerCase();
+      const filtered = allPlayers
+        .filter(p => p.rank !== 'Mestre' && (
+          p.discord_username?.toLowerCase().includes(query) ||
+          p.char_name?.toLowerCase().includes(query)
+        ))
+        .map(p => ({ display: p.char_name, value: `.${p.discord_username}` }));
+      
+      setSuggestions(filtered);
+      setActiveSuggestionIndex(0);
+      setCommandHelp(null);
+      return;
+    }
+
+    // 2. Command Logic
+    if (value.startsWith("/")) {
+      const cmd = parts[0];
+      const sub = parts[1];
+      const hp = parts[2];
+
+      if (parts.length === 1) {
+        // Suggest base commands
+        const commands = [
+          { display: "/combat", value: "combat" }
+        ];
+        const query = value.substring(1).toLowerCase();
+        setSuggestions(commands.filter(c => c.value.includes(query)));
+        setCommandHelp(null);
+      } else if (cmd === "/combat") {
+        const subcommands = ["start", "add-player", "remove-player", "ko-player", "finish"];
+        
+        if (parts.length === 2 && !value.endsWith(" ")) {
+          // Suggest subcommands
+          const query = sub.toLowerCase();
+          setSuggestions(subcommands.filter(s => s.includes(query)).map(s => ({ display: s, value: s })));
+          setCommandHelp(null);
+        } else {
+          setSuggestions([]);
+          // Positional help
+          if (sub === "start" || sub === "add-player") {
+            setCommandHelp("healthAmount players");
+            setIsInvalid(hp && !validateHP(hp));
+          } else if (sub === "remove-player" || sub === "ko-player") {
+            setCommandHelp("players");
+            setIsInvalid(false);
+          } else if (sub === "finish") {
+            setCommandHelp("");
+            setIsInvalid(false);
+          } else {
+            setCommandHelp(null);
+            setIsInvalid(false);
+          }
+        }
+      }
+    } else {
+      setSuggestions([]);
+      setCommandHelp(null);
+      setIsInvalid(false);
+    }
+  };
+
+  const applySuggestion = (suggestion) => {
+    const valueTrimmed = input.trimEnd();
+    const words = valueTrimmed.split(/\s+/);
+    const lastWord = words[words.length - 1] || "";
+    
+    words.pop();
+
+    let newValue = "";
+    const atIndex = lastWord.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const prefix = lastWord.substring(0, atIndex + 1); // everything including the @
+      newValue = [...words, prefix + suggestion.value].join(" ") + " ";
+    } else if (lastWord.startsWith("/")) {
+      newValue = [...words, "/" + suggestion.value].join(" ") + " ";
+    } else {
+      // For subcommands (start, add-player etc) that don't have their own prefix but are part of a command
+      newValue = [...words, suggestion.value].join(" ") + " ";
+    }
+
+    setInput(newValue);
+    setSuggestions([]);
+    
+    // Trigger help update for the new input
+    handleInputChange({ target: { value: newValue } });
+  };
+
+  const onKeyDown = (e) => {
+    if (suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveSuggestionIndex(prev => (prev + 1) % suggestions.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applySuggestion(suggestions[activeSuggestionIndex]);
+      } else if (e.key === 'Escape') {
+        setSuggestions([]);
+      }
+    }
+  };
+
   const sendMsg = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-    await supabase.from('messages').insert({
-      player_name: user?.user_metadata?.full_name || user?.user_metadata?.preferred_username,
-      content: input
-    });
+
+    if (input.startsWith('/')) {
+      const res = await handleCommand(input, user, allPlayers);
+      if (res.success) {
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `✅ ${res.message}`,
+          is_system: true
+        });
+      } else {
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `❌ ${res.message}`,
+          is_system: true
+        });
+      }
+    } else {
+      await supabase.from('messages').insert({
+        player_name: user?.user_metadata?.full_name || user?.user_metadata?.preferred_username,
+        content: input
+      });
+    }
     setInput("");
+    setSuggestions([]);
   };
 
   return (
@@ -42,32 +227,102 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
         </div>
 
         {/* Messages List */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-          {messages.map((m, i) => (
-            <div key={m.id || i} className="group animate-in fade-in slide-in-from-left-2 duration-300">
-              <div className="flex items-baseline gap-4">
-                <span className="text-[8px] font-black text-zinc-700 uppercase font-mono shrink-0">
-                  {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                </span>
-                <span className="font-black text-red-600 italic uppercase text-[11px] tracking-tight shrink-0">
-                  {m.player_name}:
-                </span>
-                <p className="text-zinc-300 text-sm leading-relaxed font-medium break-words">
-                  {m.content}
-                </p>
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          {groupedMessages.map((group, i) => {
+            const sender = allPlayers.find(p => p.char_name === group.player_name || p.user_metadata?.full_name === group.player_name || p.user_metadata?.preferred_username === group.player_name);
+            const avatar = sender?.image_url;
+
+            return (
+              <div key={group.id || i} className="group animate-in fade-in slide-in-from-left-2 duration-300 flex flex-col gap-2">
+                <div className="flex items-start gap-4">
+                  {/* Avatar near name */}
+                  <div className="shrink-0 mt-1">
+                    {avatar ? (
+                      <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10" alt="" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] opacity-40">
+                        {group.player_name === 'SISTEMA' ? '⚙️' : '👤'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 flex flex-col gap-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className={`font-black italic uppercase text-[11px] tracking-tight shrink-0 ${group.player_name === 'SISTEMA' ? 'text-cyan-500' : 'text-red-600'}`}>
+                        {group.player_name}
+                      </span>
+                      <span className="text-[7px] font-black text-zinc-700 uppercase font-mono">
+                        {new Date(group.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-2 mt-1">
+                  {group.messages.map((m, mi) => (
+                    <p key={m.id || `${i}-${mi}`} className={`text-sm leading-relaxed font-medium break-words ${group.player_name === 'SISTEMA' ? 'text-cyan-400 italic font-bold' : 'text-zinc-300'}`}>
+                      {m.content}
+                    </p>
+                  ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={scrollRef} />
         </div>
 
         {/* Input Area */}
-        <form onSubmit={sendMsg} className="shrink-0 p-8 bg-black/60 border-t border-white/5">
-          <input 
-            value={input} onChange={(e) => setInput(e.target.value)}
-            placeholder="Interaja com o mundo..."
-            className="w-full bg-zinc-900 border border-white/10 rounded-2xl px-8 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl"
-          />
+        <form onSubmit={sendMsg} className="shrink-0 p-8 bg-black/60 border-t border-white/5 relative">
+          {suggestions.length > 0 && (
+            <div className="absolute bottom-full left-8 mb-2 w-64 bg-zinc-900 border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50">
+              {suggestions.map((s, i) => (
+                <div
+                  key={i}
+                  onClick={() => applySuggestion(s)}
+                  className={`px-4 py-2 text-xs font-bold cursor-pointer transition-colors ${i === activeSuggestionIndex ? 'bg-red-600 text-white' : 'text-zinc-400 hover:bg-white/5'}`}
+                >
+                  {s.display}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="relative">
+            <input
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={onKeyDown}
+              placeholder="Interaja com o mundo..."
+              className={`w-full bg-zinc-900 border ${isInvalid ? 'border-red-600' : 'border-white/10'} rounded-2xl px-8 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl`}
+            />
+            {commandHelp && (
+              <div className="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none text-sm font-mono opacity-20 whitespace-pre">
+                <span className="text-transparent">{input}</span>
+                <span className="text-white">{commandHelp}</span>
+              </div>
+            )}
+          </div>
+
+          {isMaster && (
+            <div className="mt-6 space-y-2">
+              <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest ml-2">Comandos Comuns</p>
+              <div className="bg-zinc-900/50 rounded-2xl p-4 border border-white/5 flex flex-wrap gap-3">
+                {[
+                  '/combat start full @.player',
+                  '/combat add-player 100% @.player',
+                  '/combat finish',
+                  '/combat remove-player @.player',
+                  '/combat ko-player @.player'
+                ].map(cmd => (
+                  <code
+                    key={cmd}
+                    onClick={() => { setInput(cmd); handleInputChange({ target: { value: cmd } }); }}
+                    className="text-[10px] bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 text-zinc-400 hover:text-white hover:border-zinc-500 cursor-pointer transition-all font-mono"
+                  >
+                    {cmd}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
       </div>
 
@@ -87,10 +342,19 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
           const hpPerc = Math.max(0, (currentLife / maxLife) * 100);
 
           return (
-            <div key={p.id} className="relative group bg-zinc-900 border border-white/5 rounded-[35px] p-6 shadow-2xl hover:border-red-600/40 transition-all duration-500 overflow-hidden shrink-0">
-              <div className="flex justify-between items-center mb-4">
-                <p className="font-black italic text-white uppercase text-sm tracking-tighter truncate pr-2">{p.char_name}</p>
-                <span className="font-mono text-[10px] font-black text-red-500 shrink-0">{currentLife}/{maxLife}</span>
+            <div key={p.id} className="relative group bg-zinc-900 border border-white/5 rounded-2xl p-6 shadow-2xl hover:border-red-600/40 transition-all duration-500 overflow-hidden shrink-0">
+              <div className="flex items-center gap-4 mb-4">
+                {p.image_url ? (
+                  <img src={p.image_url} className="w-12 h-12 rounded-lg object-cover border border-white/5 shrink-0" alt="" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center text-xl shrink-0">
+                    👤
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-black italic text-white uppercase text-sm tracking-tighter truncate">{p.char_name}</p>
+                  <span className="font-mono text-[10px] font-black text-red-500">{currentLife}/{maxLife}</span>
+                </div>
               </div>
               
               <div className="w-full h-2 bg-black/60 rounded-full overflow-hidden mb-5 border border-white/5">

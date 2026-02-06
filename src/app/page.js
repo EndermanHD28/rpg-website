@@ -109,6 +109,12 @@ export default function Home() {
         setMessages(prev => [...prev.slice(-49), p.new]);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
+        if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
+          // If our request was approved, sync our local character state immediately
+          setCharacter(p.new.new_data);
+          if (!isEditing) setTempChar(p.new.new_data);
+        }
+
         if (isMaster) {
           if (p.eventType === 'INSERT') setRequests(prev => [...prev, p.new]);
           else if (p.eventType === 'UPDATE') setRequests(prev => prev.map(r => r.id === p.new.id ? p.new : r).filter(r => r.status === 'pending'));

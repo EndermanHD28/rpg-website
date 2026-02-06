@@ -1,7 +1,40 @@
 import { RANKS, CLASSES_LIST, RESPIRACOES, LINHAGENS, CORES, formatHeight } from '../constants/gameData';
+import { supabase } from '../lib/supabase';
 
 export default function BioGrid({ activeChar, isEditing, setTempChar }) {
   const updateField = (field, val) => setTempChar(prev => ({ ...prev, [field]: val }));
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeChar?.id) return;
+
+    // Check size (1.5MB approx for 1500x1500px compressed)
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Imagem muito grande! Limite de 2MB.");
+      return;
+    }
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${activeChar.id}-${Math.random()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('character-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('character-images')
+        .getPublicUrl(filePath);
+
+      updateField('image_url', publicUrl);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Error uploading image. Please try again.');
+    }
+  };
 
   const SelectField = ({ label, field, options }) => (
     <div className="space-y-1">
@@ -20,6 +53,30 @@ export default function BioGrid({ activeChar, isEditing, setTempChar }) {
 
   return (
     <div className="grid grid-cols-2 gap-x-10 gap-y-8 mt-4">
+      {/* IMAGE COLUMN */}
+      <div className="row-span-3 flex flex-col items-center justify-center bg-black/40 rounded-xl border border-white/5 relative group overflow-hidden aspect-square w-full">
+        {activeChar?.image_url ? (
+          <img
+            src={activeChar.image_url}
+            alt={activeChar.char_name}
+            className={`w-full h-full object-cover transition-transform ${isEditing ? 'group-hover:scale-105' : ''}`}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 opacity-20">
+            <span className="text-4xl">👤</span>
+            <p className="text-[10px] font-black uppercase">Sem Imagem</p>
+          </div>
+        )}
+        
+        {isEditing && (
+          <label className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-2xl mb-2">📸</span>
+            <span className="text-[10px] font-black uppercase">Trocar Foto</span>
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+          </label>
+        )}
+      </div>
+
       <SelectField label="Rank" field="rank" options={RANKS} />
       
       <div className="space-y-1">
