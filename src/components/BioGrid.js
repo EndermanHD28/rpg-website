@@ -1,7 +1,9 @@
 import { RANKS, CLASSES_LIST, RESPIRACOES, LINHAGENS, CORES, formatHeight } from '../constants/gameData';
 import { supabase } from '../lib/supabase';
 
-export default function BioGrid({ activeChar, isEditing, setTempChar }) {
+import React, { memo } from 'react';
+
+const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
   const updateField = (field, val) => setTempChar(prev => ({ ...prev, [field]: val }));
 
   const handleImageUpload = async (e) => {
@@ -36,20 +38,24 @@ export default function BioGrid({ activeChar, isEditing, setTempChar }) {
     }
   };
 
-  const SelectField = ({ label, field, options }) => (
-    <div className="space-y-1">
-      <span className="text-gray-500 text-[9px] font-black italic uppercase">{label}:</span>
-      {isEditing ? (
-        <select 
-          value={activeChar?.[field]} 
-          onChange={(e) => updateField(field, e.target.value)}
-          className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none"
-        >
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : <p className="font-bold text-lg leading-none">{activeChar?.[field] || "Nenhum"}</p>}
-    </div>
-  );
+  const SelectField = ({ label, field, options }) => {
+    // We memoize the select value to prevent unnecessary re-renders of the dropdown
+    // while typing in other fields
+    return (
+      <div className="space-y-1">
+        <span className="text-gray-500 text-[9px] font-black italic uppercase">{label}:</span>
+        {isEditing ? (
+          <select
+            value={activeChar?.[field] || ""}
+            onChange={(e) => updateField(field, e.target.value)}
+            className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none"
+          >
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : <p className="font-bold text-lg leading-none">{activeChar?.[field] || "Nenhum"}</p>}
+      </div>
+    );
+  };
 
   return (
     <div className="grid grid-cols-2 gap-x-10 gap-y-8 mt-4">
@@ -121,4 +127,6 @@ export default function BioGrid({ activeChar, isEditing, setTempChar }) {
       <SelectField label="Cor de Nichirin" field="nichirin_color" options={CORES} />
     </div>
   );
-}
+});
+
+export default BioGrid;

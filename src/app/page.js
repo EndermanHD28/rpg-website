@@ -19,6 +19,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'confirm', input: false, inputValue: '', fields: false });
+  const [searchTerm, setSearchTerm] = useState('');
   const [showCelebration, setShowCelebration] = useState(false);
 
   // --- DATA STATE ---
@@ -36,6 +37,7 @@ export default function Home() {
   const [itemLibrary, setItemLibrary] = useState([]);
 
   const [isCombatActive, setIsCombatActive] = useState(false);
+  const [isSessionActive, setIsSessionActive] = useState(false);
   const [messages, setMessages] = useState([]);
 
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
@@ -78,9 +80,25 @@ export default function Home() {
         if (char) { setCharacter(char); setTempChar(char); }
       }
 
+      // Fetch all players for chat avatars and combat list
+      const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
+      setAllPlayers(players || []);
+
+      // Initial Global Game State
+      const { data: globalData } = await supabase.from('global').select('is_session_active').single();
+      setIsSessionActive(!!globalData?.is_session_active);
+
       // Initial Master Combat State
-      const { data: masterChar } = await supabase.from('characters').select('is_in_combat').eq('id', MASTER_DISCORD_ID).maybeSingle();
+      const { data: masterChar } = await supabase.from('characters').select('is_in_combat').eq('rank', 'Mestre').maybeSingle();
       setIsCombatActive(!!masterChar?.is_in_combat);
+
+      // Fetch last 50 messages
+      const { data: msgData } = await supabase
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (msgData) setMessages(msgData.reverse());
       
       setLoading(false);
     };
@@ -90,23 +108,43 @@ export default function Home() {
     const mainChannel = supabase.channel('game_state')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters' }, (p) => {
         // 1. Sync Combat Mode (if Master changed it)
-        if (p.new.id === MASTER_DISCORD_ID) {
+        if (p.new.rank === 'Mestre') {
           setIsCombatActive(p.new.is_in_combat);
         }
 
         // 2. Sync My Character Data
         if (p.new.id === (viewingTarget || user?.id)) {
+          // If we are currently editing, we IGNORE incoming database updates
+          // for our own character to prevent the UI from flickering or
+          // dropdowns/inputs from closing/losing focus.
+          if (isEditing) return;
+
           setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
-          // If NOT editing, keep tempChar in sync for the UI
-          if (!isEditing) setTempChar(p.new);
+          setTempChar(p.new);
         }
 
         // 3. Sync "Lista de Caçadores" and "Combatants"
         // We use functional updates (prev => ...) to avoid stale state issues
         setAllPlayers(prev => prev.map(pl => pl.id === p.new.id ? p.new : pl));
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (p) => {
+        const wasActive = isSessionActive;
+        const nowActive = !!p.new.is_session_active;
+        setIsSessionActive(nowActive);
+        
+        // Clear messages if session just started
+        if (!wasActive && nowActive) {
+          setMessages([]);
+        }
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
-        setMessages(prev => [...prev.slice(-49), p.new]);
+        setMessages(prev => {
+          const newList = [...prev, p.new];
+          if (newList.length > 50) {
+            return newList.slice(-50);
+          }
+          return newList;
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
         if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
@@ -131,16 +169,25 @@ export default function Home() {
   }, [viewingTarget, user?.id, isEditing, isMaster]);
 
   useEffect(() => {
+    // If we are editing, we don't want to re-fetch allPlayers as it might trigger re-renders
+    if (isEditing) return;
+
     if (activeTab === 'master' && isMaster) {
       supabase.from('change_requests').select('*').eq('status', 'pending').then(({ data }) => setRequests(data || []));
       supabase.from('characters').select('*').order('char_name', { ascending: true }).then(({ data }) => setAllPlayers(data || []));
     }
-  }, [activeTab, isMaster]);
+  }, [activeTab, isMaster, isEditing]);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const interval = setInterval(() => {
+      // We only update 'now' if NOT editing to prevent UI re-renders
+      // from closing dropdowns
+      if (!isEditing) {
+        setNow(Date.now());
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isEditing]);
 
   useEffect(() => {
     if (character?.needs_celebration) {
@@ -228,6 +275,12 @@ export default function Home() {
               .update({ ...sanitized, master_editing_id: null })
               .eq('id', viewingTarget || user.id);
 
+            // We also update the local 'character' state to match the DB
+            // so that if we are viewing ourselves, our state stays in sync.
+            if (!error && !viewingTarget) {
+              setCharacter(sanitized);
+            }
+
             if (viewingTarget) {
               await supabase.from('change_requests').update({ status: 'rejected' }).eq('player_id', viewingTarget).eq('status', 'pending');
             }
@@ -293,6 +346,7 @@ export default function Home() {
             <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => setActiveTab('combat')} />
             {/* REMOVED CombatTab call from here */}
             {isMaster && !previewAsPlayer && <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => setActiveTab('master')} />}
+            {isMaster && !previewAsPlayer && <NavButton active={activeTab === 'items'} label="Itens" onClick={() => setActiveTab('items')} />}
           </div>
         </div>
         <div className="space-y-4">
@@ -408,6 +462,7 @@ export default function Home() {
                 </div>
                 <Inventory
                   inventory={activeChar?.inventory || []}
+                  activeChar={activeChar}
                   isActingAsMaster={isActingAsMaster}
                   rarityConfig={RARITY_CONFIG}
                   onMove={(idx, dir) => {
@@ -477,12 +532,26 @@ export default function Home() {
                       closeModal();
                     }
                   })}
-                  onEquip={(idx) => {
-                    if (isCombatActive && !isActingAsMaster) {
-                      // Permission System: Send request instead of direct update
-                      const newList = [...(activeChar.inventory || [])];
-                      newList[idx].equipped = !newList[idx].equipped;
+                  onEquip={async (idx) => {
+                    const item = activeChar.inventory[idx];
+                    const isWeapon = item.subtype && (item.category === "Arma de Fogo" || item.category === "Arma Branca");
+                    const newList = [...(activeChar.inventory || [])];
 
+                    // HAND LIMIT LOGIC
+                    if (!item.equipped && isWeapon) {
+                      const equippedWeapons = newList.filter(i => i.equipped && i.subtype && (i.category === "Arma de Fogo" || i.category === "Arma Branca"));
+                      const totalHandsUsed = equippedWeapons.reduce((acc, w) => acc + (w.hands === "Duas Mãos" ? 2 : 1), 0);
+                      const requestedHands = item.hands === "Duas Mãos" ? 2 : 1;
+
+                      if (totalHandsUsed + requestedHands > 2) {
+                        showToast(`Erro: Você já está usando ${totalHandsUsed} mãos. Desequipe algo primeiro.`);
+                        return;
+                      }
+                    }
+
+                    newList[idx].equipped = !newList[idx].equipped;
+
+                    if (isCombatActive && !isActingAsMaster) {
                       setModal({
                         isOpen: true,
                         title: "Solicitar Troca",
@@ -503,13 +572,30 @@ export default function Home() {
                     }
 
                     // Normal Direct Update
-                    const newList = [...(activeChar.inventory || [])];
-                    newList[idx].equipped = !newList[idx].equipped;
                     setTempChar(prev => ({ ...prev, inventory: newList }));
                     if (!isEditing) {
-                      supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id).then();
+                      await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
                     }
                   }}
+                  onEdit={(idx) => setModal({
+                    isOpen: true,
+                    title: "Editar Item",
+                    fields: true,
+                    forcedCustom: true, // Reuse the forcedCustom logic but we won't disable Tier/Upgrade here
+                    isInventoryEdit: true, // We'll use this new flag to allow Tier/Upgrade
+                    initialData: activeChar.inventory[idx],
+                    rarityConfig: RARITY_CONFIG,
+                    onConfirm: async (updatedItem) => {
+                      const newList = [...(activeChar.inventory || [])];
+                      newList[idx] = { ...newList[idx], ...updatedItem };
+                      setTempChar(prev => ({ ...prev, inventory: newList }));
+                      if (!isEditing) {
+                        await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
+                      }
+                      closeModal();
+                      showToast("Item atualizado!");
+                    }
+                  })}
                 />
               </div>
 
@@ -546,13 +632,18 @@ export default function Home() {
 
         {/* ADDED THIS BLOCK HERE */}
         {activeTab === 'combat' && (
-          <CombatTab
-            user={user}
-            allPlayers={allPlayers}
-            messages={messages}
-            isCombatActive={isCombatActive}
-            isMaster={isMaster}
-          />
+          <div className="flex-1 relative h-0">
+            <CombatTab
+              user={user}
+              allPlayers={allPlayers}
+              messages={messages}
+              isCombatActive={isCombatActive}
+              isSessionActive={isSessionActive}
+              isMaster={isMaster}
+              isActingAsMaster={isActingAsMaster}
+              setActiveTab={setActiveTab}
+            />
+          </div>
         )}
 
         {activeTab === 'master' && isMaster && (
@@ -567,8 +658,130 @@ export default function Home() {
               now={now}                   // Pass current time
               globalLock={globalLockUntil} // Pass the 0.5s trigger
               isCombatActive={isCombatActive}
+              isSessionActive={isSessionActive}
               setActiveTab={setActiveTab} // <--- Pass the function here
             />
+          </div>
+        )}
+
+        {activeTab === 'items' && isMaster && (
+          <div className="p-12">
+            <div className="max-w-4xl mx-auto space-y-8">
+              <div className="flex justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800">
+                <div className="flex-1">
+                  <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Biblioteca de Itens</h2>
+                  <div className="flex items-center gap-4 mt-2">
+                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest shrink-0">Gerenciamento Centralizado</p>
+                    <input
+                      type="text"
+                      placeholder="Pesquisar itens..."
+                      className="bg-black/40 border border-white/5 rounded-full px-6 py-1.5 text-xs text-white outline-none focus:border-yellow-500/50 w-64"
+                      onChange={(e) => {
+                        const val = e.target.value.toLowerCase().replace(/\s/g, '');
+                        // We use a local state for this later if needed, but for now we can filter library directly
+                        setSearchTerm(e.target.value);
+                      }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModal({
+                    isOpen: true,
+                    title: "Novo Item Global",
+                    fields: true,
+                    forcedCustom: true,
+                    rarityConfig: RARITY_CONFIG,
+                    onConfirm: async (d) => {
+                      const { error } = await supabase.from('items').insert({
+                        name: d.name,
+                        type: d.type,
+                        rarity: d.rarity,
+                        value: d.value,
+                        category: d.category,
+                        subtype: d.subtype,
+                        hands: d.hands,
+                        damageType: d.damageType
+                      });
+                      if (!error) {
+                        showToast("Item Adicionado à Biblioteca!");
+                        // Re-fetch library
+                        const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                        setItemLibrary(data || []);
+                        closeModal();
+                      }
+                    }
+                  })}
+                  className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
+                >
+                  + Criar Novo Item
+                </button>
+              </div>
+
+              <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
+                <div className="grid grid-cols-3 gap-6">
+                  {['Item', 'Equipamento', 'Consumível'].map(cat => (
+                    <div key={cat} className="space-y-4">
+                      <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] italic border-b border-white/5 pb-2">{cat}s</h3>
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        {itemLibrary
+                          .filter(i => (i.type || 'Item') === cat)
+                          .filter(i => {
+                            const search = searchTerm.toLowerCase().replace(/\s/g, '');
+                            return i.name.toLowerCase().replace(/\s/g, '').includes(search);
+                          })
+                          .map(item => (
+                          <div
+                            key={item.id}
+                            onClick={() => setModal({
+                              isOpen: true,
+                              title: "Editar Item Global",
+                              fields: true,
+                              forcedCustom: true,
+                              initialData: item,
+                              rarityConfig: RARITY_CONFIG,
+                              onConfirm: async (d) => {
+                                const { error } = await supabase.from('items').update({
+                                  name: d.name,
+                                  type: d.type,
+                                  rarity: d.rarity,
+                                  value: d.value,
+                                  category: d.category,
+                                  subtype: d.subtype,
+                                  hands: d.hands,
+                                  damageType: d.damageType
+                                }).eq('id', item.id);
+                                if (!error) {
+                                  showToast("Item Atualizado!");
+                                  const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                                  setItemLibrary(data || []);
+                                  closeModal();
+                                }
+                              },
+                              onDelete: async () => {
+                                const { error } = await supabase.from('items').delete().eq('id', item.id);
+                                if (!error) {
+                                  showToast("Item Removido!");
+                                  const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                                  setItemLibrary(data || []);
+                                  closeModal();
+                                }
+                              }
+                            })}
+                            className="p-3 bg-black/40 rounded-xl border border-white/5 hover:border-yellow-500/50 cursor-pointer transition-all flex justify-between items-center group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-white group-hover:text-yellow-500 transition-colors">{item.name}</span>
+                              <span className={`text-[8px] font-black uppercase tracking-tighter ${RARITY_CONFIG[item.rarity]?.color}`}>{item.rarity}</span>
+                            </div>
+                            <span className="text-[9px] font-mono font-bold text-zinc-600 group-hover:text-zinc-400">{item.value}$</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>

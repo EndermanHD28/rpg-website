@@ -1,8 +1,9 @@
 /* src/components/InventoryTemp.js */
 "use client";
 import { useState } from 'react';
+import { calculateWeaponPAT } from '../lib/rpg-math';
 
-export default function Inventory({ inventory = [], isActingAsMaster, onDelete, onMove, onSort, onAddItem, onEquip, rarityConfig }) {
+export default function Inventory({ inventory = [], activeChar, isActingAsMaster, onDelete, onMove, onSort, onAddItem, onEquip, onEdit, rarityConfig }) {
   const [tab, setTab] = useState('Item');
 
   const equippedItems = inventory.filter(i => i.equipped);
@@ -19,13 +20,34 @@ export default function Inventory({ inventory = [], isActingAsMaster, onDelete, 
       {/* EQUIPPED VISUAL BAR */}
       {equippedItems.length > 0 && (
         <div className="bg-blue-950/20 border border-blue-500/30 p-4 rounded-[30px] flex gap-3 overflow-x-auto custom-scrollbar">
-          {equippedItems.map((item) => (
-            <div key={item.id || `equipped-${idx}`} className="shrink-0 bg-black/40 border border-blue-400/20 p-3 rounded-2xl flex flex-col items-center min-w-[110px]">
-              <span className="text-[7px] font-black uppercase text-blue-400 mb-1 tracking-widest">Equipado</span>
-              <p className="text-[10px] font-bold text-white text-center truncate w-full px-2">{item.name}</p>
-              <div className={`w-10 h-0.5 mt-2 rounded-full ${rarityConfig[item.rarity]?.color.replace('text', 'bg') || 'bg-white'} opacity-50`} />
-            </div>
-          ))}
+          {equippedItems.map((item, idx) => {
+            const isWeapon = item.subtype && (item.category === "Arma de Fogo" || item.category === "Arma Branca");
+            const pat = isWeapon ? calculateWeaponPAT(item, activeChar) : null;
+            
+            return (
+              <div key={item.id || `equipped-${idx}`} className="shrink-0 bg-black/40 border border-blue-400/20 p-3 rounded-2xl flex flex-col items-center min-w-[120px] group/equip relative">
+                <span className="text-[7px] font-black uppercase text-blue-400 mb-1 tracking-widest">Equipado</span>
+                <p className="text-[10px] font-bold text-white text-center truncate w-full px-2">
+                  {item.name} {item.upgrade > 0 ? `+${item.upgrade}` : ''}
+                </p>
+                {pat && (
+                  <div className="mt-1 flex flex-col items-center">
+                    <span className="text-[9px] font-black text-red-500 font-mono">PAT: {pat}</span>
+                    {/* Expanding details on hover */}
+                    <div className="grid grid-rows-[0fr] group-hover/equip:grid-rows-[1fr] transition-all duration-300 ease-in-out w-full">
+                      <div className="overflow-hidden">
+                        <div className="pt-2 mt-2 border-t border-white/5 flex flex-col items-center gap-1">
+                          <span className="text-[7px] text-zinc-500 uppercase font-bold">{item.subtype}</span>
+                          <span className="text-[7px] text-zinc-500 uppercase font-bold">{item.tier} | {item.hands}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className={`w-10 h-0.5 mt-2 rounded-full ${rarityConfig[item.rarity]?.color.replace('text', 'bg') || 'bg-white'} opacity-50`} />
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -58,42 +80,70 @@ export default function Inventory({ inventory = [], isActingAsMaster, onDelete, 
           {tab === 'Consumível' ? (
             <p className="text-[10px] text-zinc-700 italic text-center py-10 uppercase font-black tracking-widest">Em desenvolvimento...</p>
           ) : filteredItems.length > 0 ? filteredItems.map((item) => (
-            <div key={item.id || `item-${item.originalIdx}`} className="group flex items-center justify-between py-4 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-2 transition-all relative">
+            <div key={item.id || `item-${item.originalIdx}`} className="group flex items-center justify-between py-5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-3 transition-all relative">
               
               {/* Equipped Indicator Dot */}
-              {item.equipped && <div className="absolute left-0 w-1 h-6 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />}
+              {item.equipped && <div className="absolute left-0 w-1 h-8 bg-blue-500 rounded-full shadow-[0_0_12px_rgba(59,130,246,0.5)]" />}
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-5">
                 {/* Movement Controls (Visible on Hover) */}
-                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-3 border-r border-white/5 text-zinc-600">
+                <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pr-4 border-r border-white/5 text-zinc-600">
                   <button onClick={() => onMove(item.originalIdx, -1)} className="hover:text-yellow-500 text-[10px]">▲</button>
                   <button onClick={() => onMove(item.originalIdx, 1)} className="hover:text-yellow-500 text-[10px]">▼</button>
                 </div>
 
                 <div>
-                  <div className="flex items-center gap-2">
-                    <p className={`text-sm font-bold ${item.equipped ? 'text-blue-400' : 'text-zinc-200'}`}>{item.name}</p>
-                    {item.isBackpack && <span className="text-[7px] bg-yellow-600/20 text-yellow-600 border border-yellow-600/30 px-1.5 py-0.5 rounded font-black uppercase">Mochila</span>}
+                  <div className="flex items-center gap-2.5">
+                    <p className={`text-base font-bold ${item.equipped ? 'text-blue-400' : 'text-zinc-200'}`}>
+                      {item.name} {item.upgrade > 0 ? `+${item.upgrade}` : ''}
+                    </p>
+                    {item.isBackpack && <span className="text-[8px] bg-yellow-600/20 text-yellow-600 border border-yellow-600/30 px-1.5 py-0.5 rounded font-black uppercase">Mochila</span>}
+                    {item.type === 'Equipamento' && !item.isBackpack && (
+                      <>
+                        <span className="text-[8px] bg-blue-600/20 text-blue-400 border border-blue-600/30 px-1.5 py-0.5 rounded font-black uppercase">
+                          {item.hands === 'Duas Mãos' ? '2 Mãos' : '1 Mão'}
+                        </span>
+                        <span className="text-[8px] bg-purple-600/20 text-purple-400 border border-purple-600/30 px-1.5 py-0.5 rounded font-black uppercase">
+                          {item.tier?.replace('T', 'Tier ')}
+                        </span>
+                      </>
+                    )}
                   </div>
-                  <div className="flex gap-3 items-center mt-1">
-                    <span className={`text-[10px] font-black uppercase tracking-tighter ${rarityConfig[item.rarity]?.color}`}>{item.rarity}</span>
-                    <span className="text-[10px] font-bold text-zinc-600 font-mono italic">Val: {item.value}$</span>
+                  <div className="flex gap-3.5 items-center mt-1.5">
+                    <span className={`text-[11px] font-black uppercase tracking-tighter ${rarityConfig[item.rarity]?.color}`}>{item.rarity}</span>
+                    {(item.category === 'Arma Branca' || item.category === 'Arma de Fogo') && (
+                      <span className="text-[11px] font-black uppercase tracking-tighter text-red-600">
+                        PAT: {calculateWeaponPAT(item, activeChar)}
+                      </span>
+                    )}
+                    <span className="text-[11px] font-black uppercase tracking-tighter text-zinc-500">
+                      Val: {item.value}$
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-5">
                 {tab === 'Equipamento' && (
                   <button onClick={() => onEquip(item.originalIdx)}
-                    className={`text-[9px] font-black uppercase tracking-widest transition-all px-3 py-1 rounded border ${
-                      item.equipped 
-                      ? 'bg-blue-600 border-blue-400 text-white' 
+                    className={`text-[10px] font-black uppercase tracking-widest transition-all px-4 py-1.5 rounded-lg border ${
+                      item.equipped
+                      ? 'bg-blue-600 border-blue-400 text-white'
                       : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-white'
                     }`}>
                     {item.equipped ? 'Remover' : 'Equipar'}
                   </button>
                 )}
-                <button onClick={() => onDelete(item.originalIdx)} className="opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-500 text-2xl font-light transition-all px-2">×</button>
+                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
+                  <button
+                    onClick={() => onEdit(item.originalIdx)}
+                    className="text-zinc-600 hover:text-yellow-500 transition-colors p-2"
+                    title="Editar Item"
+                  >
+                    <span className="text-xl">✎</span>
+                  </button>
+                  <button onClick={() => onDelete(item.originalIdx)} className="text-zinc-700 hover:text-red-500 text-2xl font-light px-2">×</button>
+                </div>
               </div>
             </div>
           )) : (

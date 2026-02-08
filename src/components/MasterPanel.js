@@ -3,7 +3,7 @@
 import { useState } from 'react'; // THIS WAS MISSING
 import { supabase } from '../lib/supabase';
 
-export default function MasterPanel({ requests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, setActiveTab }) {
+export default function MasterPanel({ requests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, isSessionActive, setActiveTab }) {
   const [hpStage, setHpStage] = useState({});
 
   const toggleCombatant = async (p) => {
@@ -32,6 +32,28 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
       setActiveTab('combat'); // Redirect to combat tab
     } else {
       showToast("🕊️ MODO ROLEPLAY");
+    }
+  };
+
+  const startSession = async () => {
+    if (isSessionActive) return;
+    const { error } = await supabase.rpc('toggle_session', { status: true });
+    
+    if (!error) {
+      showToast("🟢 SESSÃO INICIADA!");
+    } else {
+      showToast(`Erro: ${error.message || "Falha na conexão"}`);
+    }
+  };
+
+  const endSession = async () => {
+    if (!isSessionActive) return;
+    const { error } = await supabase.rpc('toggle_session', { status: false });
+    
+    if (!error) {
+      showToast("🔴 SESSÃO ENCERRADA!");
+    } else {
+      showToast(`Erro: ${error.message || "Falha na conexão"}`);
     }
   };
 
@@ -122,20 +144,46 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
         
         {/* COMBAT MANAGER */}
         <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl flex flex-col h-full">
-          <h3 className="font-black text-red-600 uppercase text-[10px] mb-2 tracking-[0.2em] italic">Gerenciador de Combate</h3>
-          <p className="text-zinc-500 text-[10px] mb-6 font-bold uppercase">Use comandos no chat para gerenciar o combate.</p>
+          <h3 className="font-black text-red-600 uppercase text-[10px] mb-2 tracking-[0.2em] italic">Controle de Sessão</h3>
+          <p className="text-zinc-500 text-[10px] mb-6 font-bold uppercase">Gerencie a disponibilidade da aba de sessão.</p>
           
-          <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-40">
-            <span className="text-4xl">⌨️</span>
-            <p className="text-[9px] font-black uppercase tracking-widest text-center px-8">O sistema de botões e checkboxes foi substituído por comandos de chat.</p>
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6 py-8">
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-2xl transition-all duration-500 ${isSessionActive ? 'bg-green-600/20 text-green-500 border border-green-500/50 animate-pulse' : 'bg-zinc-800 text-zinc-600 border border-zinc-700'}`}>
+              {isSessionActive ? '⚔️' : '💤'}
+            </div>
+            <div className="text-center">
+              <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${isSessionActive ? 'text-green-500' : 'text-zinc-500'}`}>
+                {isSessionActive ? "Sessão em Andamento" : "Sessão Hibernando"}
+              </p>
+            </div>
           </div>
 
-          <button
-            onClick={() => setActiveTab('combat')}
-            className="w-full py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl bg-red-600 text-white border-red-500"
-          >
-            IR PARA O CHAT DE SESSÃO
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={startSession}
+              disabled={isSessionActive}
+              className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${isSessionActive ? 'bg-zinc-900/50 text-zinc-600 border-zinc-800 cursor-not-allowed' : 'bg-green-600 text-white border-green-500 hover:scale-[1.02] hover:bg-green-500'}`}
+            >
+              INICIAR SESSÃO
+            </button>
+
+            <button
+              onClick={endSession}
+              disabled={!isSessionActive}
+              className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${!isSessionActive ? 'bg-zinc-900/50 text-zinc-600 border-zinc-800 cursor-not-allowed' : 'bg-red-600 text-white border-red-500 hover:scale-[1.02] hover:bg-red-500'}`}
+            >
+              FINALIZAR SESSÃO
+            </button>
+            
+            {isSessionActive && (
+              <button
+                onClick={() => setActiveTab('combat')}
+                className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white"
+              >
+                IR PARA O CHAT
+              </button>
+            )}
+          </div>
         </div>
 
         {/* PENDING REQUESTS */}

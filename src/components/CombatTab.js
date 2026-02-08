@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { handleCommand } from '../lib/commands';
+import { handleCommand, COMMANDS } from '../lib/commands';
 
-export default function CombatTab({ user, allPlayers, messages, isCombatActive, isMaster }) {
+export default function CombatTab({ user, allPlayers, messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab }) {
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
@@ -54,24 +54,22 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     return !isNaN(parseInt(val));
   };
 
-  const [commandHelp, setCommandHelp] = useState(null);
-  const [isInvalid, setIsInvalid] = useState(false);
+  const [suggestionData, setSuggestionData] = useState(null);
 
   const handleInputChange = (e) => {
     const value = e.target.value;
     setInput(value);
 
-    if (!isMaster) {
+    if (!isActingAsMaster || !value.startsWith('/')) {
+      setSuggestionData(null);
       setSuggestions([]);
-      setCommandHelp(null);
-      setIsInvalid(false);
       return;
     }
 
-    const parts = value.trimStart().split(/\s+/);
+    const inputContent = value.substring(1).toLowerCase();
+    
+    // 1. Mentions check
     const lastWord = value.split(" ").slice(-1)[0] || "";
-
-    // 1. Mentions (Trigger if the word being typed contains @)
     const atIndex = lastWord.lastIndexOf("@");
     if (atIndex !== -1) {
       const query = lastWord.substring(atIndex + 1).toLowerCase();
@@ -81,57 +79,25 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
           p.char_name?.toLowerCase().includes(query)
         ))
         .map(p => ({ display: p.char_name, value: `.${p.discord_username}` }));
-      
       setSuggestions(filtered);
-      setActiveSuggestionIndex(0);
-      setCommandHelp(null);
+      setSuggestionData(null);
       return;
-    }
-
-    // 2. Command Logic
-    if (value.startsWith("/")) {
-      const cmd = parts[0];
-      const sub = parts[1];
-      const hp = parts[2];
-
-      if (parts.length === 1) {
-        // Suggest base commands
-        const commands = [
-          { display: "/combat", value: "combat" }
-        ];
-        const query = value.substring(1).toLowerCase();
-        setSuggestions(commands.filter(c => c.value.includes(query)));
-        setCommandHelp(null);
-      } else if (cmd === "/combat") {
-        const subcommands = ["start", "add-player", "remove-player", "ko-player", "finish"];
-        
-        if (parts.length === 2 && !value.endsWith(" ")) {
-          // Suggest subcommands
-          const query = sub.toLowerCase();
-          setSuggestions(subcommands.filter(s => s.includes(query)).map(s => ({ display: s, value: s })));
-          setCommandHelp(null);
-        } else {
-          setSuggestions([]);
-          // Positional help
-          if (sub === "start" || sub === "add-player") {
-            setCommandHelp("healthAmount players");
-            setIsInvalid(hp && !validateHP(hp));
-          } else if (sub === "remove-player" || sub === "ko-player") {
-            setCommandHelp("players");
-            setIsInvalid(false);
-          } else if (sub === "finish") {
-            setCommandHelp("");
-            setIsInvalid(false);
-          } else {
-            setCommandHelp(null);
-            setIsInvalid(false);
-          }
-        }
-      }
     } else {
       setSuggestions([]);
-      setCommandHelp(null);
-      setIsInvalid(false);
+    }
+
+    // 2. Command suggestions
+    const match = COMMANDS.find(c =>
+      inputContent.startsWith(c.name) || c.name.startsWith(inputContent)
+    );
+    
+    if (match && inputContent.length > 0) {
+      setSuggestionData({
+        match,
+        fullHelp: `/${match.name} ` + match.args.map(a => `[${a.name}]`).join(" ")
+      });
+    } else {
+      setSuggestionData(null);
     }
   };
 
@@ -182,7 +148,7 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     e.preventDefault();
     if (!input.trim()) return;
 
-    if (input.startsWith('/')) {
+    if (input.startsWith('/') && isActingAsMaster) {
       const res = await handleCommand(input, user, allPlayers);
       if (res.success) {
         await supabase.from('messages').insert({
@@ -207,11 +173,50 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     setSuggestions([]);
   };
 
+  if (!isSessionActive) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-black p-12 text-center flex-1">
+        <div className="relative">
+          <div className="absolute inset-0 bg-red-600 blur-[100px] opacity-20"></div>
+          <span className="text-8xl mb-8 block relative z-10">💤</span>
+        </div>
+        <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter mb-4">Nenhuma Sessão Ativa</h2>
+        <p className="text-zinc-500 font-medium italic text-lg max-w-md mb-8">
+          O mestre ainda não iniciou a sessão de hoje. Prepare seus dados e aguarde o chamado para o combate.
+        </p>
+        
+        {isActingAsMaster && (
+          <div className="p-6 bg-zinc-900/50 rounded-2xl border border-yellow-500/30 max-w-sm">
+            <p className="text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-4">Acesso de Mestre</p>
+            <p className="text-zinc-400 text-xs mb-6">Você está vendo esta mensagem porque a sessão está desligada para os jogadores.</p>
+            <button
+              onClick={() => setActiveTab('master')}
+              className="px-6 py-2 bg-yellow-500 text-black font-black text-[10px] uppercase rounded-full hover:scale-105 transition-all"
+            >
+              Ir para Painel do Mestre
+            </button>
+          </div>
+        )}
+
+        <div className="mt-12 flex gap-4">
+          <div className="w-2 h-2 rounded-full bg-zinc-800 animate-pulse"></div>
+          <div className="w-2 h-2 rounded-full bg-zinc-800 animate-pulse delay-75"></div>
+          <div className="w-2 h-2 rounded-full bg-zinc-800 animate-pulse delay-150"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full w-full flex overflow-hidden bg-black">
+    <div className="absolute inset-0 flex overflow-hidden bg-black">
       
       {/* CHAT AREA - Grows to fill space */}
-      <div className="flex-1 flex flex-col min-w-0 bg-zinc-950">
+      <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 relative h-full">
+        {!isSessionActive && isMaster && (
+          <div className="absolute top-0 left-0 right-0 bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-8 z-50 flex justify-center items-center gap-3">
+            <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Aviso: A sessão está encerrada para os jogadores</span>
+          </div>
+        )}
         
         {/* Header */}
         <div className="shrink-0 p-8 flex justify-between items-center bg-black/40 border-b border-white/5">
@@ -229,7 +234,13 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
         {/* Messages List */}
         <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
           {groupedMessages.map((group, i) => {
-            const sender = allPlayers.find(p => p.char_name === group.player_name || p.user_metadata?.full_name === group.player_name || p.user_metadata?.preferred_username === group.player_name);
+            const sender = allPlayers.find(p =>
+              p.char_name === group.player_name ||
+              p.discord_username === group.player_name ||
+              p.discord_username === group.player_name?.replace(/^@/, '') ||
+              p.user_metadata?.full_name === group.player_name ||
+              p.user_metadata?.preferred_username === group.player_name
+            );
             const avatar = sender?.image_url;
 
             return (
@@ -286,43 +297,81 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
             </div>
           )}
           <div className="relative">
+            {suggestionData && (
+              <div className="absolute bottom-[calc(100%+0.5rem)] left-0 w-full bg-zinc-900/90 border border-white/10 rounded-xl px-8 py-3 pointer-events-none text-sm font-mono whitespace-pre flex z-50 backdrop-blur-sm shadow-2xl overflow-hidden">
+                {(() => {
+                  const { match, fullHelp } = suggestionData;
+                  const inputVal = input.toLowerCase();
+                  const cmdPart = `/${match.name}`;
+                  
+                  // Helper to validate arg
+                  const isArgValid = (val, type) => {
+                    if (!val) return true;
+                    if (type === 'number') return !isNaN(parseFloat(val));
+                    if (type === 'boolean') return val === 'true' || val === 'false';
+                    if (type === 'array') return val.split(',').every(x => x.length > 0);
+                    return true;
+                  };
+
+                  const cmdPartWithSlash = `/${match.name}`;
+                  const inputWords = input.split(/\s+/);
+                  const cmdWordsCount = match.name.split(/\s+/).length; // e.g. "combat start" is 2
+                  
+                  // We'll map through parts of the help string
+                  const helpParts = [cmdPartWithSlash, ...match.args.map(a => `[${a.name}]`)];
+                  
+                  return helpParts.map((part, pIdx) => {
+                    let color = 'text-zinc-600';
+                    const isCommandPart = pIdx === 0;
+                    
+                    if (isCommandPart) {
+                      // Command part: character by character check
+                      return (
+                        <span key={pIdx} className="flex">
+                          {part.split("").map((char, cIdx) => {
+                            const inputChar = input[cIdx];
+                            let charColor = 'text-zinc-600';
+                            if (inputChar !== undefined) {
+                              charColor = inputChar.toLowerCase() === char.toLowerCase() ? 'text-white' : 'text-red-500';
+                            }
+                            return <span key={cIdx} className={charColor}>{char}</span>;
+                          })}
+                          <span className="text-zinc-600">&nbsp;</span>
+                        </span>
+                      );
+                    } else {
+                      // Argument part: whole word check
+                      const argIndex = pIdx - 1;
+                      const argDef = match.args[argIndex];
+                      
+                      // We need to find the word in input that corresponds to this arg
+                      // This is tricky because of spaces in command name
+                      const wordInInput = inputWords[cmdWordsCount + argIndex];
+                      
+                      if (wordInInput !== undefined && wordInInput.length > 0) {
+                        color = isArgValid(wordInInput, argDef.type) ? 'text-white' : 'text-red-500';
+                      }
+                      
+                      return (
+                        <span key={pIdx} className={color}>
+                          {part}
+                          <span className="text-zinc-600">&nbsp;</span>
+                        </span>
+                      );
+                    }
+                  });
+                })()}
+              </div>
+            )}
             <input
               value={input}
               onChange={handleInputChange}
               onKeyDown={onKeyDown}
               placeholder="Interaja com o mundo..."
-              className={`w-full bg-zinc-900 border ${isInvalid ? 'border-red-600' : 'border-white/10'} rounded-2xl px-8 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl`}
+              className="w-full bg-zinc-900 border border-white/10 rounded-2xl px-8 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl"
             />
-            {commandHelp && (
-              <div className="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none text-sm font-mono opacity-20 whitespace-pre">
-                <span className="text-transparent">{input}</span>
-                <span className="text-white">{commandHelp}</span>
-              </div>
-            )}
           </div>
 
-          {isMaster && (
-            <div className="mt-6 space-y-2">
-              <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest ml-2">Comandos Comuns</p>
-              <div className="bg-zinc-900/50 rounded-2xl p-4 border border-white/5 flex flex-wrap gap-3">
-                {[
-                  '/combat start full @.player',
-                  '/combat add-player 100% @.player',
-                  '/combat finish',
-                  '/combat remove-player @.player',
-                  '/combat ko-player @.player'
-                ].map(cmd => (
-                  <code
-                    key={cmd}
-                    onClick={() => { setInput(cmd); handleInputChange({ target: { value: cmd } }); }}
-                    className="text-[10px] bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 text-zinc-400 hover:text-white hover:border-zinc-500 cursor-pointer transition-all font-mono"
-                  >
-                    {cmd}
-                  </code>
-                ))}
-              </div>
-            </div>
-          )}
         </form>
       </div>
 

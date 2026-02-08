@@ -14,6 +14,15 @@ export const RARITY_CONFIG = {
   "Lendário": { color: "text-orange-400" }
 };
 
+export const WEAPON_CATEGORIES = ["Arma de Fogo", "Arma Branca"];
+export const WEAPON_SUBTYPES = {
+  "Arma de Fogo": ["Sniper", "Pistola", "Revólver", "Escopeta / Metralhadora", "SMG (Submetralhadora)"],
+  "Arma Branca": ["Faca / Adaga", "Katana (Espada Leve)", "Machado Leve", "Espada Pesada / Machado Pesado", "Martelo Pesado / Marreta", "Soco / Improviso (Tacos/Tábuas)"]
+};
+export const HANDS_OPTIONS = ["Uma Mão", "Duas Mãos"];
+export const TIERS = ["T0", "T1", "T2", "T3", "T4"];
+export const DAMAGE_TYPES = ["Corte", "Impacto"];
+
 export const formatHeight = (val) => {
   const digits = val.replace(/\D/g, '');
   if (!digits) return "";
