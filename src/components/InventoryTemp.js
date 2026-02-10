@@ -2,8 +2,10 @@
 "use client";
 import { useState } from 'react';
 import { calculateWeaponPAT } from '../lib/rpg-math';
+import { useSound } from '../hooks/useSound';
 
-export default function Inventory({ inventory = [], activeChar, isActingAsMaster, onDelete, onMove, onSort, onAddItem, onEquip, onEdit, rarityConfig }) {
+export default function Inventory({ inventory = [], activeChar, isActingAsMaster, isViewingOthers, onDelete, onMove, onSort, onAddItem, onEquip, onEdit, rarityConfig }) {
+  const { playSound } = useSound();
   const [tab, setTab] = useState('Item');
 
   const equippedItems = inventory.filter(i => i.equipped);
@@ -32,7 +34,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                 </p>
                 {pat && (
                   <div className="mt-1 flex flex-col items-center">
-                    <span className="text-[9px] font-black text-red-500 font-mono">PAT: {pat}</span>
+                    <span className="text-[9px] font-black text-red-500 font-mono">PAT: 1d{Math.round(pat)}</span>
                     {/* Expanding details on hover */}
                     <div className="grid grid-rows-[0fr] group-hover/equip:grid-rows-[1fr] transition-all duration-300 ease-in-out w-full">
                       <div className="overflow-hidden">
@@ -61,14 +63,14 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
             </p>
           </div>
           {isActingAsMaster && (
-            <button onClick={onAddItem} className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-4 py-1.5 rounded-full text-[10px] font-black uppercase hover:bg-yellow-500 hover:text-black transition-all">+ Novo Item</button>
+            <button onClick={() => { playSound('random_button'); onAddItem(); }} className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 px-4 py-1.5 rounded-full text-[10px] font-black uppercase hover:bg-yellow-500 hover:text-black transition-all">+ Novo Item</button>
           )}
         </div>
 
         {/* TABS */}
         <div className="flex gap-4 mb-2 border-b border-white/5 pb-4">
           {['Item', 'Equipamento', 'Consumível'].map(t => (
-            <button key={t} onClick={() => setTab(t)}
+            <button key={t} onClick={() => { playSound('tab_change'); setTab(t); }}
               className={`text-[10px] font-black uppercase tracking-widest transition-all ${tab === t ? 'text-white border-b-2 border-red-600 pb-1' : 'text-zinc-600 hover:text-zinc-400'}`}>
               {t}s
             </button>
@@ -88,8 +90,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
               <div className="flex items-center gap-5">
                 {/* Movement Controls (Visible on Hover) */}
                 <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pr-4 border-r border-white/5 text-zinc-600">
-                  <button onClick={() => onMove(item.originalIdx, -1)} className="hover:text-yellow-500 text-[10px]">▲</button>
-                  <button onClick={() => onMove(item.originalIdx, 1)} className="hover:text-yellow-500 text-[10px]">▼</button>
+                  <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, -1); }} className="hover:text-yellow-500 text-[10px]">▲</button>
+                  <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, 1); }} className="hover:text-yellow-500 text-[10px]">▼</button>
                 </div>
 
                 <div>
@@ -113,7 +115,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     <span className={`text-[11px] font-black uppercase tracking-tighter ${rarityConfig[item.rarity]?.color}`}>{item.rarity}</span>
                     {(item.category === 'Arma Branca' || item.category === 'Arma de Fogo') && (
                       <span className="text-[11px] font-black uppercase tracking-tighter text-red-600">
-                        PAT: {calculateWeaponPAT(item, activeChar)}
+                        PAT: 1d{Math.round(calculateWeaponPAT(item, activeChar))}
                       </span>
                     )}
                     <span className="text-[11px] font-black uppercase tracking-tighter text-zinc-500">
@@ -124,8 +126,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
               </div>
 
               <div className="flex items-center gap-5">
-                {tab === 'Equipamento' && (
-                  <button onClick={() => onEquip(item.originalIdx)}
+                {tab === 'Equipamento' && (!isViewingOthers || isActingAsMaster) && (
+                  <button onClick={() => { playSound('random_button'); onEquip(item.originalIdx); }}
                     className={`text-[10px] font-black uppercase tracking-widest transition-all px-4 py-1.5 rounded-lg border ${
                       item.equipped
                       ? 'bg-blue-600 border-blue-400 text-white'
@@ -134,16 +136,18 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     {item.equipped ? 'Remover' : 'Equipar'}
                   </button>
                 )}
-                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
-                  <button
-                    onClick={() => onEdit(item.originalIdx)}
-                    className="text-zinc-600 hover:text-yellow-500 transition-colors p-2"
-                    title="Editar Item"
-                  >
-                    <span className="text-xl">✎</span>
-                  </button>
-                  <button onClick={() => onDelete(item.originalIdx)} className="text-zinc-700 hover:text-red-500 text-2xl font-light px-2">×</button>
-                </div>
+                {(!isViewingOthers || isActingAsMaster) && (
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
+                    <button
+                      onClick={() => { playSound('random_button'); onEdit(item.originalIdx); }}
+                      className="text-zinc-600 hover:text-yellow-500 transition-colors p-2"
+                      title="Editar Item"
+                    >
+                      <span className="text-xl">✎</span>
+                    </button>
+                    <button onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} className="text-zinc-700 hover:text-red-500 text-2xl font-light px-2">×</button>
+                  </div>
+                )}
               </div>
             </div>
           )) : (

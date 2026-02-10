@@ -11,9 +11,12 @@ import DicePanel from '../components/DicePanel';
 import { Toast, Modal } from '../components/UIElements';
 import Celebration from '../components/Celebration';
 import CombatTab from '../components/CombatTab';
+import { useSound } from '../hooks/useSound';
+import MusicPlayer from '../components/MusicPlayer';
 
 export default function Home() {
   // --- UI STATE ---
+  const { playSound, volume, changeVolume } = useSound();
   const [activeTab, setActiveTab] = useState('home');
   const [isViewingOnly, setIsViewingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -39,10 +42,12 @@ export default function Home() {
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [turn, setTurn] = useState(1);
+  const [sharedImage, setSharedImage] = useState({ url: null, title: null, contrast: false });
 
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
   const isActingAsMaster = isMaster && !previewAsPlayer;
-  const isViewingOthers = isMaster && !!viewingTarget;
+  const isViewingOthers = viewingTarget && viewingTarget !== user?.id;
   const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
 
   // --- MATH HELPERS ---
@@ -52,6 +57,8 @@ export default function Home() {
 
   const getPerc = (val) => presence > 0 ? ((Number(val) / presence) * 100).toFixed(1) : "0.0";
   const luckPerc = activeChar ? parseFloat(getPerc(activeChar.luck || 0)) : 0;
+  const charismaPerc = activeChar ? parseFloat(getPerc(activeChar.charisma || 0)) : 0;
+  const intelligencePerc = activeChar ? parseFloat(getPerc(activeChar.intelligence || 0)) : 0;
 
   const [now, setNow] = useState(Date.now());
   const [globalLockUntil, setGlobalLockUntil] = useState(0);
@@ -74,23 +81,33 @@ export default function Home() {
       const { data: { user: activeUser } } = await supabase.auth.getUser();
       setUser(activeUser);
       
-      if (activeUser) {
-        const tId = viewingTarget || activeUser.id;
-        const { data: char } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
-        if (char) { setCharacter(char); setTempChar(char); }
-      }
-
-      // Fetch all players for chat avatars and combat list
+      // Fetch all players FIRST so we can use it for character/tempChar
       const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
       setAllPlayers(players || []);
 
-      // Initial Global Game State
-      const { data: globalData } = await supabase.from('global').select('is_session_active').single();
-      setIsSessionActive(!!globalData?.is_session_active);
+      if (activeUser) {
+        const tId = viewingTarget || activeUser.id;
+        const char = (players || []).find(p => p.id === tId);
+        if (char) {
+          setCharacter(char);
+          setTempChar(char);
+        } else {
+          const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
+          if (dbChar) { setCharacter(dbChar); setTempChar(dbChar); }
+        }
+      }
 
-      // Initial Master Combat State
-      const { data: masterChar } = await supabase.from('characters').select('is_in_combat').eq('rank', 'Mestre').maybeSingle();
-      setIsCombatActive(!!masterChar?.is_in_combat);
+      // Initial Global Game State
+      const { data: globalData, error: globalError } = await supabase.from('global').select('*').eq('id', 1).maybeSingle();
+      console.log("INITIAL GLOBAL FETCH (FULL):", { globalData, globalError });
+      setIsSessionActive(!!globalData?.is_session_active);
+      setIsCombatActive(!!globalData?.is_combat_active);
+      if (globalData?.current_turn !== undefined) setTurn(globalData.current_turn);
+      setSharedImage({
+        url: globalData?.image_url || globalData?.imag_url || null,
+        title: globalData?.image_title || null,
+        contrast: !!globalData?.image_contrast
+      });
 
       // Fetch last 50 messages
       const { data: msgData } = await supabase
@@ -104,37 +121,77 @@ export default function Home() {
     };
     fetchData();
 
+    // AUTH LISTENER for persistent session handling
+    const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("AUTH EVENT:", event);
+      if (event === 'SIGNED_IN') {
+        setUser(session?.user ?? null);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setCharacter(null);
+        setTempChar(null);
+      }
+    });
+
     // UNIFIED REALTIME CHANNEL
     const mainChannel = supabase.channel('game_state')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters' }, (p) => {
-        // 1. Sync Combat Mode (if Master changed it)
-        if (p.new.rank === 'Mestre') {
-          setIsCombatActive(p.new.is_in_combat);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, (p) => {
+        // 1. Sync My Character Data
+        const characterData = p.new || p.old;
+        if (characterData && characterData.id === (viewingTarget || user?.id)) {
+          if (p.eventType === 'DELETE') {
+             // Handle character deletion if necessary
+          } else {
+            if (!isEditing) {
+              setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
+              setTempChar(p.new);
+            }
+          }
         }
 
-        // 2. Sync My Character Data
-        if (p.new.id === (viewingTarget || user?.id)) {
-          // If we are currently editing, we IGNORE incoming database updates
-          // for our own character to prevent the UI from flickering or
-          // dropdowns/inputs from closing/losing focus.
-          if (isEditing) return;
-
-          setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
-          setTempChar(p.new);
+        // 2. Sync "Lista de Caçadores" and "Combatants"
+        if (p.eventType === 'INSERT') {
+          setAllPlayers(prev => [...prev, p.new].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || "")));
+        } else if (p.eventType === 'UPDATE') {
+          setAllPlayers(prev => prev.map(pl => pl.id === p.new.id ? p.new : pl));
+        } else if (p.eventType === 'DELETE') {
+          setAllPlayers(prev => prev.filter(pl => pl.id !== p.old.id));
         }
-
-        // 3. Sync "Lista de Caçadores" and "Combatants"
-        // We use functional updates (prev => ...) to avoid stale state issues
-        setAllPlayers(prev => prev.map(pl => pl.id === p.new.id ? p.new : pl));
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (p) => {
-        const wasActive = isSessionActive;
-        const nowActive = !!p.new.is_session_active;
-        setIsSessionActive(nowActive);
+        console.log("REALTIME GLOBAL UPDATE RECEIVED:", p.new);
         
-        // Clear messages if session just started
-        if (!wasActive && nowActive) {
-          setMessages([]);
+        // Handle Session Activation
+        if (p.new.is_session_active !== undefined) {
+          const nowActive = !!p.new.is_session_active;
+          setIsSessionActive(prev => {
+            if (!prev && nowActive) {
+              setMessages([]); // Clear messages only when switching from inactive to active
+            }
+            return nowActive;
+          });
+        }
+        
+        // Handle Combat State
+        if (p.new.is_combat_active !== undefined) {
+          setIsCombatActive(p.new.is_combat_active);
+        }
+
+        // Handle Turn
+        if (p.new.current_turn !== undefined) {
+          setTurn(p.new.current_turn);
+        }
+
+        // Handle Shared Image (Partial updates)
+        const newUrl = p.new.image_url !== undefined ? p.new.image_url : p.new.imag_url;
+        // Check for null explicitly since that's what happens when hiding
+        if (newUrl !== undefined || p.new.image_title !== undefined || p.new.image_contrast !== undefined) {
+          console.log("REALTIME IMAGE UPDATE:", { url: newUrl, title: p.new.image_title, contrast: p.new.image_contrast });
+          setSharedImage(prev => ({
+            url: newUrl !== undefined ? newUrl : prev.url,
+            title: p.new.image_title !== undefined ? p.new.image_title : prev.title,
+            contrast: p.new.image_contrast !== undefined ? !!p.new.image_contrast : prev.contrast
+          }));
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
@@ -146,11 +203,19 @@ export default function Home() {
           return newList;
         });
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (p) => {
+        setMessages(prev => {
+          if (!p.old || Object.keys(p.old).length === 0) return [];
+          return prev.filter(m => m.id !== p.old.id);
+        });
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
         if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
           // If our request was approved, sync our local character state immediately
-          setCharacter(p.new.new_data);
-          if (!isEditing) setTempChar(p.new.new_data);
+          // and ensure the celebration flag is set to true so the effect triggers
+          const updatedChar = { ...p.new.new_data, needs_celebration: true };
+          setCharacter(updatedChar);
+          if (!isEditing) setTempChar(updatedChar);
         }
 
         if (isMaster) {
@@ -164,6 +229,7 @@ export default function Home() {
       });
 
     return () => {
+      authListener.unsubscribe();
       supabase.removeChannel(mainChannel);
     };
   }, [viewingTarget, user?.id, isEditing, isMaster]);
@@ -190,7 +256,8 @@ export default function Home() {
   }, [isEditing]);
 
   useEffect(() => {
-    if (character?.needs_celebration) {
+    // ONLY trigger if the character is the CURRENT USER'S character
+    if (character?.needs_celebration && character?.id === user?.id) {
       // SECURITY: Don't show fireworks if Master is just browsing sheets
       if (isMaster && !previewAsPlayer && viewingTarget) return;
 
@@ -206,10 +273,11 @@ export default function Home() {
       // Stop particles after 6 seconds
       setTimeout(() => setShowCelebration(false), 6000);
     }
-  }, [character?.needs_celebration]);
+  }, [character?.needs_celebration, character?.id, user?.id]);
 
   // --- HANDLERS ---
   const handleStatChange = (stat, val) => {
+    playSound('stat_point');
     const nVal = val === "" ? "" : parseInt(val);
     const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
 
@@ -252,6 +320,7 @@ export default function Home() {
 
       // VALIDATION 2: Check for negative PS (Only for players)
       if (!isActingAsMaster && sanitized.stat_points_available < 0) {
+        playSound('error');
         showToast(`Erro: Você gastou ${Math.abs(sanitized.stat_points_available)} PS a mais do que possui.`);
         return;
       }
@@ -334,34 +403,108 @@ export default function Home() {
     <main className="min-h-screen bg-black text-white flex items-stretch">
 
       {/* SIDEBAR */}
-      <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 p-8 flex flex-col justify-between shrink-0 z-[100]">
-        <div className="space-y-12">
+      <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 p-8 flex flex-col justify-between shrink-0 z-[100] overflow-y-auto custom-scrollbar">
+        <div className="space-y-8">
           <div onClick={() => setActiveTab('home')} className="cursor-pointer">
             <h1 className="text-xl font-black text-red-600 italic leading-none uppercase">Bloodbath</h1>
             <p className="text-[8px] text-zinc-500 font-bold tracking-widest uppercase mt-1">What-If RPG</p>
           </div>
-          <div className="flex flex-col gap-4">
-            <NavButton active={activeTab === 'home'} label="Início" onClick={() => setActiveTab('home')} />
-            <NavButton active={activeTab === 'sheet'} label="Ficha" onClick={() => { setActiveTab('sheet'); setViewingTarget(null); }} />
-            <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => setActiveTab('combat')} />
-            {/* REMOVED CombatTab call from here */}
-            {isMaster && !previewAsPlayer && <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => setActiveTab('master')} />}
-            {isMaster && !previewAsPlayer && <NavButton active={activeTab === 'items'} label="Itens" onClick={() => setActiveTab('items')} />}
+
+          <div className="space-y-6">
+            {/* CATEGORIA PRINCIPAL */}
+            <div>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Principal</p>
+              <div className="flex flex-col gap-1">
+                <NavButton active={activeTab === 'home'} label="Início" onClick={() => { playSound('tab_change'); setActiveTab('home'); }} />
+                <NavButton active={activeTab === 'sheet' && !viewingTarget} label="Ficha" onClick={() => {
+                  playSound('tab_change');
+                  const myChar = allPlayers.find(p => p.id === user?.id);
+                  if (myChar) {
+                    setCharacter(myChar);
+                    setTempChar(myChar);
+                  }
+                  setViewingTarget(null);
+                  setActiveTab('sheet');
+                }} />
+                <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => { playSound('tab_change'); setActiveTab('combat'); }} />
+              </div>
+            </div>
+
+            {/* CATEGORIA FICHAS */}
+            <div>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Fichas</p>
+              <div className="flex flex-col gap-1">
+                {allPlayers
+                  .filter(p => p.id !== user?.id && p.discord_username !== ".enderu")
+                  .map(p => {
+                    const isApproved = !!p.approved_once;
+                    const canView = isActingAsMaster || isApproved;
+                    
+                    return (
+                      <NavButton
+                        key={p.id}
+                        active={activeTab === 'sheet' && viewingTarget === p.id}
+                        label={p.char_name || p.discord_username}
+                        disabled={!canView}
+                        onClick={() => {
+                          if (!canView) {
+                            playSound('error');
+                            showToast("Ficha ainda não aprovada pelo mestre.");
+                            return;
+                          }
+                          playSound('tab_change');
+                          setCharacter(p);
+                          setTempChar(p);
+                          setViewingTarget(p.id);
+                          setActiveTab('sheet');
+                        }}
+                      />
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* CATEGORIA MESTRE */}
+            {isActingAsMaster && (
+              <div>
+                <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
+                <div className="flex flex-col gap-1">
+                  <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSound('tab_change'); setActiveTab('master'); }} />
+                  <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSound('tab_change'); setActiveTab('items'); }} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 pt-8">
+          {/* VOLUME SLIDER */}
+          <div className="px-4 py-2 bg-zinc-900/30 rounded-2xl border border-white/5 flex items-center gap-3 group">
+            <span className="text-xs grayscale group-hover:grayscale-0 transition-all opacity-50 group-hover:opacity-100">🔊</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => changeVolume(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600 hover:accent-red-500"
+            />
+            <span className="text-[9px] font-mono font-black text-zinc-600 w-6 text-right">{(volume * 100).toFixed(0)}%</span>
+          </div>
+
           <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
             <p className="text-[8px] text-zinc-500 font-black uppercase mb-1 leading-none">Logado como</p>
             <p className="text-[10px] font-bold text-white truncate leading-none">@{user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}</p>
           </div>
           {isMaster && (
-            <button onClick={() => { setPreviewAsPlayer(!previewAsPlayer); setActiveTab('home'); }} className="w-full text-[9px] font-black uppercase py-2 rounded-lg border border-zinc-700 text-zinc-500 hover:text-white transition-all">
+            <button onClick={() => { playSound('random_button'); setPreviewAsPlayer(!previewAsPlayer); setActiveTab('home'); }} className="w-full text-[9px] font-black uppercase py-2 rounded-lg border border-zinc-700 text-zinc-500 hover:text-white transition-all">
               {previewAsPlayer ? "MODO MESTRE" : "MODO JOGADOR"}
             </button>
           )}
           {/* FIXED LOGOUT BUTTON */}
           <button
             onClick={async () => {
+              playSound('random_button');
               await supabase.auth.signOut();
               window.location.reload();
             }}
@@ -378,9 +521,17 @@ export default function Home() {
           <div className="h-full flex items-center relative">
             <div className="absolute inset-0 bg-[url('/red-moon.jpg')] bg-cover bg-right opacity-70" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 80%)', WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)' }}></div>
             <div className="relative z-10 p-20 space-y-4 max-w-2xl">
-              <h2 className="text-7xl font-black italic uppercase tracking-tighter leading-[0.85] text-white">O SANGUE<br /><span className="text-red-600">NÃO MENTE.</span></h2>
-              <p className="text-zinc-400 font-medium italic text-lg leading-relaxed">Bem-vindo ao Bloodbath. Prepare sua Nichirin, pois neste "What-if", a noite é eterna e o mestre é impiedoso.</p>
-              <button onClick={() => setActiveTab('sheet')} className="mt-8 px-8 py-3 bg-white text-black font-black uppercase text-xs rounded-full hover:bg-red-600 hover:text-white transition-all">Ver minha Ficha</button>
+              <h2 className="text-7xl font-black italic uppercase tracking-tighter leading-[0.85] text-white">A Lua foi<br /><span className="text-red-600">manchada</span></h2>
+              <p className="text-zinc-400 font-medium italic text-lg leading-relaxed">A luz é a única esperança de um mundo devastado. Esta será uma aventura que jamais será esquecida. Porque será um BANHO DE SANGUE.</p>             <button onClick={() => {
+                playSound('tab_change');
+                const myChar = allPlayers.find(p => p.id === user?.id);
+                if (myChar) {
+                  setCharacter(myChar);
+                  setTempChar(myChar);
+                }
+                setViewingTarget(null);
+                setActiveTab('sheet');
+              }} className="mt-8 px-8 py-3 bg-white text-black font-black uppercase text-xs rounded-full hover:bg-red-600 hover:text-white transition-all">Ver minha Ficha</button>
             </div>
           </div>
         )}
@@ -394,17 +545,19 @@ export default function Home() {
 
                   {/* TOP RIGHT BUTTON GROUP */}
                   <div className="absolute top-8 right-8 z-20 flex flex-col gap-2 items-end">
-                    <button
-                      onClick={toggleEditMode}
-                      className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : 'bg-yellow-600 text-black'}`}
-                    >
-                      {isEditing ? "CONCLUIR" : "EDITAR"}
-                    </button>
+                    {(!isViewingOthers || isActingAsMaster) && (
+                      <button
+                        onClick={() => { playSound('random_button'); toggleEditMode(); }}
+                        className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : 'bg-yellow-600 text-black'}`}
+                      >
+                        {isEditing ? "CONCLUIR" : "EDITAR"}
+                      </button>
+                    )}
 
                     {isEditing && (
                       <>
                         <button
-                          onClick={() => setIsViewingOnly(!isViewingOnly)}
+                          onClick={() => { playSound('random_button'); setIsViewingOnly(!isViewingOnly); }}
                           className="w-44 bg-blue-900/40 text-blue-400 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-blue-900/60 border border-blue-900/30"
                         >
                           {isViewingOnly ? "VOLTAR PARA EDIÇÃO" : "VER ORIGINAL"}
@@ -412,6 +565,7 @@ export default function Home() {
 
                         <button
                           onClick={() => {
+                            playSound('random_button');
                             setTempChar(character);
                             setIsEditing(false);
                             setIsViewingOnly(false);
@@ -448,7 +602,7 @@ export default function Home() {
                   <BioGrid activeChar={activeChar} isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
 
                   {/* ANOMALIAS & HABILIDADES */}
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <TagBox label="Anomalias" list={ANOMALIAS_LIST} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
                     <TagBox label="Habilidades" list={SKILLS_LIST} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
                   </div>
@@ -464,6 +618,7 @@ export default function Home() {
                   inventory={activeChar?.inventory || []}
                   activeChar={activeChar}
                   isActingAsMaster={isActingAsMaster}
+                  isViewingOthers={isViewingOthers}
                   rarityConfig={RARITY_CONFIG}
                   onMove={(idx, dir) => {
                     const targetIdx = idx + dir;
@@ -600,7 +755,12 @@ export default function Home() {
               </div>
 
               <div className="space-y-6">
-                <DicePanel activeChar={activeChar} luckPerc={luckPerc} />
+                <DicePanel
+                  activeChar={activeChar}
+                  luckPerc={luckPerc}
+                  charismaPerc={charismaPerc}
+                  intelligencePerc={intelligencePerc}
+                />
                 <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl">
                   <div className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-3">
                     <h3 className="font-black text-zinc-500 text-[10px] italic">ATRIBUTOS</h3>
@@ -642,6 +802,8 @@ export default function Home() {
               isMaster={isMaster}
               isActingAsMaster={isActingAsMaster}
               setActiveTab={setActiveTab}
+              turn={turn}
+              sharedImage={sharedImage}
             />
           </div>
         )}
@@ -654,7 +816,12 @@ export default function Home() {
               showToast={showToast}
               setModal={setModal}
               closeModal={closeModal}
-              onVisualize={(p) => { setViewingTarget(p.id); setActiveTab('sheet'); }}
+              onVisualize={(p) => {
+                setViewingTarget(p.id);
+                setCharacter(p);
+                setTempChar(p);
+                setActiveTab('sheet');
+              }}
               now={now}                   // Pass current time
               globalLock={globalLockUntil} // Pass the 0.5s trigger
               isCombatActive={isCombatActive}
@@ -692,6 +859,7 @@ export default function Home() {
                     forcedCustom: true,
                     rarityConfig: RARITY_CONFIG,
                     onConfirm: async (d) => {
+                      playSound('random_button');
                       const { error } = await supabase.from('items').insert({
                         name: d.name,
                         type: d.type,
@@ -786,22 +954,25 @@ export default function Home() {
         )}
       </section>
 
-      {isViewingOthers && (
-        <div className="fixed bottom-6 right-6 z-[200]">
-          <button onClick={() => { setViewingTarget(null); setActiveTab('master'); }} className="px-8 py-3 rounded-full font-black text-[10px] uppercase bg-blue-600 text-white shadow-2xl">Sair da Visualização</button>
-        </div>
-      )}
 
       <Toast toasts={toasts} setToasts={setToasts} />
       <Modal modal={modal} closeModal={closeModal} />
       <Celebration active={showCelebration} />
+      <MusicPlayer isMaster={isActingAsMaster} currentVolume={volume} />
     </main>
   );
 }
 
 // HELPERS (OUTSIDE Home to prevent focus loss)
-const NavButton = ({ label, active, onClick }) => (
-  <button onClick={onClick} className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all ${active ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-200'}`}>{label}</button>
+const NavButton = ({ label, active, onClick, disabled }) => (
+  <button
+    onClick={onClick}
+    className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all
+      ${active ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-200'}
+      ${disabled ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer'}`}
+  >
+    {label}
+  </button>
 );
 
 const StatBox = ({ label, value, color, textColor }) => (

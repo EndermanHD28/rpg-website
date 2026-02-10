@@ -2,11 +2,14 @@
 "use client";
 import { useState } from 'react'; // THIS WAS MISSING
 import { supabase } from '../lib/supabase';
+import { useSound } from '../hooks/useSound';
 
 export default function MasterPanel({ requests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, isSessionActive, setActiveTab }) {
+  const { playSound } = useSound();
   const [hpStage, setHpStage] = useState({});
 
   const toggleCombatant = async (p) => {
+    playSound('random_button');
     const maxLife = (p.strength || 0) + (p.resistance || 0) * 4;
     // Get HP from stage or default to max
     const stagedHP = hpStage[p.id] !== undefined ? hpStage[p.id] : maxLife;
@@ -24,8 +27,10 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   };
 
   const toggleGlobalCombat = async () => {
+    playSound('random_button');
     const newState = !isCombatActive;
     await supabase.from('characters').update({ is_in_combat: newState }).eq('rank', 'Mestre');
+    await supabase.from('global').update({ is_combat_active: newState }).eq('id', 1);
 
     if (newState) {
       showToast("⚔️ COMBATE INICIADO!");
@@ -36,7 +41,15 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   };
 
   const startSession = async () => {
+    playSound('random_button');
     if (isSessionActive) return;
+    // Update local state first for immediate feedback
+    await supabase.from('global').update({ 
+      is_session_active: true,
+      is_combat_active: false,
+      image_url: null,
+      image_title: null
+    }).eq('id', 1);
     const { error } = await supabase.rpc('toggle_session', { status: true });
     
     if (!error) {
@@ -47,7 +60,15 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   };
 
   const endSession = async () => {
+    playSound('random_button');
     if (!isSessionActive) return;
+    // Update local state first for immediate feedback
+    await supabase.from('global').update({ 
+      is_session_active: false,
+      is_combat_active: false,
+      image_url: null,
+      image_title: null
+    }).eq('id', 1);
     const { error } = await supabase.rpc('toggle_session', { status: false });
     
     if (!error) {
@@ -65,11 +86,12 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
       message: `Deseja aplicar as alterações de ${req.player_name}?`,
       onConfirm: async () => {
         const { error: charError } = await supabase.from('characters')
-          .update({ ...req.new_data, needs_celebration: true })
+          .update({ ...req.new_data, needs_celebration: true, approved_once: true })
           .eq('id', req.player_id);
 
         if (!charError) {
           await supabase.from('change_requests').update({ status: 'approved' }).eq('id', req.id);
+          playSound('celebration');
           showToast("Mudanças Aplicadas!");
         } else {
           showToast("Erro ao aplicar mudanças.");
@@ -116,7 +138,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
           intelligence: 1, luck: 1, charisma: 1, stat_points_available: 0,
           dollars: 0, age: 0, height: '0,00m', class: 'Civil', rank: 'E - Recruta',
           breathing_lvl: 1, breathing_style: 'Nenhuma', anomalies: [], skills: [],
-          inventory: [], is_in_combat: false
+          inventory: [], is_in_combat: false, approved_once: false
         }).eq('id', p.id);
         showToast("Ficha Resetada.");
         closeModal();
@@ -177,7 +199,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
             
             {isSessionActive && (
               <button
-                onClick={() => setActiveTab('combat')}
+                onClick={() => { playSound('tab_change'); setActiveTab('combat'); }}
                 className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border border-red-600/50 text-red-500 hover:bg-red-600 hover:text-white"
               >
                 IR PARA O CHAT
@@ -203,8 +225,8 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
                     <div className="flex justify-between items-center border-b border-white/5 pb-3">
                       <h3 className="text-xl font-black uppercase italic text-white">{req.player_name}</h3>
                       <div className="flex gap-2">
-                        <button disabled={isLocked} onClick={() => handleApprove(req)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${isLocked ? 'bg-zinc-800 text-zinc-600' : 'bg-green-600 hover:bg-green-500'}`}>Aprovar</button>
-                        <button disabled={isLocked} onClick={() => handleReject(req.id)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${isLocked ? 'bg-zinc-800 text-zinc-600' : 'bg-red-600 hover:bg-red-500'}`}>Recusar</button>
+                        <button disabled={isLocked} onClick={() => { playSound('random_button'); handleApprove(req); }} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${isLocked ? 'bg-zinc-800 text-zinc-600' : 'bg-green-600 hover:bg-green-500'}`}>Aprovar</button>
+                        <button disabled={isLocked} onClick={() => { playSound('random_button'); handleReject(req.id); }} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${isLocked ? 'bg-zinc-800 text-zinc-600' : 'bg-red-600 hover:bg-red-500'}`}>Recusar</button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-[9px] font-mono bg-black/40 p-4 rounded-2xl border border-white/5">
@@ -241,10 +263,10 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => onVisualize(p)} className="text-[8px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/30 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white transition-all">VISUALIZAR</button>
-                <button onClick={() => handleAddPS(p)} className="text-[8px] font-black bg-green-600/20 text-green-400 border border-green-600/30 py-2.5 rounded-xl hover:bg-green-600 hover:text-white transition-all">+ PS</button>
-                <button onClick={() => handleReset(p)} className="text-[8px] font-black bg-zinc-800 text-zinc-500 py-2.5 rounded-xl hover:bg-zinc-700 hover:text-white transition-all">RESETAR</button>
-                <button onClick={() => handleDelete(p)} className="text-[8px] font-black bg-red-900/20 text-red-500 border border-red-900/30 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all">EXCLUIR</button>
+                <button onClick={() => { playSound('tab_change'); onVisualize(p); }} className="text-[8px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/30 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white transition-all">VISUALIZAR</button>
+                <button onClick={() => { playSound('random_button'); handleAddPS(p); }} className="text-[8px] font-black bg-green-600/20 text-green-400 border border-green-600/30 py-2.5 rounded-xl hover:bg-green-600 hover:text-white transition-all">+ PS</button>
+                <button onClick={() => { playSound('random_button'); handleReset(p); }} className="text-[8px] font-black bg-zinc-800 text-zinc-500 py-2.5 rounded-xl hover:bg-zinc-700 hover:text-white transition-all">RESETAR</button>
+                <button onClick={() => { playSound('random_button'); handleDelete(p); }} className="text-[8px] font-black bg-red-900/20 text-red-500 border border-red-900/30 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all">EXCLUIR</button>
               </div>
             </div>
           ))}

@@ -1,6 +1,174 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { WEAPON_CATEGORIES, WEAPON_SUBTYPES, HANDS_OPTIONS, TIERS, DAMAGE_TYPES } from '../constants/gameData';
+
+const TooltipContext = createContext();
+
+export function TooltipProvider({ children }) {
+  const [tooltip, setTooltip] = useState({ visible: false, loading: false, text: '', x: 0, y: 0 });
+  const timeoutRef = useRef(null);
+  const loadingTimeoutRef = useRef(null);
+  const mousePos = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      mousePos.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  const showTooltip = (text, delay = 500) => {
+    clearTimeout(timeoutRef.current);
+    clearTimeout(loadingTimeoutRef.current);
+
+    loadingTimeoutRef.current = setTimeout(() => {
+      setTooltip(prev => ({
+        ...prev,
+        loading: true,
+        visible: false
+      }));
+    }, 100);
+
+    timeoutRef.current = setTimeout(() => {
+      setTooltip({
+        visible: true,
+        loading: false,
+        text,
+        x: mousePos.current.x,
+        y: mousePos.current.y
+      });
+    }, delay);
+  };
+
+  const hideTooltip = () => {
+    clearTimeout(timeoutRef.current);
+    clearTimeout(loadingTimeoutRef.current);
+    setTooltip(prev => ({ ...prev, visible: false, loading: false }));
+  };
+
+  return (
+    <TooltipContext.Provider value={{ showTooltip, hideTooltip }}>
+      {children}
+      {tooltip.loading && !tooltip.visible && (
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{
+            left: mousePos.current.x + 10,
+            top: mousePos.current.y - 30,
+          }}
+        >
+          <div className="w-5 h-5 rounded-full border-[3.1px] border-slate-800 border-t-yellow-500 animate-spin"></div>
+        </div>
+      )}
+      {tooltip.visible && (
+        <div
+          className="fixed z-[9999] pointer-events-none animate-in fade-in zoom-in-95 duration-200"
+          style={{
+            left: tooltip.x + 2,
+            top: tooltip.y - 12,
+            transform: 'translate(-50%, -100%)'
+          }}
+        >
+          <div className="bg-slate-950/95 backdrop-blur-md border border-yellow-500/60 px-4 py-2 rounded shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-1 max-w-[300px] min-w-max">
+            <div className="text-[11px] font-black uppercase tracking-wider text-yellow-500 leading-relaxed">
+              {tooltip.text.split('\n').map((line, i) => (
+                <div key={i} className="whitespace-nowrap">
+                  {line.split(/(\*\*.*?\*\*|\{.*?\}|\[.*?\]|<.*?>)/g).map((part, j) => {
+                    if (part.startsWith('**') && part.endsWith('**')) {
+                      return <span key={j} className="text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{part.slice(2, -2)}</span>;
+                    }
+                    if (part.startsWith('{') && part.endsWith('}')) {
+                      return <span key={j} className="text-cyan-400 bg-cyan-950/50 px-1 rounded border border-cyan-500/30 mx-0.5">{part.slice(1, -1)}</span>;
+                    }
+                    if (part.startsWith('[') && part.endsWith(']')) {
+                      return <span key={j} className="text-purple-400 bg-purple-950/50 px-1.5 py-0.5 rounded-full border border-purple-500/40 mx-0.5 shadow-[0_0_10px_rgba(168,85,247,0.2)]">{part.slice(1, -1)}</span>;
+                    }
+                    if (part.startsWith('<') && part.endsWith('>')) {
+                      return <span key={j} className="text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded-sm border-x-2 border-rose-500/50 mx-0.5 italic">{part.slice(1, -1)}</span>;
+                    }
+                    return part;
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="w-2 h-2 bg-slate-950/95 rotate-45 absolute left-1/2 -translate-x-1/2 -bottom-0 border-r border-b border-yellow-500/60"></div>
+        </div>
+      )}
+    </TooltipContext.Provider>
+  );
+}
+
+export function useTooltip() {
+  return useContext(TooltipContext);
+}
+
+export function TooltipWrapper({ children, text }) {
+  const { showTooltip, hideTooltip } = useTooltip();
+
+  const handleMouseEnter = (e) => {
+    if (!text) return;
+    showTooltip(text, 500);
+  };
+
+  return (
+    <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={hideTooltip}
+      className="contents"
+    >
+      {children}
+    </div>
+  );
+}
+
+export function CustomSelect({ value, onChange, options, descriptions, label }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+  const { hideTooltip } = useTooltip();
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none cursor-pointer flex justify-between items-center min-h-[38px]"
+      >
+        <span>{value || `Selecionar ${label}...`}</span>
+        <span className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-[100] top-full left-0 w-full mt-1 bg-slate-900 border border-white/10 rounded shadow-2xl py-1 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+          {options.map((o) => (
+            <TooltipWrapper key={o} text={descriptions?.[o]}>
+              <div
+                onClick={() => {
+                  hideTooltip();
+                  onChange(o);
+                  setIsOpen(false);
+                }}
+                className={`px-3 py-2 text-sm cursor-pointer hover:bg-yellow-500 hover:text-black transition-colors ${value === o ? 'bg-white/5 text-yellow-500' : 'text-gray-300'}`}
+              >
+                {o}
+              </div>
+            </TooltipWrapper>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Toast({ toasts, setToasts }) {
   return (

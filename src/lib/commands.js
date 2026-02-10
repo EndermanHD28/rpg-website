@@ -40,6 +40,12 @@ export const COMMANDS = [
       // 3. Set Master combat active
       await supabase.from('characters').update({ is_in_combat: true }).eq('id', MASTER_DISCORD_ID);
 
+      // 4. Reset turn to 1 and activate combat
+      await supabase.from('global').update({
+        current_turn: 1,
+        is_combat_active: true
+      }).eq('id', 1);
+
       return { success: true, message: `Combat started with ${playerIds.length} players at ${hpPerc}% HP.` };
     }
   },
@@ -92,6 +98,10 @@ export const COMMANDS = [
     args: [],
     execute: async () => {
       await supabase.from('characters').update({ is_in_combat: false }).neq('id', 'dummy');
+      await supabase.from('global').update({
+        current_turn: 1,
+        is_combat_active: false
+      }).eq('id', 1);
       return { success: true, message: "Combat finished globally." };
     }
   },
@@ -102,6 +112,64 @@ export const COMMANDS = [
     execute: async () => {
       const list = COMMANDS.map(c => `/${c.name}: ${c.description}`).join('\n');
       return { success: true, message: `Available Commands:\n${list}` };
+    }
+  },
+  {
+    name: "clear",
+    description: "Clears all messages from the chat",
+    args: [],
+    execute: async () => {
+      const { error } = await supabase.from('messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) return { success: false, message: `Error clearing chat: ${error.message}` };
+      return { success: true, message: "Chat cleared." };
+    }
+  },
+  {
+    name: "setturn",
+    description: "Sets the current combat turn",
+    args: [
+      { name: "turn", type: "number" }
+    ],
+    execute: async ([turn]) => {
+      await supabase.from('global').update({ current_turn: turn }).eq('id', 1);
+      
+      return { success: true, message: `Turn set to ${turn}.` };
+    }
+  },
+  {
+    name: "addimage",
+    description: "Displays an image for all players",
+    args: [
+      { name: "url", type: "string" },
+      { name: "title", type: "string" },
+      { name: "contrast", type: "boolean", optional: true }
+    ],
+    execute: async ([url, title, contrast]) => {
+      const updateData = {
+        image_url: url,
+        image_title: title,
+        image_contrast: contrast === undefined ? false : !!contrast
+      };
+      console.log("Executing addimage with:", updateData);
+      const { error } = await supabase.from('global').update(updateData).eq('id', 1);
+      if (error) {
+        console.error("Supabase error in addimage:", error);
+        return { success: false, message: `Error updating image: ${error.message}` };
+      }
+      return { success: true, message: `Image "${title}" displayed${contrast ? ' with contrast' : ''}.` };
+    }
+  },
+  {
+    name: "hideimage",
+    description: "Hides the currently displayed image",
+    args: [],
+    execute: async () => {
+      await supabase.from('global').update({
+        image_url: null,
+        image_title: null,
+        image_contrast: false
+      }).eq('id', 1);
+      return { success: true, message: "Image hidden." };
     }
   }
 ];
@@ -126,17 +194,20 @@ export const parseArgs = (inputParts, commandDef) => {
     const def = commandDef.args[i];
     const rawValue = inputParts[i];
     
-    if (rawValue === undefined) {
+    if (rawValue === undefined || rawValue === "") {
       args.push(undefined);
       continue;
     }
 
     switch (def.type) {
       case 'number':
-        args.push(parseFloat(rawValue));
+        const num = parseFloat(rawValue);
+        args.push(isNaN(num) ? undefined : num);
         break;
       case 'boolean':
-        args.push(rawValue.toLowerCase() === 'true');
+        if (rawValue.toLowerCase() === 'true') args.push(true);
+        else if (rawValue.toLowerCase() === 'false') args.push(false);
+        else args.push(undefined);
         break;
       case 'array':
         args.push(rawValue.split(',').filter(x => x.length > 0));
@@ -164,11 +235,23 @@ export const handleCommand = async (input, user, allPlayers) => {
   for (const cmd of sortedCommands) {
     if (fullContent.startsWith(cmd.name)) {
       const remaining = fullContent.substring(cmd.name.length).trim();
-      const parts = remaining ? remaining.split(/\s+/) : [];
+      
+      // Smart parsing for quoted strings
+      const parts = [];
+      const regex = /"([^"]*)"|(\S+)/g;
+      let match;
+      while ((match = regex.exec(remaining)) !== null) {
+        parts.push(match[1] !== undefined ? match[1] : match[2]);
+      }
+
       const args = parseArgs(parts, cmd);
       
       // Basic validation
-      if (args.length < cmd.args.filter(a => !a.optional).length) {
+      // Filter out trailing undefined args from the end of the array to count provided args correctly
+      const providedArgsCount = args.filter((a, idx) => a !== undefined || idx < parts.length).length;
+      const requiredArgsCount = cmd.args.filter(a => !a.optional).length;
+      
+      if (providedArgsCount < requiredArgsCount) {
         return { success: false, message: `Missing arguments for ${cmd.name}` };
       }
 
