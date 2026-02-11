@@ -9,6 +9,7 @@ import LootTableEditorModal from '../components/LootTableEditorModal';
 import MasterPanel from '../components/MasterPanel';
 import BioGrid from '../components/BioGrid';
 import DicePanel from '../components/DicePanel';
+import NPCEditor from '../components/NPCEditor';
 import { Toast, Modal } from '../components/UIElements';
 import Celebration from '../components/Celebration';
 import CombatTab from '../components/CombatTab';
@@ -477,6 +478,7 @@ export default function Home() {
                       />
                     );
                   })}
+                <NavButton active={activeTab === 'npcs'} label="NPCs" onClick={() => { playSound('tab_change'); setActiveTab('npcs'); }} />
               </div>
             </div>
 
@@ -495,6 +497,7 @@ export default function Home() {
                 </div>
               </>
             )}
+
           </div>
         </div>
         <div className="space-y-4 pt-8">
@@ -1142,6 +1145,17 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'npcs' && (
+        <div className="p-12">
+          <NPCEditor
+            isActingAsMaster={isActingAsMaster}
+            showToast={showToast}
+            setModal={setModal}
+            closeModal={closeModal}
+          />
         </div>
       )}
 

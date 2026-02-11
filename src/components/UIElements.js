@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, createContext, useContext, useRef } from 'react';
-import { WEAPON_CATEGORIES, WEAPON_SUBTYPES, HANDS_OPTIONS, TIERS, DAMAGE_TYPES } from '../constants/gameData';
+import { WEAPON_CATEGORIES, WEAPON_SUBTYPES, HANDS_OPTIONS, TIERS, DAMAGE_TYPES, RANKS } from '../constants/gameData';
 
 const TooltipContext = createContext();
 
@@ -223,7 +223,20 @@ export function Modal({ modal, closeModal }) {
         upgrade: modal.initialData?.upgrade || 0,
         amount: modal.initialData?.amount || 1,
         damageType: modal.initialData?.damageType || 'Corte',
-        description: modal.initialData?.description || ''
+        description: modal.initialData?.description || '',
+        // NPC FIELDS
+        npc_id: modal.initialData?.npc_id || '',
+        name: modal.initialData?.name || '',
+        type: modal.initialData?.type || 'Simple',
+        category: modal.initialData?.category || (modal.npcFields ? 'Human' : ''),
+        strength: modal.initialData?.strength !== undefined ? modal.initialData.strength : 1,
+        resistance: modal.initialData?.resistance !== undefined ? modal.initialData.resistance : 1,
+        aptitude: modal.initialData?.aptitude !== undefined ? modal.initialData.aptitude : 1,
+        agility: modal.initialData?.agility !== undefined ? modal.initialData.agility : 1,
+        precision: modal.initialData?.precision !== undefined ? modal.initialData.precision : 1,
+        armed_pat: modal.initialData?.armed_pat !== undefined ? String(modal.initialData.armed_pat) : '0',
+        image_url: modal.initialData?.image_url || '',
+        rank: modal.initialData?.rank || (modal.npcFields && (modal.initialData?.category === 'Human' || !modal.initialData?.category) ? 'E - Recruta' : '')
       });
     }
   }, [modal.isOpen, modal.initialData, modal.forcedCustom]);
@@ -267,6 +280,113 @@ export function Modal({ modal, closeModal }) {
 
         {modal.fields ? (
           <div className="space-y-4 mb-6 mt-4">
+            {modal.npcFields ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <span className="text-[8px] text-zinc-500 font-bold uppercase">ID do NPC (ex: base_character.john_smith)</span>
+                  <input
+                    disabled={!!modal.initialData?.npc_id}
+                    type="text"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500 disabled:opacity-50"
+                    value={localData.npc_id}
+                    onChange={(e) => setLocalData({ ...localData, npc_id: e.target.value.toLowerCase().replace(/\s/g, '_') })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-zinc-500 font-bold uppercase">Nome do NPC</span>
+                    <input
+                      type="text"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                      value={localData.name}
+                      onChange={(e) => setLocalData({ ...localData, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-zinc-500 font-bold uppercase">Tipo</span>
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                      value={localData.type}
+                      onChange={(e) => setLocalData({ ...localData, type: e.target.value })}
+                    >
+                      <option value="Simple">Simples</option>
+                      <option value="Complex">Complexo</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-zinc-500 font-bold uppercase">Categoria</span>
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                      value={localData.category}
+                      onChange={(e) => setLocalData({ ...localData, category: e.target.value, rank: e.target.value === 'Human' ? 'E - Recruta' : null })}
+                    >
+                      <option value="Human">Humano</option>
+                      <option value="Oni">Oni</option>
+                    </select>
+                  </div>
+                  {localData.category === 'Human' && (
+                    <div className="space-y-1">
+                      <span className="text-[8px] text-zinc-500 font-bold uppercase">Rank</span>
+                      <select
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                        value={localData.rank || ''}
+                        onChange={(e) => setLocalData({ ...localData, rank: e.target.value })}
+                      >
+                        {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[8px] text-zinc-500 font-bold uppercase">URL da Imagem</span>
+                  <input
+                    type="text"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                    value={localData.image_url || ''}
+                    onChange={(e) => setLocalData({ ...localData, image_url: e.target.value })}
+                  />
+                </div>
+
+                {localData.type === 'Simple' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-5 gap-1">
+                      {[
+                        { label: 'FOR', key: 'strength' },
+                        { label: 'RES', key: 'resistance' },
+                        { label: 'APT', key: 'aptitude' },
+                        { label: 'AGI', key: 'agility' },
+                        { label: 'PRE', key: 'precision' }
+                      ].map(s => (
+                        <div key={s.key} className="space-y-1 text-center">
+                          <span className="text-[7px] text-zinc-500 font-bold uppercase">{s.label}</span>
+                          <input
+                            type="number"
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-1 py-2 text-center text-white text-xs outline-none focus:border-red-500"
+                            value={localData[s.key] || 0}
+                            onChange={(e) => setLocalData({ ...localData, [s.key]: parseInt(e.target.value) || 0 })}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[8px] text-zinc-500 font-bold uppercase">PAT Armado (Manual)</span>
+                      <input
+                        type="text"
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                        value={localData.armed_pat || '0'}
+                        onChange={(e) => setLocalData({ ...localData, armed_pat: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* SEARCH AND TABS (Only if not forced custom) */}
             {!modal.forcedCustom && !isCustom && (
               <div className="space-y-4">
@@ -475,9 +595,11 @@ export function Modal({ modal, closeModal }) {
                 />
               </div>
             )}
+            </>
+            )}
           </div>
         ) : modal.input && (
-          (modal.title === "Importar Itens via Código" || modal.title === "Importar Loot Tables via Código") ? (
+          (modal.title === "Importar Itens via Código" || modal.title === "Importar Loot Tables via Código" || modal.title === "Importar NPCs via Código") ? (
             <textarea
               autoFocus
               value={modal.inputValue}
@@ -513,7 +635,32 @@ export function Modal({ modal, closeModal }) {
             Cancelar
           </button>
           <button
-            onClick={() => modal.onConfirm(modal.fields ? localData : modal.inputValue)}
+            onClick={() => {
+              if (modal.fields) {
+                if (modal.npcFields) {
+                  // Filter only NPC fields to avoid Supabase errors with unknown columns
+                  const npcData = {
+                    npc_id: localData.npc_id,
+                    name: localData.name || 'Novo NPC',
+                    type: localData.type || 'Simple',
+                    category: localData.category || 'Human',
+                    strength: Number(localData.strength) || 1,
+                    resistance: Number(localData.resistance) || 1,
+                    aptitude: Number(localData.aptitude) || 1,
+                    agility: Number(localData.agility) || 1,
+                    precision: Number(localData.precision) || 1,
+                    armed_pat: localData.armed_pat || '0',
+                    image_url: localData.image_url || null,
+                    rank: localData.rank || null
+                  };
+                  modal.onConfirm(npcData);
+                } else {
+                  modal.onConfirm(localData);
+                }
+              } else {
+                modal.onConfirm(modal.inputValue);
+              }
+            }}
             className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${modal.type === 'danger'
               ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
               : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
