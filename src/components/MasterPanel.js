@@ -43,13 +43,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   const startSession = async () => {
     playSound('random_button');
     if (isSessionActive) return;
-    // Update local state first for immediate feedback
-    await supabase.from('global').update({ 
-      is_session_active: true,
-      is_combat_active: false,
-      image_url: null,
-      image_title: null
-    }).eq('id', 1);
+    // Update global state and clear messages atomically
     const { error } = await supabase.rpc('toggle_session', { status: true });
     
     if (!error) {
@@ -62,13 +56,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   const endSession = async () => {
     playSound('random_button');
     if (!isSessionActive) return;
-    // Update local state first for immediate feedback
-    await supabase.from('global').update({ 
-      is_session_active: false,
-      is_combat_active: false,
-      image_url: null,
-      image_title: null
-    }).eq('id', 1);
+    // Update global state
     const { error } = await supabase.rpc('toggle_session', { status: false });
     
     if (!error) {
@@ -182,7 +170,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
 
           <div className="space-y-3">
             <button
-              onClick={startSession}
+              onClick={(e) => { e.preventDefault(); startSession(); }}
               disabled={isSessionActive}
               className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${isSessionActive ? 'bg-zinc-900/50 text-zinc-600 border-zinc-800 cursor-not-allowed' : 'bg-green-600 text-white border-green-500 hover:scale-[1.02] hover:bg-green-500'}`}
             >
@@ -190,7 +178,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
             </button>
 
             <button
-              onClick={endSession}
+              onClick={(e) => { e.preventDefault(); endSession(); }}
               disabled={!isSessionActive}
               className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${!isSessionActive ? 'bg-zinc-900/50 text-zinc-600 border-zinc-800 cursor-not-allowed' : 'bg-red-600 text-white border-red-500 hover:scale-[1.02] hover:bg-red-500'}`}
             >

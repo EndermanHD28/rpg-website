@@ -66,7 +66,7 @@ export const WEAPON_SUBTYPES = {
   "Arma Branca": ["Faca / Adaga", "Katana (Espada Leve)", "Machado Leve", "Espada Pesada / Machado Pesado", "Martelo Pesado / Marreta", "Soco / Improviso (Tacos/Tábuas)"]
 };
 export const HANDS_OPTIONS = ["Uma Mão", "Duas Mãos"];
-export const TIERS = ["T0", "T1", "T2", "T3", "T4"];
+export const TIERS = [0, 1, 2, 3, 4];
 export const DAMAGE_TYPES = ["Corte", "Impacto"];
 
 export const formatHeight = (val) => {
@@ -75,4 +75,106 @@ export const formatHeight = (val) => {
   if (digits.length <= 1) return digits;
   if (digits.length === 2) return `${digits[0]},${digits[1]}`;
   return `${digits[0]},${digits.slice(1, 3)}m`;
+};
+
+export const EFFECTS = {
+  "cooling": {
+    name: "Resfriamento",
+    emoji: "❄️",
+    description: "Reduz o dado de acerto e desvio em 12%. Reduz o dano causado em 15%.",
+    modifiers: { acerto: 0.88, desvio: 0.88, dano: 0.85 }
+  },
+  "frozen": {
+    name: "Congelado",
+    emoji: "🧊",
+    description: "Reduz o dado de desvio em 35%. Todo dado de acerto resultará em 1 (Desastre).",
+    modifiers: { desvio: 0.65, forceAcertoDesastre: true }
+  },
+  "poisoning": {
+    name: "Envenenamento",
+    emoji: "🟢",
+    description: "Reduz a vida máxima em 10%. Reduz a vida em 10% por turno.",
+    modifiers: { maxLife: 0.90, hpReductionTurn: 0.10 }
+  },
+  "intense-poisoning": {
+    name: "Envenenamento Intenso",
+    emoji: "🟢🔺",
+    description: "Reduz a vida máxima em 25%. Reduz a vida em 15% por turno.",
+    modifiers: { maxLife: 0.75, hpReductionTurn: 0.15 }
+  },
+  "bleeding": {
+    name: "Sangramento",
+    emoji: "🩸",
+    description: "Reduz a vida em 7% por turno. Aumenta o dano tomado em 10%.",
+    modifiers: { hpReductionTurn: 0.07, damageTaken: 1.10 }
+  },
+  "intense-bleeding": {
+    name: "Sangramento Intenso",
+    emoji: "🩸🔺",
+    description: "Reduz a vida em 15% por turno. Aumenta o dano tomado em 25%.",
+    modifiers: { hpReductionTurn: 0.15, damageTaken: 1.25 }
+  },
+  "blindness": {
+    name: "Cegueira",
+    emoji: "🕶️",
+    description: "15% chance do dado de desvio tornar-se 1 (Desastre). Reduz o dado de acerto em 35%.",
+    modifiers: { acerto: 0.65, desvioDesastreChance: 0.15 }
+  },
+  "burning": {
+    name: "Queimando",
+    emoji: "🔥",
+    description: "Reduz a vida em 10% por turno. Reduz a Precisão em 15%.",
+    modifiers: { hpReductionTurn: 0.10, precision: 0.85 }
+  },
+  "eletrification": {
+    name: "Eletrificação",
+    emoji: "⚡",
+    description: "Ao atingir 40% do HP ou menos, torna-se Eletrificação Avançada por 2 turnos. Reduz a vida em 5% por turno.",
+    modifiers: { hpReductionTurn: 0.05, triggerAdvancedEletrification: 0.40 }
+  },
+  "advanced-eletrification": {
+    name: "Eletrificação Avançada",
+    emoji: "⚡🔺",
+    description: "Todo desvio falho ou acerto sucedido reduz a vida em 10%. Reduz a vida em 10% por turno.",
+    modifiers: { hpReductionTurn: 0.10, eventLifeReduction: 0.10 }
+  }
+};
+
+export const EFFECT_ALIASES = {
+  "poison": "poisoning",
+  "poisoned": "poisoning",
+  "envenenamento": "poisoning",
+  "envenenado": "poisoning",
+  "intense-poison": "intense-poisoning",
+  "poison-intense": "intense-poisoning",
+  "envenenamento-intenso": "intense-poisoning",
+  "cooling": "cooling",
+  "resfriamento": "cooling",
+  "resfriado": "cooling",
+  "cold": "cooling",
+  "frozen": "frozen",
+  "congelado": "frozen",
+  "gelo": "frozen",
+  "bleeding": "bleeding",
+  "sangramento": "bleeding",
+  "sangrando": "bleeding",
+  "bleed": "bleeding",
+  "intense-bleeding": "intense-bleeding",
+  "sangramento-intenso": "intense-bleeding",
+  "blindness": "blindness",
+  "cegueira": "blindness",
+  "cego": "blindness",
+  "blind": "blindness",
+  "burning": "burning",
+  "queimando": "burning",
+  "queimadura": "burning",
+  "fogo": "burning",
+  "fire": "burning",
+  "eletrification": "eletrification",
+  "eletrificacao": "eletrification",
+  "eletricidade": "eletrification",
+  "choque": "eletrification",
+  "shock": "eletrification",
+  "advanced-eletrification": "advanced-eletrification",
+  "eletrificacao-avancada": "advanced-eletrification"
 };

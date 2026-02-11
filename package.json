@@ -2,15 +2,18 @@
   "name": "rpg-website",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "sync-db": "node sync-db.js",
+    "build": "npm run sync-db && next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.93.3",
     "canvas-confetti": "^1.9.4",
+    "dotenv": "^17.2.4",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

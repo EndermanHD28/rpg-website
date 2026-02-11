@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { calculateWeaponPAT } from '../lib/rpg-math';
 import { useSound } from '../hooks/useSound';
+import { TooltipWrapper } from './UIElements';
 
 export default function Inventory({ inventory = [], activeChar, isActingAsMaster, isViewingOthers, onDelete, onMove, onSort, onAddItem, onEquip, onEdit, rarityConfig }) {
   const { playSound } = useSound();
@@ -11,7 +12,11 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
   const equippedItems = inventory.filter(i => i.equipped);
   const hasBackpack = inventory.some(item => item.isBackpack && item.equipped);
   const maxSlots = hasBackpack ? 15 : 4;
-  const itemWeight = inventory.filter(item => (item.type || 'Item') === 'Item').length;
+  const itemWeight = inventory.reduce((acc, item) => {
+    // If it's a backpack, it doesn't occupy its own slot while equipped
+    if (item.isBackpack && item.equipped) return acc;
+    return acc + (Number(item.amount) || 1);
+  }, 0);
 
   // Filter items for the current tab and keep track of original index
   const filteredItems = inventory.map((item, originalIdx) => ({ ...item, originalIdx }))
@@ -96,9 +101,12 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
 
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <p className={`text-base font-bold ${item.equipped ? 'text-blue-400' : 'text-zinc-200'}`}>
-                      {item.name} {item.upgrade > 0 ? `+${item.upgrade}` : ''}
-                    </p>
+                    <TooltipWrapper text={item.description}>
+                      <p className={`text-base font-bold ${item.equipped ? 'text-blue-400' : 'text-zinc-200'} cursor-help`}>
+                        {item.name} {item.upgrade > 0 ? `+${item.upgrade}` : ''}
+                        {(item.amount > 1) && <span className="text-xs text-zinc-500 ml-2">x{item.amount}</span>}
+                      </p>
+                    </TooltipWrapper>
                     {item.isBackpack && <span className="text-[8px] bg-yellow-600/20 text-yellow-600 border border-yellow-600/30 px-1.5 py-0.5 rounded font-black uppercase">Mochila</span>}
                     {item.type === 'Equipamento' && !item.isBackpack && (
                       <>
@@ -106,7 +114,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                           {item.hands === 'Duas Mãos' ? '2 Mãos' : '1 Mão'}
                         </span>
                         <span className="text-[8px] bg-purple-600/20 text-purple-400 border border-purple-600/30 px-1.5 py-0.5 rounded font-black uppercase">
-                          {item.tier?.replace('T', 'Tier ')}
+                          Tier {typeof item.tier === 'string' ? item.tier.replace(/\D/g, '') : item.tier}
                         </span>
                       </>
                     )}

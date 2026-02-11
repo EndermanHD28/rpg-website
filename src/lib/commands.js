@@ -1,3 +1,11 @@
+/**
+ * ITEM PACK CREATION INSTRUCTIONS:
+ * When asked to create a "pack" or "bundle" of items:
+ * 1. Define the items in a JSON array.
+ * 2. Each item should follow the structure: { name, type, rarity, value, category, subtype, hands, damageType, description, tier, upgrade, isBackpack }
+ * 3. Instruct the user to copy the JSON and use the "Importar Código" button in the Item Library tab.
+ */
+
 import { supabase } from './supabase';
 import { MASTER_DISCORD_ID } from '../constants/gameData';
 
@@ -66,6 +74,54 @@ export const COMMANDS = [
         }).eq('id', id);
       }
       return { success: true, message: `Added ${playerIds.length} players.` };
+    }
+  },
+  {
+    name: "combat add-effect",
+    description: "Adds an effect to specified players",
+    args: [
+      { name: "players", type: "array" },
+      { name: "effect", type: "string" },
+      { name: "turns", type: "number", optional: true }
+    ],
+    execute: async ([players, effectKey, turns], { allPlayers }) => {
+      const { EFFECTS, EFFECT_ALIASES } = await import('../constants/gameData');
+      const normalizedKey = effectKey.toLowerCase().trim();
+      const actualKey = EFFECT_ALIASES[normalizedKey] || normalizedKey;
+      const effect = EFFECTS[actualKey];
+      
+      if (!effect) return { success: false, message: `Effect "${effectKey}" not found.` };
+
+      const playerIds = getPlayerIdsFromUsernames(players, allPlayers);
+      
+      for (const id of playerIds) {
+        const p = allPlayers.find(pl => pl.id === id);
+        const currentEffects = Array.isArray(p.effects) ? p.effects : [];
+        
+        // Don't add if already has it (optional, but usually effects don't stack linearly like this)
+        if (currentEffects.find(e => e.key === actualKey)) continue;
+
+        const newEffects = [...currentEffects, { ...effect, key: actualKey, addedAtTurn: 0, duration: turns }]; // turn logic will be handled in turn system
+        
+        // Calculate new Max Life with the added effect
+        const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+        let newMaxLife = baseLife;
+        newEffects.forEach(eff => {
+          if (eff.modifiers?.maxLife) newMaxLife *= eff.modifiers.maxLife;
+        });
+        newMaxLife = Math.floor(newMaxLife);
+
+        const updateData = { effects: newEffects };
+        
+        // Clamp current HP if it exceeds new Max Life
+        if ((p.current_hp || baseLife) > newMaxLife) {
+          updateData.current_hp = newMaxLife;
+        }
+
+        await supabase.from('characters').update(updateData).eq('id', id);
+      }
+
+      return { success: true, message: `Added ${effect.name} to ${playerIds.length} players.` };
     }
   },
   {
@@ -175,7 +231,14 @@ export const COMMANDS = [
 ];
 
 const calculateHP = (p, hpPerc) => {
-  const maxLife = (p.strength || 0) + (p.resistance || 0) * 4;
+  const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+  let maxLife = baseLife;
+  if (Array.isArray(p.effects)) {
+    p.effects.forEach(eff => {
+      if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
+    });
+  }
+  maxLife = Math.floor(maxLife);
   return Math.floor((hpPerc / 100) * maxLife);
 };
 

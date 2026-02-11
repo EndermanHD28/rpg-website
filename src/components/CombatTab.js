@@ -21,6 +21,7 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
   const [hpInput, setHpInput] = useState("");
   const fileInputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [targetingRoll, setTargetingRoll] = useState(null); // { input, diceResult }
 
   const combatants = isCombatActive ? allPlayers.filter(p => p.is_in_combat && p.rank !== 'Mestre') : [];
 
@@ -231,12 +232,31 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
       } else if (e.key === 'Escape') {
         setSuggestions([]);
       }
+    } else if (targetingRoll && e.key === 'Escape') {
+      setTargetingRoll(null);
     }
   };
 
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape' && targetingRoll) {
+        setTargetingRoll(null);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [targetingRoll]);
+
   const handleHPSubmit = async (player, isShiftPressed = false) => {
     try {
-      const maxLife = (player.strength || 0) + (player.resistance || 0) * 4;
+      const baseLife = (player.strength || 0) + (player.resistance || 0) * 7;
+      let maxLife = baseLife;
+      if (Array.isArray(player.effects)) {
+        player.effects.forEach(eff => {
+          if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
+        });
+      }
+      maxLife = Math.floor(maxLife);
 
       // 1. Prepare equation: replace 'random' with Math.random()
       let equation = hpInput.toLowerCase().replace(/random/g, () => Math.random().toString());
@@ -312,33 +332,20 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
       const playerImage = playerChar?.image_url || "";
       
       // Try to roll dice
-      const diceResult = rollDice(input);
+      const diceResult = rollDice(input, playerChar);
       
       if (diceResult) {
-        // Build detail string
-        let detail = diceResult.original;
-        diceResult.rolls.forEach(r => {
-          detail = detail.replace(r.notation, `<span class="text-zinc-500 font-mono text-[10px]">[${r.results.join(', ')}]</span>`);
-        });
-
-        const statusLabel = diceResult.status !== "Normal" ? ` <span class="${diceResult.statusColor} text-[10px] font-black uppercase tracking-widest bg-black/40 px-2 py-0.5 rounded-full border border-white/5 shadow-sm">${diceResult.status}</span>` : "";
-
-        // Categorize roll for coloring
-        let category = "normal";
-        const lowerInput = input.toLowerCase();
-        if (lowerInput.includes('pat')) {
-          category = "combat";
-        } else if (lowerInput.includes('convencimento') || lowerInput.includes('raciocínio') || lowerInput.includes('raciocinio')) {
-          category = "secondary";
-        } else if (lowerInput.includes('loot') || lowerInput.includes('prosperidade')) {
-          category = "luck";
+        const isTargetingType = (diceResult.type === 'ataque' || diceResult.type === 'acerto' || diceResult.type === 'desvio' || diceResult.type === 'dano');
+        
+        if (isTargetingType) {
+          setTargetingRoll({ input, diceResult, playerName, playerImage });
+          setInput("");
+          setSuggestions([]);
+          setSuggestionData(null);
+          return;
         }
 
-        await supabase.from('messages').insert({
-          player_name: "SISTEMA",
-          content: `DICE_ROLL|${playerName}|${input}|${diceResult.total}|${detail}|${statusLabel}|${category}|${playerImage}`,
-          is_system: true
-        });
+        await finishDiceRoll(diceResult, input, playerName, playerImage);
       } else {
         // Normal message
         await supabase.from('messages').insert({
@@ -350,6 +357,54 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     setInput("");
     setSuggestions([]);
     setSuggestionData(null);
+  };
+
+  const finishDiceRoll = async (diceResult, originalInput, playerName, playerImage, targetPlayer = null) => {
+    // Build detail string
+    let detail = diceResult.original;
+    diceResult.rolls.forEach(r => {
+      detail = detail.replace(r.notation, `<span class="text-zinc-500 font-mono text-[10px]">[${r.results.join(', ')}]</span>`);
+    });
+
+    const statusLabel = diceResult.status !== "Normal" ? ` <span class="${diceResult.statusColor} text-[10px] font-black uppercase tracking-widest bg-black/40 px-2 py-0.5 rounded-full border border-white/5 shadow-sm">${diceResult.status}</span>` : "";
+
+    // Categorize roll for coloring
+    let category = "normal";
+    const lowerInput = originalInput.toLowerCase();
+    if (lowerInput.includes('pat') || diceResult.type === 'ataque' || diceResult.type === 'desvio' || diceResult.type === 'dano') {
+      category = "combat";
+    } else if (lowerInput.includes('convencimento') || lowerInput.includes('raciocínio') || lowerInput.includes('raciocinio')) {
+      category = "secondary";
+    } else if (lowerInput.includes('loot') || lowerInput.includes('prosperidade')) {
+      category = "luck";
+    }
+
+    let finalTotal = diceResult.total;
+    let effectNote = "";
+
+    // Apply target-based effects (like Bleeding increasing damage taken)
+    if (targetPlayer && diceResult.type === 'dano') {
+      const targetEffects = Array.isArray(targetPlayer.effects) ? targetPlayer.effects : [];
+      let damageMult = 1.0;
+      targetEffects.forEach(eff => {
+        if (eff.modifiers?.damageTaken) {
+          damageMult *= eff.modifiers.damageTaken;
+          effectNote += ` (${eff.emoji} +${Math.round((eff.modifiers.damageTaken - 1) * 100)}% de dano por ${eff.name})`;
+        }
+      });
+      
+      if (damageMult !== 1.0) {
+        finalTotal = Math.round(finalTotal * damageMult);
+      }
+    }
+
+    const targetInfo = targetPlayer ? `|${targetPlayer.char_name}${effectNote}` : "";
+
+    await supabase.from('messages').insert({
+      player_name: "SISTEMA",
+      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}${targetInfo}`,
+      is_system: true
+    });
   };
 
   const sendGif = async (url, width, height) => {
@@ -459,10 +514,87 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
     }
   };
 
+  // Effect event trigger: reduction of HP on specific events (Advanced Eletrification)
+  useEffect(() => {
+    const handleCombatEvents = async () => {
+      // Automated event logic removed as per user request (Master decides live)
+      // The 10% reduction per turn is handled in handleNextTurn.
+    };
+    handleCombatEvents();
+  }, [messages.length]);
+
   const handleNextTurn = async () => {
     if (!isActingAsMaster) return;
     const nextTurn = (turn || 1) + 1;
-    const { error } = await supabase.from('global').update({ current_turn: nextTurn }).is('is_session_active', true);
+
+    // Process Effects for each player in combat
+    const { EFFECTS } = await import('../constants/gameData');
+    
+    for (const p of combatants) {
+      const currentEffects = Array.isArray(p.effects) ? p.effects : [];
+      if (currentEffects.length === 0) continue;
+
+      let newHP = p.current_hp ?? ((p.strength || 0) + (p.resistance || 0) * 7);
+      let newEffects = [...currentEffects];
+      let effectsChanged = false;
+
+      for (let i = 0; i < newEffects.length; i++) {
+        const eff = newEffects[i];
+        const mods = eff.modifiers;
+        
+        // 1. HP Reduction per turn
+        if (mods?.hpReductionTurn) {
+          const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+          let maxLife = baseLife;
+          if (Array.isArray(p.effects)) {
+            p.effects.forEach(eff => {
+              if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
+            });
+          }
+          maxLife = Math.floor(maxLife);
+          const reduction = Math.floor(maxLife * mods.hpReductionTurn);
+          newHP = Math.max(0, newHP - reduction);
+        }
+
+        // 2. Eletrificação -> Eletrificação Avançada trigger
+        if (eff.key === 'eletrification' && mods?.triggerAdvancedEletrification) {
+          const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+          let maxLife = baseLife;
+          if (Array.isArray(p.effects)) {
+            p.effects.forEach(eff => {
+              if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
+            });
+          }
+          maxLife = Math.floor(maxLife);
+          if (newHP / maxLife <= mods.triggerAdvancedEletrification) {
+            // Transform into Advanced
+            const advanced = EFFECTS['advanced-eletrification'];
+            newEffects[i] = { ...advanced, key: 'advanced-eletrification', addedAtTurn: turn, duration: 2 };
+            effectsChanged = true;
+          }
+        }
+
+        // 3. Duration handle (for temporary effects like Advanced Eletrification)
+        if (eff.duration !== undefined && eff.duration !== null) {
+          eff.duration--;
+          effectsChanged = true;
+          if (eff.duration <= 0) {
+            newEffects.splice(i, 1);
+            i--;
+          }
+        }
+      }
+
+      // Update player if HP or effects changed
+      if (newHP !== p.current_hp || effectsChanged) {
+        await supabase.from('characters').update({
+          current_hp: newHP,
+          effects: newEffects
+        }).eq('id', p.id);
+      }
+    }
+
+    const { error } = await supabase.from('global').update({ current_turn: nextTurn }).eq('id', 1);
     if (error) {
       console.error("Error updating turn:", error);
       alert("Erro ao atualizar turno: " + error.message);
@@ -505,9 +637,13 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
 
   return (
     <div className="absolute inset-0 flex overflow-hidden bg-black">
+      {/* Universal Targeting Overlay - Blocks interactions with EVERYTHING except the combatant cards */}
+      {targetingRoll && (
+        <div className="fixed inset-0 z-[65] bg-black/20 backdrop-blur-sm animate-in fade-in duration-300 pointer-events-auto" />
+      )}
       
       {/* CHAT AREA - Grows to fill space */}
-      <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 relative h-full">
+      <div className={`flex-1 flex flex-col min-w-0 bg-zinc-950 relative h-full transition-all duration-500 ${targetingRoll ? 'blur-sm pointer-events-none select-none' : ''}`}>
         {!isSessionActive && isMaster && (
           <div className="absolute top-0 left-0 right-0 bg-yellow-500/10 border-b border-yellow-500/20 py-2 px-8 z-50 flex justify-center items-center gap-3">
             <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Aviso: A sessão está encerrada para os jogadores</span>
@@ -621,7 +757,7 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
                         
                         if (isDice) {
                           const parts = m.content.split('|');
-                          const [, pName, expr, total, detail, status, category = "normal", pImage = ""] = parts;
+                          const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = ""] = parts;
 
                           const categoryStyles = {
                             combat: {
@@ -660,6 +796,11 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
                                     <span className={`${style.accent} text-[10px] font-black uppercase tracking-widest`}>Tentativa de</span>
                                     <span className="text-white text-[11px] font-bold italic">{expr}</span>
                                     <div dangerouslySetInnerHTML={{ __html: status }} />
+                                    {diceType && (
+                                      <span className="ml-auto bg-white/10 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded border border-white/10 tracking-widest italic">
+                                        {diceType}
+                                      </span>
+                                    )}
                                   </div>
 
                                   <div className="flex items-end gap-4">
@@ -676,6 +817,11 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
                                     <div className="text-[9px] font-black text-zinc-500 uppercase tracking-widest italic">
                                       Por @{pName}
                                     </div>
+                                    {targetName && (
+                                      <div className="text-[9px] font-black text-red-500 uppercase tracking-widest italic mt-1">
+                                        Alvo: {targetName}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
@@ -866,7 +1012,8 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
                 onChange={handleInputChange}
                 onKeyDown={onKeyDown}
                 placeholder="Interaja com o mundo..."
-                className="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-8 pr-24 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl"
+                disabled={!!targetingRoll}
+                className="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-8 pr-24 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl disabled:opacity-50"
               />
 
               <div className="absolute right-3 top-1/2 -translate-y-[60%] flex items-center gap-1">
@@ -950,8 +1097,37 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
       {/* PARTICIPANTS SIDEBAR - Fixed Width */}
       <div className="w-[400px] shrink-0 bg-zinc-950 flex flex-col border-l border-white/5 relative">
         
+        {/* Targeting Overlay for Sidebar */}
+        {targetingRoll && (
+          <div className="absolute inset-0 z-[80] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300 pointer-events-none">
+            {/* The actual clickable backdrop for this section */}
+            <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+            
+            <div className="relative z-[100] flex flex-col items-center">
+              <div className="bg-red-600 text-black px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] mb-4 skew-x-[-12deg]">
+                SELECIONE UM ALVO
+              </div>
+              <p className="text-white font-bold italic text-sm mb-8">
+                Selecione um alvo para esta ação
+              </p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  console.log("Cancelar button clicked!");
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTargetingRoll(null);
+                }}
+                className="px-6 py-2 border border-white/20 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all rounded-full cursor-pointer pointer-events-auto"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* SCROLLABLE LIST OF COMBATANTS */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar transition-all duration-500 ${targetingRoll ? 'relative z-[75]' : ''}`}>
           <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] italic text-center mb-6">Combatentes</h3>
         
         {combatants.length === 0 ? (
@@ -961,81 +1137,201 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
           </div>
         ) : combatants.map(p => {
           const presence = (p.strength || 0) + (p.resistance || 0) + (p.aptitude || 0) + (p.agility || 0) + (p.precision || 0);
-          const maxLife = (p.strength || 0) + (p.resistance || 0) * 4;
+          const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+          let maxLife = baseLife;
+          if (Array.isArray(p.effects)) {
+            p.effects.forEach(eff => {
+              if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
+            });
+          }
+          maxLife = Math.floor(maxLife);
           const currentLife = p.current_hp ?? maxLife;
           const hpPerc = Math.max(0, (currentLife / maxLife) * 100);
 
           return (
-            <div key={p.id} className="relative group bg-zinc-900 border border-white/5 rounded-2xl p-6 shadow-2xl hover:border-red-600/40 transition-all duration-500 overflow-hidden shrink-0">
-              <div className="flex items-center gap-4 mb-4">
-                {p.image_url ? (
-                  <img src={p.image_url} className="w-12 h-12 rounded-lg object-cover border border-white/5 shrink-0" alt="" />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center text-xl shrink-0">
-                    👤
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-black italic text-white uppercase text-sm tracking-tighter truncate">{p.char_name}</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mr-1">HP:</span>
-                    {isActingAsMaster && editingHP === p.id ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          autoFocus
-                          type="text"
-                          value={hpInput}
-                          onChange={(e) => setHpInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleHPSubmit(p, e.shiftKey);
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              setEditingHP(null);
-                            }
-                          }}
-                          className="bg-zinc-800 border border-red-500/50 rounded px-2 py-0.5 text-white font-mono text-sm w-24 outline-none focus:border-red-500"
-                        />
-                        <span className="font-mono text-sm font-black text-red-500/60">/{maxLife}</span>
-                      </div>
+            <div
+              key={p.id}
+              onClick={() => {
+                if (targetingRoll) {
+                  const currentUserChar = allPlayers?.find(ap => ap.discord_username === user?.user_metadata?.preferred_username || ap.discord_username === user?.user_metadata?.full_name);
+                  const isSelf = currentUserChar?.id === p.id;
+                  
+                  // Restriction: Players cannot select themselves. Only master can select self (in master mode).
+                  if (isSelf && !isActingAsMaster) return;
+
+                  finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, p);
+                  setTargetingRoll(null);
+                }
+              }}
+              className={`relative group bg-zinc-900 border border-white/5 rounded-2xl p-6 shadow-2xl transition-all duration-500 shrink-0 overflow-hidden ${
+                targetingRoll
+                  ? 'cursor-crosshair ring-1 ring-red-600/50 animate-pulse hover:bg-zinc-800'
+                  : 'hover:border-red-600/40'
+              }`}
+            >
+              {/* Background Accent */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-[60px] -z-10 group-hover:bg-red-600/10 transition-colors" />
+              
+              <div className="flex flex-col gap-5">
+                {/* Header: Avatar, Name, HP Text */}
+                <div className="flex items-start gap-4">
+                  <div className="relative shrink-0">
+                    <div className="absolute -inset-1 bg-gradient-to-tr from-red-600/20 to-transparent rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {p.image_url ? (
+                      <img src={p.image_url} className="w-16 h-16 rounded-xl object-cover border border-white/10 shadow-xl relative z-10" alt="" />
                     ) : (
-                      <span
-                        onClick={(e) => {
-                          if (isActingAsMaster) {
-                            e.stopPropagation();
-                            setEditingHP(p.id);
-                            setHpInput(currentLife.toString());
-                          }
-                        }}
-                        className={`font-mono text-lg font-black text-red-500 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/10 px-1 rounded transition-colors' : ''}`}
-                      >
-                        {currentLife}
-                        <span className="text-red-500/60 text-sm">/{maxLife}</span>
-                      </span>
+                      <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center text-2xl relative z-10">
+                        👤
+                      </div>
                     )}
                   </div>
+                  
+                  <div className="flex-1 min-w-0 pt-1">
+                    <h4 className="font-black italic text-white uppercase text-base tracking-tighter truncate leading-tight mb-1">{p.char_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Vitalidade:</span>
+                      {isActingAsMaster && editingHP === p.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            autoFocus
+                            type="text"
+                            value={hpInput}
+                            onChange={(e) => setHpInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleHPSubmit(p, e.shiftKey);
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setEditingHP(null);
+                              }
+                            }}
+                            className="bg-zinc-800 border border-red-500/50 rounded px-2 py-0.5 text-white font-mono text-xs w-20 outline-none focus:border-red-500"
+                          />
+                          <span className="font-mono text-xs font-black text-red-500/40">/{maxLife}</span>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={(e) => {
+                            if (isActingAsMaster) {
+                              e.stopPropagation();
+                              setEditingHP(p.id);
+                              setHpInput(currentLife.toString());
+                            }
+                          }}
+                          className={`flex items-baseline gap-0.5 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1.5 py-0.5 rounded transition-colors' : ''}`}
+                        >
+                          <span className="font-mono text-xl font-black text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.3)]">{currentLife}</span>
+                          <span className="font-mono text-sm font-black text-red-900/60">/{maxLife}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="w-full h-2 bg-black/60 rounded-full overflow-hidden mb-5 border border-white/5">
-                <div
-                  className={`h-full transition-all duration-1000 ${hpPerc < 30 ? 'bg-red-600' : 'bg-red-500'}`}
-                  style={{ width: `${hpPerc}%` }}
-                />
-              </div>
 
-              <div className="flex flex-wrap gap-2">
-                {p.inventory?.filter(i => i.equipped).map((item, idx) => (
-                  <span key={idx} className="text-[7px] bg-blue-600/10 text-blue-500 border border-blue-500/20 px-2 py-1 rounded-lg font-black uppercase">
-                    {item.name}
-                  </span>
-                ))}
+                {/* Status Effects - More organized row */}
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.isArray(p.effects) && p.effects.length > 0 ? (
+                    p.effects.map((eff, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-1.5 bg-zinc-950 border border-red-900/30 pl-1 pr-2.5 py-1 rounded-md transition-colors relative ${targetingRoll ? 'pointer-events-none' : 'hover:border-red-600/50 cursor-help group/eff'}`}
+                        title={targetingRoll ? "" : eff.description}
+                      >
+                        <div className="min-w-[1.25rem] h-5 px-1 flex items-center justify-center bg-red-600/10 rounded text-[10px]">
+                          {eff.emoji}
+                        </div>
+                        <span className="text-[8px] font-black uppercase tracking-wider text-red-500/80 group-hover/eff:text-red-400">{eff.name}</span>
+                        <span className="text-[10px] font-black font-mono text-zinc-500 ml-1 border-l border-white/10 pl-1.5">{eff.duration ?? '-'}</span>
+                        
+                        {isActingAsMaster && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const newEffects = p.effects.filter((_, i) => i !== idx);
+                              
+                              // Calculate new Max Life without the removed effect
+                              const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
+                              let newMaxLife = baseLife;
+                              newEffects.forEach(eff => {
+                                if (eff.modifiers?.maxLife) newMaxLife *= eff.modifiers.maxLife;
+                              });
+                              newMaxLife = Math.floor(newMaxLife);
+
+                              const updateData = { effects: newEffects };
+                              
+                              // Although removing an effect usually increases Max HP, we still clamp for safety
+                              if ((p.current_hp || baseLife) > newMaxLife) {
+                                updateData.current_hp = newMaxLife;
+                              }
+
+                              await supabase.from('characters').update(updateData).eq('id', p.id);
+                            }}
+                            className="absolute -top-1 -right-1 bg-red-900/80 text-white/70 rounded p-0.5 opacity-0 group-hover/eff:opacity-100 transition-opacity hover:text-white z-20 flex items-center justify-center"
+                            title="Remover Efeito"
+                          >
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 6L6 18M6 6l12 12"/>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="w-full flex items-center gap-2 opacity-20">
+                      <div className="h-[1px] flex-1 bg-zinc-800" />
+                      <span className="text-[7px] text-zinc-500 uppercase font-black tracking-[0.2em]">Sem Anomalias</span>
+                      <div className="h-[1px] flex-1 bg-zinc-800" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Main Health Bar - Centered and stylized */}
+                <div className="relative h-4 bg-zinc-950 rounded-full border border-white/5 overflow-hidden group/hp shadow-inner">
+                  {/* Background Track Highlights */}
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.02)_50%,transparent_100%)] animate-pulse" />
+                  
+                  {/* Progress Bar */}
+                  <div
+                    className={`h-full relative transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(239,68,68,0.2)] ${
+                      hpPerc < 25 ? 'bg-gradient-to-r from-red-800 to-red-600 animate-pulse' : 'bg-gradient-to-r from-red-700 to-red-500'
+                    }`}
+                    style={{ width: `${hpPerc}%` }}
+                  >
+                    {/* Glass Effect */}
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.1)_0%,transparent_50%,rgba(0,0,0,0.2)_100%)]" />
+                    {/* Glowing Tip */}
+                    <div className="absolute top-0 right-0 bottom-0 w-1 bg-white/40 blur-[2px]" />
+                  </div>
+
+                  {/* Segment Markers */}
+                  <div className="absolute inset-0 flex justify-between px-1 pointer-events-none">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="w-[1px] h-full bg-black/40" />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Equipment Row */}
+                <div className="flex flex-wrap gap-1.5">
+                  {p.inventory?.filter(i => i.equipped).length > 0 ? (
+                    p.inventory?.filter(i => i.equipped).map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-blue-600/5 border border-blue-500/20 px-2.5 py-1 rounded-md">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500/40 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                        <span className="text-[8px] text-blue-400 font-black uppercase tracking-tight">
+                          {item.name}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-[7px] text-zinc-700 uppercase font-bold italic">Desarmado</span>
+                  )}
+                </div>
               </div>
 
               {/* EXPANDABLE SECTION */}
-              <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-500 ease-in-out">
+              <div className={`grid grid-rows-[0fr] ${targetingRoll ? '' : 'group-hover:grid-rows-[1fr]'} transition-all duration-500 ease-in-out`}>
                 <div className="overflow-hidden">
                   <div className="pt-6 mt-6 border-t border-white/5 space-y-4">
                     <div className="space-y-4">
@@ -1065,27 +1361,21 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
                         return (
                           <div className="flex flex-col gap-4">
                             {/* COMBAT CATEGORY */}
-                            <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-xl">
-                              <div className="flex justify-around items-center">
-                                <DiceBadge label="PAT (Arma)" val={`1d${Math.round(weaponPAT)}`} category="combat" />
-                                <DiceBadge label="PAT (Punho)" val={`1d${Math.round(disarmedPAT)}`} category="combat" />
-                              </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <DiceBadge label="Ataque (Arma)" val={`1d${Math.round(weaponPAT)}`} category="combat" />
+                              <DiceBadge label="Ataque (Punho)" val={`1d${Math.round(disarmedPAT)}`} category="combat" />
                             </div>
 
                             {/* TECHNICAL CATEGORY */}
-                            <div className="bg-blue-500/5 border border-blue-500/10 p-3 rounded-xl">
-                              <div className="flex justify-around items-center">
-                                <DiceBadge label="Convencimento" val={`1d${convincimento}`} category="secondary" />
-                                <DiceBadge label="Raciocínio" val={`1d${raciocinio}`} category="secondary" />
-                              </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <DiceBadge label="Persuasão" val={`1d${convincimento}`} category="secondary" />
+                              <DiceBadge label="Lógica" val={`1d${raciocinio}`} category="secondary" />
                             </div>
 
                             {/* LUCK CATEGORY */}
-                            <div className="bg-yellow-500/5 border border-yellow-500/10 p-3 rounded-xl">
-                              <div className="flex justify-around items-center">
-                                <DiceBadge label="Prosperidade" val={`1d${prosperidade}`} category="luck" />
-                                <DiceBadge label="Loot" val={`1d${lootDie}`} category="luck" />
-                              </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <DiceBadge label="Sorte" val={`1d${prosperidade}`} category="luck" />
+                              <DiceBadge label="Espólio" val={`1d${lootDie}`} category="luck" />
                             </div>
                           </div>
                         );
@@ -1111,7 +1401,7 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
 
         {/* FIXED TURN INDICATOR AT BOTTOM */}
         {isCombatActive && (
-          <div className={`shrink-0 p-4 bg-zinc-900 border-t border-white/10 z-50 flex items-center ${isActingAsMaster ? 'justify-between' : 'justify-center'} gap-4`}>
+          <div className={`shrink-0 p-4 bg-zinc-900 border-t border-white/10 z-50 flex items-center ${isActingAsMaster ? 'justify-between' : 'justify-center'} gap-4 ${targetingRoll ? 'blur-sm pointer-events-none' : ''}`}>
             <div className={`flex flex-col ${!isActingAsMaster ? 'items-center' : ''}`}>
               <span className="text-[7px] font-black text-red-500/60 uppercase tracking-[0.3em] mb-1">Turno Atual</span>
               <div key={turn} style={{ animation: 'turnChange 0.5s ease-out' }} className="flex items-center justify-center">
@@ -1151,16 +1441,31 @@ export default function CombatTab({ user, allPlayers, messages, isCombatActive, 
 
 function DiceBadge({ label, val, category }) {
   const styles = {
-    combat: 'text-red-500',
-    luck: 'text-yellow-500',
-    secondary: 'text-blue-400'
+    combat: {
+      bg: 'bg-red-500/5',
+      border: 'border-red-500/10',
+      text: 'text-red-500',
+      glow: 'shadow-[0_0_10px_rgba(239,68,68,0.1)]'
+    },
+    luck: {
+      bg: 'bg-yellow-500/5',
+      border: 'border-yellow-500/10',
+      text: 'text-yellow-500',
+      glow: 'shadow-[0_0_10px_rgba(234,179,8,0.1)]'
+    },
+    secondary: {
+      bg: 'bg-blue-500/5',
+      border: 'border-blue-500/10',
+      text: 'text-blue-400',
+      glow: 'shadow-[0_0_10px_rgba(96,165,250,0.1)]'
+    }
   };
-  const colorClass = styles[category] || 'text-red-500';
+  const style = styles[category] || styles.combat;
 
   return (
-    <div className="flex flex-col items-center">
-      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter mb-1">{label}</span>
-      <span className={`text-base font-black font-mono ${colorClass}`}>{val}</span>
+    <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${style.border} ${style.bg} ${style.glow}`}>
+      <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest mb-1">{label}</span>
+      <span className={`text-sm font-black font-mono ${style.text}`}>{val}</span>
     </div>
   );
 }

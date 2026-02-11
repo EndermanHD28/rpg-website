@@ -187,18 +187,20 @@ export function Modal({ modal, closeModal }) {
   const [isCustom, setIsCustom] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('Item');
-  const [localData, setLocalData] = useState({ 
-    name: '', 
-    rarity: 'Comum', 
-    value: 0, 
+  const [localData, setLocalData] = useState({
+    item_id: '',
+    name: '',
+    rarity: 'Comum',
+    value: 0,
     isBackpack: false,
     category: '',
     subtype: '',
     hands: 'Uma Mão',
-    tier: 'T0',
+    tier: 0,
     upgrade: 0,
     amount: 1,
-    damageType: 'Corte'
+    damageType: 'Corte',
+    description: ''
   });
 
   // Reset internal state when modal opens
@@ -207,19 +209,21 @@ export function Modal({ modal, closeModal }) {
       setIsCustom(modal.forcedCustom || false);
       setSearchTerm('');
       setActiveTab('Item');
-      setLocalData({ 
-        name: modal.initialData?.name || '', 
+      setLocalData({
+        item_id: modal.initialData?.item_id || '',
+        name: modal.initialData?.name || '',
         type: modal.initialData?.type || 'Item',
-        rarity: modal.initialData?.rarity || 'Comum', 
+        rarity: modal.initialData?.rarity || 'Comum',
         value: modal.initialData?.value || 0, 
         isBackpack: modal.initialData?.isBackpack || false,
         category: modal.initialData?.category || '',
         subtype: modal.initialData?.subtype || '',
         hands: modal.initialData?.hands || 'Uma Mão',
-        tier: modal.initialData?.tier || 'T0',
+        tier: modal.initialData?.tier !== undefined ? (typeof modal.initialData.tier === 'string' ? parseInt(modal.initialData.tier.replace(/\D/g, '')) : modal.initialData.tier) : 0,
         upgrade: modal.initialData?.upgrade || 0,
         amount: modal.initialData?.amount || 1,
-        damageType: modal.initialData?.damageType || 'Corte'
+        damageType: modal.initialData?.damageType || 'Corte',
+        description: modal.initialData?.description || ''
       });
     }
   }, [modal.isOpen, modal.initialData, modal.forcedCustom]);
@@ -228,18 +232,20 @@ export function Modal({ modal, closeModal }) {
 
   const handleLibrarySelect = (itemName) => {
     const found = modal.library?.find(i => i.name === itemName);
-    if (found) setLocalData({ 
+    if (found) setLocalData({
       ...localData,
-      name: found.name, 
+      item_id: found.item_id || '',
+      name: found.name,
       type: found.type || 'Item',
       rarity: found.rarity, 
       value: found.value,
       category: found.category || '',
       subtype: found.subtype || '',
       hands: found.hands || 'Uma Mão',
-      tier: found.tier || 'T0',
+      tier: found.tier !== undefined ? (typeof found.tier === 'string' ? parseInt(found.tier.replace(/\D/g, '')) : found.tier) : 0,
       upgrade: found.upgrade || 0,
-      damageType: found.damageType || 'Corte'
+      damageType: found.damageType || 'Corte',
+      description: found.description || ''
     });
   };
 
@@ -278,6 +284,20 @@ export function Modal({ modal, closeModal }) {
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Item ID and Name */}
+            {(modal.forcedCustom || isCustom) && (
+              <div className="space-y-2">
+                <input
+                  disabled={!!modal.initialData?.item_id}
+                  type="text"
+                  placeholder="ID (ex: equipment.katana)"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500 disabled:opacity-50"
+                  value={localData.item_id}
+                  onChange={(e) => setLocalData({ ...localData, item_id: e.target.value.toLowerCase().replace(/\s/g, '_') })}
                 />
               </div>
             )}
@@ -377,8 +397,8 @@ export function Modal({ modal, closeModal }) {
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Tier</span>
                             <select
                               disabled={modal.forcedCustom && !modal.isInventoryEdit}
-                              value={localData.tier} onChange={(e) => setLocalData({ ...localData, tier: e.target.value })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30">
-                              {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                              value={localData.tier} onChange={(e) => setLocalData({ ...localData, tier: parseInt(e.target.value) || 0 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30">
+                              {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
                             </select>
                           </div>
                         </div>
@@ -406,46 +426,74 @@ export function Modal({ modal, closeModal }) {
               </div>
             )}
 
+            {(modal.forcedCustom || isCustom) && (
+              <div className="space-y-1">
+                <span className="text-[8px] font-black text-zinc-500 uppercase">Descrição</span>
+                <textarea
+                  value={localData.description}
+                  onChange={(e) => setLocalData({ ...localData, description: e.target.value })}
+                  placeholder="Descrição do item..."
+                  className="w-full h-20 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-[10px] outline-none focus:border-yellow-500 resize-none custom-scrollbar"
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
-              {(modal.forcedCustom || isCustom) && (
+              <div className="space-y-1">
+                <span className="text-[8px] text-zinc-500 font-bold uppercase">Raridade</span>
                 <select
+                  disabled={!modal.forcedCustom && !isCustom}
                   value={localData.rarity}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-50"
                   onChange={(e) => setLocalData({ ...localData, rarity: e.target.value })}
                 >
                   {Object.keys(modal.rarityConfig || {}).map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
-              )}
+              </div>
 
-              <div className="relative col-start-2">
-                <span className="absolute -top-3 left-0 text-[8px] text-zinc-500 font-bold uppercase">
-                  {!modal.forcedCustom ? "Quantidade" : "Valor"}
-                </span>
-                <div className="flex gap-2">
-                  {!modal.forcedCustom && !isCustom && (
-                    <input
-                      type="number" value={localData.amount} placeholder="Qtd"
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-white text-xs outline-none"
-                      onChange={(e) => setLocalData({ ...localData, amount: parseInt(e.target.value) || 1 })}
-                    />
-                  )}
-                  {(modal.forcedCustom || isCustom) && (
-                    <input
-                      type="number" value={localData.value} placeholder="Valor"
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-white text-xs outline-none"
-                      onChange={(e) => setLocalData({ ...localData, value: parseInt(e.target.value) || 0 })}
-                    />
-                  )}
-                </div>
+              <div className="space-y-1">
+                <span className="text-[8px] text-zinc-500 font-bold uppercase">Valor ($)</span>
+                <input
+                  disabled={!modal.forcedCustom && !isCustom}
+                  type="number" value={localData.value} placeholder="Valor"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none disabled:opacity-50"
+                  onChange={(e) => setLocalData({ ...localData, value: parseInt(e.target.value) || 0 })}
+                />
               </div>
             </div>
+
+            {!modal.forcedCustom && (
+              <div className="space-y-1">
+                <span className="text-[8px] text-zinc-500 font-bold uppercase">Quantidade</span>
+                <input
+                  type="number"
+                  value={localData.amount}
+                  min="1"
+                  placeholder="Qtd"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500"
+                  onChange={(e) => setLocalData({ ...localData, amount: Math.max(1, parseInt(e.target.value) || 1) })}
+                />
+              </div>
+            )}
           </div>
         ) : modal.input && (
-          <input
-            autoFocus type="number" value={modal.inputValue}
-            onChange={(e) => modal.setInputValue(e.target.value)}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white mb-6 outline-none focus:border-yellow-500"
-          />
+          (modal.title === "Importar Itens via Código" || modal.title === "Importar Loot Tables via Código") ? (
+            <textarea
+              autoFocus
+              value={modal.inputValue}
+              onChange={(e) => modal.setInputValue(e.target.value)}
+              placeholder="Cole o JSON aqui..."
+              className="w-full h-48 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white mb-6 outline-none focus:border-yellow-500 font-mono text-xs resize-none custom-scrollbar"
+            />
+          ) : (
+            <input
+              autoFocus
+              type={modal.input === 'number' || typeof modal.inputValue === 'number' ? "number" : "text"}
+              value={modal.inputValue}
+              onChange={(e) => modal.setInputValue(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white mb-6 outline-none focus:border-yellow-500"
+            />
+          )
         )}
 
         {/* Replace the button div at the bottom of the Modal component in src/components/UIElements.js */}

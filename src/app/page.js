@@ -5,6 +5,7 @@ import { MASTER_DISCORD_ID, ANOMALIAS_LIST, SKILLS_LIST, RARITY_CONFIG } from '.
 
 // Components
 import Inventory from '../components/InventoryTemp';
+import LootTableEditorModal from '../components/LootTableEditorModal';
 import MasterPanel from '../components/MasterPanel';
 import BioGrid from '../components/BioGrid';
 import DicePanel from '../components/DicePanel';
@@ -18,6 +19,9 @@ export default function Home() {
   // --- UI STATE ---
   const { playSound, volume, changeVolume } = useSound();
   const [activeTab, setActiveTab] = useState('home');
+  const [lootTables, setLootTables] = useState([]);
+  const [isLootModalOpen, setIsLootModalOpen] = useState(false);
+  const [editingLootTable, setEditingLootTable] = useState(null);
   const [isViewingOnly, setIsViewingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState([]);
@@ -52,8 +56,15 @@ export default function Home() {
 
   // --- MATH HELPERS ---
   const presence = activeChar ? (Number(activeChar.strength) || 0) + (Number(activeChar.resistance) || 0) + (Number(activeChar.aptitude) || 0) + (Number(activeChar.agility) || 0) + (Number(activeChar.precision) || 0) : 0;
-  const life = activeChar ? (Number(activeChar.strength) || 0) + ((Number(activeChar.resistance) || 0) * 4) : 0;
-  const posture = activeChar ? ((Number(activeChar.resistance) || 0) * 0.25) + (Number(activeChar.aptitude) || 0) : 0;
+  const life = activeChar ? (() => {
+    let l = (Number(activeChar.strength) || 0) + ((Number(activeChar.resistance) || 0) * 7);
+    const effs = Array.isArray(activeChar.effects) ? activeChar.effects : [];
+    effs.forEach(eff => {
+      if (eff.modifiers?.maxLife) l *= eff.modifiers.maxLife;
+    });
+    return Math.floor(l);
+  })() : 0;
+  const posture = activeChar ? ((Number(activeChar.resistance) || 0) * 1.2) + (Number(activeChar.aptitude * 3.4) || 0) : 0;
 
   const getPerc = (val) => presence > 0 ? ((Number(val) / presence) * 100).toFixed(1) : "0.0";
   const luckPerc = activeChar ? parseFloat(getPerc(activeChar.luck || 0)) : 0;
@@ -77,6 +88,9 @@ export default function Home() {
     const fetchData = async () => {
       const { data: libraryData } = await supabase.from('items').select('*').order('name', { ascending: true });
       setItemLibrary(libraryData || []);
+
+      const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
+      setLootTables(lootData || []);
       
       const { data: { user: activeUser } } = await supabase.auth.getUser();
       setUser(activeUser);
@@ -291,9 +305,9 @@ export default function Home() {
       // 2. Calculate points spent based on the DIFFERENCE between 
       // our new state (nextState) and the original baseline (character)
       const totalSpent = keys.reduce((acc, k) => {
-        // Treat empty strings or NaN as 1 for the sake of PS calculation
-        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? 1 : Number(nextState[k]);
-        const originalVal = Number(character[k]) || 1;
+        // Treat empty strings or NaN as 3 for the sake of PS calculation
+        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? 3 : Number(nextState[k]);
+        const originalVal = Number(character[k]) || 3;
         return acc + (currentVal - originalVal);
       }, 0);
 
@@ -311,10 +325,10 @@ export default function Home() {
       const sanitized = { ...tempChar };
       const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
 
-      // VALIDATION 1: Check for stats lower than 1 or empty
-      const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < 1);
+      // VALIDATION 1: Check for stats lower than 3 or empty
+      const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < 3);
       if (hasInvalidStat) {
-        showToast("Erro: Todos os atributos devem ser pelo menos 1.");
+        showToast("Erro: Todos os atributos devem ser pelo menos 3.");
         return;
       }
 
@@ -410,7 +424,7 @@ export default function Home() {
             <p className="text-[8px] text-zinc-500 font-bold tracking-widest uppercase mt-1">What-If RPG</p>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-10">
             {/* CATEGORIA PRINCIPAL */}
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Principal</p>
@@ -430,6 +444,8 @@ export default function Home() {
               </div>
             </div>
 
+            <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent mx-4" />
+            
             {/* CATEGORIA FICHAS */}
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Fichas</p>
@@ -464,15 +480,20 @@ export default function Home() {
               </div>
             </div>
 
-            {/* CATEGORIA MESTRE */}
             {isActingAsMaster && (
-              <div>
-                <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
-                <div className="flex flex-col gap-1">
-                  <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSound('tab_change'); setActiveTab('master'); }} />
-                  <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSound('tab_change'); setActiveTab('items'); }} />
+              <>
+                <div className="h-px bg-gradient-to-r from-transparent via-red-950 to-transparent mx-4" />
+                
+                {/* CATEGORIA MESTRE */}
+                <div>
+                  <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
+                  <div className="flex flex-col gap-1">
+                    <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSound('tab_change'); setActiveTab('master'); }} />
+                    <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSound('tab_change'); setActiveTab('items'); }} />
+                    <NavButton active={activeTab === 'loot'} label="Loot" onClick={() => { playSound('tab_change'); setActiveTab('loot'); }} />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -611,7 +632,7 @@ export default function Home() {
                   <div className="mt-12 grid grid-cols-3 gap-6 text-center">
                     <StatBox label="VIDA" value={life} color="border-red-600" textColor="text-red-500" />
                     <StatBox label="PRESENÇA" value={presence} color="border-blue-500" textColor="text-blue-500" />
-                    <StatBox label="POSTURA" value={posture.toFixed(1)} color="border-green-500" textColor="text-green-500" />
+                    <StatBox label="POSTURA" value={posture.toFixed(0)} color="border-green-500" textColor="text-green-500" />
                   </div>
                 </div>
                 <Inventory
@@ -851,38 +872,88 @@ export default function Home() {
                     />
                   </div>
                 </div>
-                <button
-                  onClick={() => setModal({
-                    isOpen: true,
-                    title: "Novo Item Global",
-                    fields: true,
-                    forcedCustom: true,
-                    rarityConfig: RARITY_CONFIG,
-                    onConfirm: async (d) => {
-                      playSound('random_button');
-                      const { error } = await supabase.from('items').insert({
-                        name: d.name,
-                        type: d.type,
-                        rarity: d.rarity,
-                        value: d.value,
-                        category: d.category,
-                        subtype: d.subtype,
-                        hands: d.hands,
-                        damageType: d.damageType
-                      });
-                      if (!error) {
-                        showToast("Item Adicionado à Biblioteca!");
-                        // Re-fetch library
-                        const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
-                        setItemLibrary(data || []);
-                        closeModal();
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setModal({
+                      isOpen: true,
+                      title: "Novo Item Global",
+                      fields: true,
+                      forcedCustom: true,
+                      rarityConfig: RARITY_CONFIG,
+                      onConfirm: async (d) => {
+                        playSound('random_button');
+                        const { error } = await supabase.from('items').insert({
+                          item_id: d.item_id,
+                          name: d.name,
+                          type: d.type,
+                          rarity: d.rarity,
+                          value: d.value,
+                          category: d.category,
+                          subtype: d.subtype,
+                          hands: d.hands,
+                          damageType: d.damageType,
+                          description: d.description
+                        });
+                        if (!error) {
+                          showToast("Item Adicionado à Biblioteca!");
+                          // Re-fetch library
+                          const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                          setItemLibrary(data || []);
+                          closeModal();
+                        }
                       }
-                    }
-                  })}
-                  className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
-                >
-                  + Criar Novo Item
-                </button>
+                    })}
+                    className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
+                  >
+                    + Criar Novo Item
+                  </button>
+                  <button
+                    onClick={() => setModal({
+                      isOpen: true,
+                      title: "Importar Itens via Código",
+                      input: true,
+                      inputValue: '',
+                      setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
+                      message: "Cole o código JSON do pacote de itens abaixo:",
+                      onConfirm: async (json) => {
+                        try {
+                          if (!json || typeof json !== 'string') throw new Error("Entrada inválida.");
+                          const items = JSON.parse(json.trim());
+                          const itemsArray = Array.isArray(items) ? items : [items];
+                          
+                          const preparedItems = itemsArray.map(itemData => ({
+                            item_id: itemData.item_id,
+                            name: itemData.name,
+                            type: itemData.type || 'Item',
+                            rarity: itemData.rarity || 'Comum',
+                            value: itemData.value || 0,
+                            category: itemData.category || 'Utilitário',
+                            subtype: itemData.subtype || null,
+                            hands: itemData.hands || 'Uma Mão',
+                            damageType: itemData.damageType || null,
+                            description: itemData.description || null,
+                            tier: itemData.tier !== undefined ? (typeof itemData.tier === 'string' ? parseInt(itemData.tier.replace(/\D/g, '')) : itemData.tier) : 1,
+                            upgrade: itemData.upgrade || 0,
+                            isBackpack: !!itemData.isBackpack
+                          }));
+
+                          const { error } = await supabase.from('items').insert(preparedItems);
+                          if (error) throw error;
+
+                          showToast(`${preparedItems.length} Itens Importados!`);
+                          const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                          setItemLibrary(data || []);
+                          closeModal();
+                        } catch (err) {
+                          showToast(`Erro na importação: ${err.message}`);
+                        }
+                      }
+                    })}
+                    className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
+                  >
+                    {} Importar Código
+                  </button>
+                </div>
               </div>
 
               <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
@@ -916,7 +987,8 @@ export default function Home() {
                                   category: d.category,
                                   subtype: d.subtype,
                                   hands: d.hands,
-                                  damageType: d.damageType
+                                  damageType: d.damageType,
+                                  description: d.description
                                 }).eq('id', item.id);
                                 if (!error) {
                                   showToast("Item Atualizado!");
@@ -928,7 +1000,19 @@ export default function Home() {
                               onDelete: async () => {
                                 const { error } = await supabase.from('items').delete().eq('id', item.id);
                                 if (!error) {
-                                  showToast("Item Removido!");
+                                  // REMOVE FROM LOOT TABLES
+                                  const updatedLootTables = lootTables.map(lt => ({
+                                    ...lt,
+                                    items: lt.items.filter(i => i.item_id !== item.item_id)
+                                  }));
+                                  
+                                  // Batch update loot tables in supabase
+                                  for (const lt of updatedLootTables) {
+                                    await supabase.from('loot_tables').update({ items: lt.items }).eq('id', lt.id);
+                                  }
+                                  
+                                  setLootTables(updatedLootTables);
+                                  showToast("Item Removido e Tabelas de Loot atualizadas!");
                                   const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
                                   setItemLibrary(data || []);
                                   closeModal();
@@ -954,9 +1038,127 @@ export default function Home() {
         )}
       </section>
 
+      {activeTab === 'loot' && isActingAsMaster && (
+        <div className="p-12">
+          <div className="max-w-4xl mx-auto space-y-8">
+            <div className="flex justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800">
+              <div className="flex-1 pr-8">
+                <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Tabelas de Loot</h2>
+                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-2">Configuração de Recompensas</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setEditingLootTable(null);
+                    setIsLootModalOpen(true);
+                  }}
+                  className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
+                >
+                  + Nova Tabela
+                </button>
+                <button
+                  onClick={() => setModal({
+                    isOpen: true,
+                    title: "Importar Loot Tables via Código",
+                    input: true,
+                    inputValue: '',
+                    setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
+                    message: "Cole o código JSON das loot tables abaixo:",
+                    onConfirm: async (json) => {
+                      try {
+                        if (!json || typeof json !== 'string') throw new Error("Entrada inválida.");
+                        const tables = JSON.parse(json.trim());
+                        const tablesArray = Array.isArray(tables) ? tables : [tables];
+                        
+                        const preparedTables = tablesArray.map(t => ({
+                          name: t.name,
+                          min_rolls: t.min_rolls || 1,
+                          max_rolls: t.max_rolls || 1,
+                          items: t.items || []
+                        }));
+
+                        const { error } = await supabase.from('loot_tables').insert(preparedTables);
+                        if (error) throw error;
+
+                        showToast(`${preparedTables.length} Loot Tables Importadas!`);
+                        const { data } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
+                        setLootTables(data || []);
+                        closeModal();
+                      } catch (err) {
+                        showToast(`Erro na importação: ${err.message}`);
+                      }
+                    }
+                  })}
+                  className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
+                >
+                  Importar Código
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {lootTables.map(lt => (
+                  <div key={lt.id}
+                    onClick={() => {
+                      setEditingLootTable(lt);
+                      setIsLootModalOpen(true);
+                    }}
+                    className="p-4 bg-black/40 rounded-2xl border border-white/5 flex justify-between items-center group hover:border-yellow-500/50 transition-all cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-sm font-black text-white">{lt.name}</p>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase">{lt.items?.length || 0} Itens • {lt.min_rolls}-{lt.max_rolls} Rolls</p>
+                    </div>
+                    <div className="flex gap-2">
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           setEditingLootTable(lt);
+                           setIsLootModalOpen(true);
+                         }}
+                         className="text-[10px] font-black text-zinc-600 hover:text-white uppercase"
+                       >
+                         Editar
+                       </button>
+                       <button onClick={(e) => {
+                         e.stopPropagation();
+                         setModal({
+                           isOpen: true,
+                           title: "Excluir Tabela",
+                           message: `Deseja excluir a tabela "${lt.name}"? Esta ação é irreversível.`,
+                           type: 'danger',
+                           onConfirm: async () => {
+                             await supabase.from('loot_tables').delete().eq('id', lt.id);
+                             setLootTables(prev => prev.filter(t => t.id !== lt.id));
+                             showToast("Tabela excluída.");
+                             closeModal();
+                           }
+                         });
+                       }} className="text-[10px] font-black text-red-900 hover:text-red-500 uppercase">Excluir</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast toasts={toasts} setToasts={setToasts} />
       <Modal modal={modal} closeModal={closeModal} />
+      <LootTableEditorModal
+        isOpen={isLootModalOpen}
+        closeModal={() => {
+          setIsLootModalOpen(false);
+          // Re-fetch loot tables after closing to see new entries
+          supabase.from('loot_tables').select('*').order('name', { ascending: true })
+            .then(({ data }) => setLootTables(data || []));
+        }}
+        library={itemLibrary}
+        showToast={showToast}
+        initialData={editingLootTable}
+      />
       <Celebration active={showCelebration} />
       <MusicPlayer isMaster={isActingAsMaster} currentVolume={volume} />
     </main>
@@ -980,7 +1182,7 @@ const StatBox = ({ label, value, color, textColor }) => (
 );
 
 const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, isSpecial = false }) => {
-  const v = val ?? 1;
+  const v = val ?? 3;
   const perc = getPerc(v);
   const getStatColor = (p) => {
     const pf = parseFloat(p);

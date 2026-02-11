@@ -1,0 +1,34 @@
+[
+  {
+    "id": "f5698789-99be-458f-a746-1bdfbad9c343",
+    "name": "Hamburguer (MCDonalds)",
+    "rarity": "Comum",
+    "value": 14,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Hamburguer do MCDonalds. Pode não ser mais consumível, mas traz lembranças agradáveis de um tempo esquecido.",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "item.burger"
+  },
+  {
+    "id": "b3f73eb0-a609-4821-ba13-b32a0cd862cf",
+    "name": "Pacote de Gravetos (x15)",
+    "rarity": "Comum",
+    "value": 3,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Pacote com pequena quantidade de gravetos. Pode ajudar a acender uma fogueira.",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "item.sticks_pack"
+  }
+]
