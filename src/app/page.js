@@ -108,7 +108,42 @@ export default function Home() {
           setTempChar(char);
         } else {
           const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
-          if (dbChar) { setCharacter(dbChar); setTempChar(dbChar); }
+          if (dbChar) {
+            setCharacter(dbChar);
+            setTempChar(dbChar);
+          } else if (tId === activeUser.id) {
+            // AUTO-CREATE CHARACTER IF MISSING
+            const newChar = {
+              id: activeUser.id,
+              discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
+              char_name: "Novo Caçador",
+              strength: 3,
+              resistance: 3,
+              aptitude: 3,
+              agility: 3,
+              precision: 3,
+              intelligence: 3,
+              luck: 3,
+              charisma: 3,
+              stat_points_available: 50,
+              dollars: 500,
+              inventory: [],
+              rank: 'Recruta',
+              current_hp: 30
+            };
+            const { data: createdChar, error: createError } = await supabase
+              .from('characters')
+              .insert(newChar)
+              .select()
+              .single();
+            
+            if (!createError && createdChar) {
+              setCharacter(createdChar);
+              setTempChar(createdChar);
+              setAllPlayers(prev => [...prev, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || "")));
+              showToast("Nova ficha criada automaticamente!");
+            }
+          }
         }
       }
 
