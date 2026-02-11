@@ -7,6 +7,15 @@ import React, { memo } from 'react';
 
 const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
   const { playSound } = useSound();
+
+  const sanitize = (val) => {
+    if (typeof val !== 'string') return val;
+    // Remove Postgres type casts like 'Value'::text
+    let clean = val.replace(/^'|'::text$/g, '');
+    // If it was just 'Nenhuma'::text, it might be double quoted in some cases or just return Nenhuma
+    return clean;
+  };
+
   const updateField = (field, val) => setTempChar(prev => ({ ...prev, [field]: val }));
 
   const handleImageUpload = async (e) => {
@@ -42,20 +51,23 @@ const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
   };
 
   const SelectField = ({ label, field, options, descriptions }) => {
+    const rawVal = activeChar?.[field];
+    const cleanVal = sanitize(rawVal);
+    
     return (
       <div className="space-y-1">
         <span className="text-gray-500 text-[9px] font-black italic uppercase">{label}:</span>
         {isEditing ? (
           <CustomSelect
             label={label}
-            value={activeChar?.[field] || ""}
+            value={cleanVal || ""}
             options={options}
             descriptions={descriptions}
             onChange={(val) => { playSound('stat_point'); updateField(field, val); }}
           />
         ) : (
-          <TooltipWrapper text={descriptions?.[activeChar?.[field]]}>
-            <p className="font-bold text-lg leading-none">{activeChar?.[field] || "Nenhum"}</p>
+          <TooltipWrapper text={descriptions?.[cleanVal]}>
+            <p className="font-bold text-lg leading-none">{cleanVal || "Nenhum"}</p>
           </TooltipWrapper>
         )}
       </div>
@@ -104,8 +116,8 @@ const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
       <div className="space-y-1">
         <span className="text-gray-500 text-[9px] font-black italic uppercase">Altura:</span>
         {isEditing ? (
-          <input type="text" value={activeChar?.height || ""} onChange={(e) => { playSound('stat_point'); updateField('height', formatHeight(e.target.value)); }} className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none" placeholder="Ex: 175" />
-        ) : <p className="font-bold text-lg leading-none">{activeChar?.height || "0,00m"}</p>}
+          <input type="text" value={sanitize(activeChar?.height) || ""} onChange={(e) => { playSound('stat_point'); updateField('height', formatHeight(e.target.value)); }} className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none" placeholder="Ex: 175" />
+        ) : <p className="font-bold text-lg leading-none">{sanitize(activeChar?.height) || "0,00m"}</p>}
       </div>
 
       <div className="space-y-1">
@@ -114,7 +126,7 @@ const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
           <div className="flex gap-2">
             <CustomSelect
               label="Respiração"
-              value={activeChar?.breathing_style || "Nenhuma"}
+              value={sanitize(activeChar?.breathing_style) || "Nenhuma"}
               options={RESPIRACOES}
               onChange={(val) => { playSound('stat_point'); updateField('breathing_style', val); }}
             />
@@ -123,7 +135,7 @@ const BioGrid = memo(({ activeChar, isEditing, setTempChar }) => {
               <input type="number" value={activeChar?.breathing_lvl ?? ""} onChange={(e) => { playSound('stat_point'); updateField('breathing_lvl', e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value))); }} className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-16 text-sm outline-none" />
             </div>
           </div>
-        ) : <p className="font-bold text-lg leading-none">{activeChar?.breathing_style === "Nenhuma" ? "Nenhuma" : `${activeChar?.breathing_style} (Lvl.${activeChar?.breathing_lvl})`}</p>}
+        ) : <p className="font-bold text-lg leading-none">{sanitize(activeChar?.breathing_style) === "Nenhuma" ? "Nenhuma" : `${sanitize(activeChar?.breathing_style)} (Lvl.${activeChar?.breathing_lvl})`}</p>}
       </div>
 
       <div className="space-y-1">

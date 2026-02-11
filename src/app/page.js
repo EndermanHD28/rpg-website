@@ -463,6 +463,7 @@ export default function Home() {
                         active={activeTab === 'sheet' && viewingTarget === p.id}
                         label={p.char_name || p.discord_username}
                         disabled={!canView}
+                        isUnapproved={!isApproved && !isActingAsMaster}
                         onClick={() => {
                           if (!canView) {
                             playSound('error');
@@ -614,7 +615,7 @@ export default function Home() {
                       />
                     ) : (
                       <h2 className="text-5xl font-black text-red-600 italic uppercase tracking-tighter leading-tight">
-                        {activeChar?.char_name}
+                        {(typeof activeChar?.char_name === 'string') ? activeChar.char_name.replace(/^'|'::text$/g, '') : activeChar?.char_name}
                       </h2>
                     )}
                     <p className="text-zinc-500 text-[10px] font-bold uppercase mt-1 italic leading-none">
@@ -1180,14 +1181,15 @@ export default function Home() {
 }
 
 // HELPERS (OUTSIDE Home to prevent focus loss)
-const NavButton = ({ label, active, onClick, disabled }) => (
+const NavButton = ({ label, active, onClick, disabled, isUnapproved }) => (
   <button
     onClick={onClick}
     className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all
       ${active ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-200'}
-      ${disabled ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer'}`}
+      ${disabled ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer'}
+      ${isUnapproved ? 'border border-dashed border-zinc-800' : ''}`}
   >
-    {label}
+    {label} {isUnapproved && <span className="text-[8px] opacity-50 block mt-0.5">(PENDENTE)</span>}
   </button>
 );
 

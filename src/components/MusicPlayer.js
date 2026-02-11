@@ -89,10 +89,23 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
             if (isMaster) {
               if (event.data === window.YT.PlayerState.PLAYING) {
                 const currentTime = event.target.getCurrentTime();
+                const currentVideoData = event.target.getVideoData();
+                const videoId = currentVideoData?.video_id;
+                
                 const startedAt = new Date(Date.now() - currentTime * 1000).toISOString();
+                
+                const updates = { music_started_at: startedAt };
+                
+                // If we are in a playlist, update the music_url to the specific video being played
+                if (videoId && url.includes('list=')) {
+                  const urlObj = new URL(url);
+                  urlObj.searchParams.set('v', videoId);
+                  updates.music_url = urlObj.toString();
+                }
+
                 await supabase
                   .from('global')
-                  .update({ music_started_at: startedAt })
+                  .update(updates)
                   .eq('id', 1);
               }
             }
@@ -117,10 +130,10 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       };
 
       if (listId) {
-        // To start at a specific video in a playlist, we DON'T use videoId in the main config.
-        // Instead, we use loadPlaylist or specify it in playerVars.
         playerConfig.playerVars.listType = 'playlist';
         playerConfig.playerVars.list = listId;
+        // If we have a videoId, we can try to hint the player to start there
+        if (videoId) playerConfig.videoId = videoId;
       } else {
         playerConfig.videoId = videoId;
         playerConfig.playerVars.playlist = videoId; // Required for single video loop
@@ -137,20 +150,22 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           const videoIdParam = urlObj.searchParams.get('v');
           const indexParam = urlObj.searchParams.get('index');
           
-          const loadOptions = {
-            listType: 'playlist',
-            list: listId,
-          };
-
           if (videoIdParam) {
-            loadOptions.videoId = videoIdParam;
-          } else if (indexParam) {
-            loadOptions.index = parseInt(indexParam) - 1;
+            // If we have a specific video ID, use loadVideoById to start it
+            event.target.loadVideoById({
+              videoId: videoIdParam,
+              startSeconds: Math.max(0, lastSyncTime.current)
+            });
+          } else {
+            const loadOptions = {
+              listType: 'playlist',
+              list: listId,
+            };
+            if (indexParam) {
+              loadOptions.index = parseInt(indexParam) - 1;
+            }
+            event.target.loadPlaylist(loadOptions);
           }
-
-          // Use loadPlaylist directly to force it to start the correct item
-          // This overrides the initial player configuration
-          event.target.loadPlaylist(loadOptions);
           
           // Ensure it actually plays and has the right volume
           setTimeout(() => {
@@ -246,24 +261,23 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       }
 
       // Sync Timestamp (Avoid master syncing to themselves)
-      if (!isMaster && data.music_started_at && ytPlayer.current && ytPlayer.current.seekTo) {
-        const startedAt = new Date(data.music_started_at).getTime();
+      if (!isMaster && (data.music_started_at || data.music_url)) {
+        const startedAt = data.music_started_at ? new Date(data.music_started_at).getTime() : Date.now();
         const now = Date.now();
-        const elapsedSeconds = (now - startedAt) / 1000;
-        
-        const localTime = ytPlayer.current.getCurrentTime();
-        const targetTime = Math.max(0, elapsedSeconds);
-        
-        // Only sync if the difference is at least 3 seconds
-        if (Math.abs(targetTime - localTime) > 3) {
-          console.log(`Syncing music: remote expected ${targetTime}s, local is ${localTime}s. Diff: ${Math.abs(targetTime - localTime)}s`);
-          ytPlayer.current.seekTo(targetTime, true);
+        const targetTime = Math.max(0, (now - startedAt) / 1000);
+
+        if (ytPlayer.current && ytPlayer.current.seekTo && data.music_started_at) {
+          const localTime = ytPlayer.current.getCurrentTime();
+          
+          // Only sync if the difference is at least 3 seconds
+          if (Math.abs(targetTime - localTime) > 3) {
+            console.log(`Syncing music: remote expected ${targetTime}s, local is ${localTime}s. Diff: ${Math.abs(targetTime - localTime)}s`);
+            ytPlayer.current.seekTo(targetTime, true);
+          }
+        } else {
+          // Store for when player is ready
+          lastSyncTime.current = targetTime;
         }
-      } else if (!isMaster && data.music_started_at) {
-        // Store for when player is ready
-        const startedAt = new Date(data.music_started_at).getTime();
-        const now = Date.now();
-        lastSyncTime.current = Math.max(0, (now - startedAt) / 1000);
       }
     };
 
