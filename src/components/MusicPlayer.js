@@ -82,8 +82,20 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
               }
             }, 1000);
           },
-          onStateChange: (event) => {
+          onStateChange: async (event) => {
             event.target.setVolume(volume * 100);
+
+            // If Master pauses or plays, we should update music_started_at to keep sync
+            if (isMaster) {
+              if (event.data === window.YT.PlayerState.PLAYING) {
+                const currentTime = event.target.getCurrentTime();
+                const startedAt = new Date(Date.now() - currentTime * 1000).toISOString();
+                await supabase
+                  .from('global')
+                  .update({ music_started_at: startedAt })
+                  .eq('id', 1);
+              }
+            }
             
             // Handle metadata updates when song changes in playlist
             if (event.data === window.YT.PlayerState.PLAYING) {
@@ -234,17 +246,24 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       }
 
       // Sync Timestamp (Avoid master syncing to themselves)
-      if (!isMaster && data.music_timestamp !== undefined && ytPlayer.current && ytPlayer.current.seekTo) {
-        const remoteTime = data.music_timestamp;
-        const localTime = ytPlayer.current.getCurrentTime();
+      if (!isMaster && data.music_started_at && ytPlayer.current && ytPlayer.current.seekTo) {
+        const startedAt = new Date(data.music_started_at).getTime();
+        const now = Date.now();
+        const elapsedSeconds = (now - startedAt) / 1000;
         
-        // Only seek if the difference is significant (> 2 seconds) to avoid constant jumping
-        if (Math.abs(remoteTime - localTime) > 2) {
-          ytPlayer.current.seekTo(remoteTime, true);
+        const localTime = ytPlayer.current.getCurrentTime();
+        const targetTime = Math.max(0, elapsedSeconds);
+        
+        // Only sync if the difference is at least 3 seconds
+        if (Math.abs(targetTime - localTime) > 3) {
+          console.log(`Syncing music: remote expected ${targetTime}s, local is ${localTime}s. Diff: ${Math.abs(targetTime - localTime)}s`);
+          ytPlayer.current.seekTo(targetTime, true);
         }
-      } else if (data.music_timestamp !== undefined) {
+      } else if (!isMaster && data.music_started_at) {
         // Store for when player is ready
-        lastSyncTime.current = data.music_timestamp;
+        const startedAt = new Date(data.music_started_at).getTime();
+        const now = Date.now();
+        lastSyncTime.current = Math.max(0, (now - startedAt) / 1000);
       }
     };
 
@@ -270,25 +289,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     };
   }, [isMaster, url]);
 
-  // Master Sync Pulse
-  useEffect(() => {
-    if (!isMaster || !url) return;
-
-    const interval = setInterval(async () => {
-      if (ytPlayer.current && ytPlayer.current.getCurrentTime) {
-        const currentTime = ytPlayer.current.getCurrentTime();
-        await supabase
-          .from('global')
-          .update({
-            music_timestamp: currentTime,
-            music_updated_at: new Date().toISOString()
-          })
-          .eq('id', 1);
-      }
-    }, 5000); // Sync every 5 seconds to reduce Supabase load
-
-    return () => clearInterval(interval);
-  }, [isMaster, url]);
+  // Master Sync Pulse - No longer needed as we use music_started_at
 
   const handleUpdateMusic = async () => {
     if (!isMaster) return;
@@ -303,6 +304,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       .update({
         music_url: targetUrl,
         music_timestamp: 0,
+        music_started_at: targetUrl ? new Date().toISOString() : null,
         music_playing: !!targetUrl
       })
       .eq('id', 1);

@@ -155,6 +155,7 @@ export type Database = {
           is_combat_active: boolean | null
           is_session_active: boolean | null
           music_playing: boolean | null
+          music_started_at: string | null
           music_timestamp: number | null
           music_updated_at: string | null
           music_url: string | null
@@ -170,6 +171,7 @@ export type Database = {
           is_combat_active?: boolean | null
           is_session_active?: boolean | null
           music_playing?: boolean | null
+          music_started_at?: string | null
           music_timestamp?: number | null
           music_updated_at?: string | null
           music_url?: string | null
@@ -185,6 +187,7 @@ export type Database = {
           is_combat_active?: boolean | null
           is_session_active?: boolean | null
           music_playing?: boolean | null
+          music_started_at?: string | null
           music_timestamp?: number | null
           music_updated_at?: string | null
           music_url?: string | null
