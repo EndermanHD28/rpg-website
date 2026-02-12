@@ -74,7 +74,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
       message: `Deseja aplicar as alterações de ${req.player_name}?`,
       onConfirm: async () => {
         const { error: charError } = await supabase.from('characters')
-          .update({ ...req.new_data, needs_celebration: true, approved_once: true })
+          .update({ ...req.new_data, needs_celebration: true })
           .eq('id', req.player_id);
 
         if (!charError) {
@@ -82,7 +82,8 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
           playSound('celebration');
           showToast("Mudanças Aplicadas!");
         } else {
-          showToast("Erro ao aplicar mudanças.");
+          console.error("Error updating character:", charError);
+          showToast(`Erro ao aplicar mudanças: ${charError.message}`);
         }
         closeModal();
       }
