@@ -370,6 +370,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   };
 
   const stopSFX = (e, filename, category) => {
+    e.stopPropagation(); // Prevent event from bubbling up to the parent play button
     const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
     console.log("Attempting to stop SFX:", path);
     if (audioRefs.current[path]) {
