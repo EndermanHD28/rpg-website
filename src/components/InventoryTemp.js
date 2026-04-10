@@ -15,7 +15,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
   const itemWeight = inventory.reduce((acc, item) => {
     // If it's a backpack, it doesn't occupy its own slot while equipped
     if (item.isBackpack && item.equipped) return acc;
-    return acc + (Number(item.amount) || 1);
+    return acc + (Number(item.amount) || 1) * (Number(item.carga) || 1);
   }, 0);
 
   // Filter items for the current tab and keep track of original index
@@ -39,7 +39,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                 </p>
                 {pat && (
                   <div className="mt-1 flex flex-col items-center">
-                    <span className="text-[9px] font-black text-red-500 font-mono">PAT: 1d{Math.round(pat)}</span>
+                    <span className="text-[9px] font-black text-red-500 font-mono">Ataque: 1d{Math.round(pat)}</span>
                     {/* Expanding details on hover */}
                     <div className="grid grid-rows-[0fr] group-hover/equip:grid-rows-[1fr] transition-all duration-300 ease-in-out w-full">
                       <div className="overflow-hidden">
@@ -123,12 +123,17 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     <span className={`text-[11px] font-black uppercase tracking-tighter ${rarityConfig[item.rarity]?.color}`}>{item.rarity}</span>
                     {(item.category === 'Arma Branca' || item.category === 'Arma de Fogo') && (
                       <span className="text-[11px] font-black uppercase tracking-tighter text-red-600">
-                        PAT: 1d{Math.round(calculateWeaponPAT(item, activeChar))}
+                        Ataque: 1d{Math.round(calculateWeaponPAT(item, activeChar))}
                       </span>
                     )}
                     <span className="text-[11px] font-black uppercase tracking-tighter text-zinc-500">
                       Val: {item.value}$
                     </span>
+                    {(Number(item.carga) > 1) && (
+                      <span className="text-[11px] font-black uppercase tracking-tighter text-orange-500">
+                        Carga: {item.carga}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

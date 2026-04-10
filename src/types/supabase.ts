@@ -57,6 +57,7 @@ export type Database = {
           charisma: number | null
           class: string | null
           current_hp: number | null
+          current_posture: number | null
           discord_username: string | null
           dollars: number | null
           effects: Json | null
@@ -89,6 +90,7 @@ export type Database = {
           charisma?: number | null
           class?: string | null
           current_hp?: number | null
+          current_posture?: number | null
           discord_username?: string | null
           dollars?: number | null
           effects?: Json | null
@@ -121,6 +123,7 @@ export type Database = {
           charisma?: number | null
           class?: string | null
           current_hp?: number | null
+          current_posture?: number | null
           discord_username?: string | null
           dollars?: number | null
           effects?: Json | null
@@ -196,6 +199,7 @@ export type Database = {
       }
       items: {
         Row: {
+          carga: number | null
           category: string | null
           damageType: string | null
           description: string | null
@@ -212,6 +216,7 @@ export type Database = {
           value: number
         }
         Insert: {
+          carga?: number | null
           category?: string | null
           damageType?: string | null
           description?: string | null
@@ -228,6 +233,7 @@ export type Database = {
           value: number
         }
         Update: {
+          carga?: number | null
           category?: string | null
           damageType?: string | null
           description?: string | null
@@ -331,53 +337,113 @@ export type Database = {
       }
       npcs: {
         Row: {
+          age: number | null
           agility: number | null
+          anomalies: string[] | null
           aptitude: number | null
           armed_pat: string | null
+          bloodline: string | null
+          breathing_lvl: number | null
+          breathing_style: string | null
           category: string | null
+          charisma: number | null
+          class: string | null
           created_at: string
+          current_hp: number | null
+          current_posture: number | null
+          dollars: number | null
+          effects: Json | null
+          height: string | null
           id: string
           image_url: string | null
+          intelligence: number | null
+          inventory: Json | null
+          is_enemy: boolean | null
+          is_in_combat: boolean | null
           is_visible: boolean | null
+          luck: number | null
           name: string
+          nichirin_color: string | null
           npc_id: string | null
           precision: number | null
           rank: string | null
           resistance: number | null
+          skills: string[] | null
+          stat_points_available: number | null
           strength: number | null
           type: string | null
         }
         Insert: {
+          age?: number | null
           agility?: number | null
+          anomalies?: string[] | null
           aptitude?: number | null
           armed_pat?: string | null
+          bloodline?: string | null
+          breathing_lvl?: number | null
+          breathing_style?: string | null
           category?: string | null
+          charisma?: number | null
+          class?: string | null
           created_at?: string
+          current_hp?: number | null
+          current_posture?: number | null
+          dollars?: number | null
+          effects?: Json | null
+          height?: string | null
           id?: string
           image_url?: string | null
+          intelligence?: number | null
+          inventory?: Json | null
+          is_enemy?: boolean | null
+          is_in_combat?: boolean | null
           is_visible?: boolean | null
+          luck?: number | null
           name: string
+          nichirin_color?: string | null
           npc_id?: string | null
           precision?: number | null
           rank?: string | null
           resistance?: number | null
+          skills?: string[] | null
+          stat_points_available?: number | null
           strength?: number | null
           type?: string | null
         }
         Update: {
+          age?: number | null
           agility?: number | null
+          anomalies?: string[] | null
           aptitude?: number | null
           armed_pat?: string | null
+          bloodline?: string | null
+          breathing_lvl?: number | null
+          breathing_style?: string | null
           category?: string | null
+          charisma?: number | null
+          class?: string | null
           created_at?: string
+          current_hp?: number | null
+          current_posture?: number | null
+          dollars?: number | null
+          effects?: Json | null
+          height?: string | null
           id?: string
           image_url?: string | null
+          intelligence?: number | null
+          inventory?: Json | null
+          is_enemy?: boolean | null
+          is_in_combat?: boolean | null
           is_visible?: boolean | null
+          luck?: number | null
           name?: string
+          nichirin_color?: string | null
           npc_id?: string | null
           precision?: number | null
           rank?: string | null
           resistance?: number | null
+          skills?: string[] | null
+          stat_points_available?: number | null
           strength?: number | null
           type?: string | null
         }

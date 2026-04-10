@@ -1,6 +1,20 @@
 "use client";
 import { useState, useEffect, createContext, useContext, useRef } from 'react';
-import { WEAPON_CATEGORIES, WEAPON_SUBTYPES, HANDS_OPTIONS, TIERS, DAMAGE_TYPES, RANKS } from '../constants/gameData';
+import {
+  WEAPON_CATEGORIES,
+  WEAPON_SUBTYPES,
+  HANDS_OPTIONS,
+  TIERS,
+  DAMAGE_TYPES,
+  RANKS,
+  LINHAGENS,
+  RESPIRACOES,
+  CORES,
+  ANOMALIAS_LIST,
+  CLASSES_LIST,
+  SKILLS_LIST
+} from '../constants/gameData';
+import { calculateAcerto, calculateDesvio, calculateBloqueio, calculateDisarmedPAT } from '../lib/rpg-math';
 
 const TooltipContext = createContext();
 
@@ -199,6 +213,7 @@ export function Modal({ modal, closeModal }) {
     tier: 0,
     upgrade: 0,
     amount: 1,
+    carga: 1,
     damageType: 'Corte',
     description: ''
   });
@@ -222,6 +237,7 @@ export function Modal({ modal, closeModal }) {
         tier: modal.initialData?.tier !== undefined ? (typeof modal.initialData.tier === 'string' ? parseInt(modal.initialData.tier.replace(/\D/g, '')) : modal.initialData.tier) : 0,
         upgrade: modal.initialData?.upgrade || 0,
         amount: modal.initialData?.amount || 1,
+        carga: modal.initialData?.carga || 1,
         damageType: modal.initialData?.damageType || 'Corte',
         description: modal.initialData?.description || '',
         // NPC FIELDS
@@ -236,7 +252,24 @@ export function Modal({ modal, closeModal }) {
         precision: modal.initialData?.precision !== undefined ? modal.initialData.precision : 1,
         armed_pat: modal.initialData?.armed_pat !== undefined ? String(modal.initialData.armed_pat) : '0',
         image_url: modal.initialData?.image_url || '',
-        rank: modal.initialData?.rank || (modal.npcFields && (modal.initialData?.category === 'Human' || !modal.initialData?.category) ? 'E - Recruta' : '')
+        rank: modal.initialData?.rank || (modal.npcFields && (modal.initialData?.category === 'Human' || !modal.initialData?.category) ? 'E - Recruta' : ''),
+        is_visible: modal.initialData?.is_visible || false,
+        // COMPLEX FIELDS
+        age: modal.initialData?.age || 0,
+        bloodline: modal.initialData?.bloodline || 'Nenhuma',
+        breathing_style: modal.initialData?.breathing_style || 'Nenhuma',
+        breathing_lvl: modal.initialData?.breathing_lvl || 0,
+        height: modal.initialData?.height || '',
+        intelligence: modal.initialData?.intelligence || 0,
+        charisma: modal.initialData?.charisma || 0,
+        luck: modal.initialData?.luck || 0,
+        dollars: modal.initialData?.dollars || 0,
+        nichirin_color: modal.initialData?.nichirin_color || 'Nenhuma',
+        class: modal.initialData?.class || 'Civil',
+        anomalies: modal.initialData?.anomalies || [],
+        skills: modal.initialData?.skills || [],
+        stat_points_available: modal.initialData?.stat_points_available || 0,
+        inventory: modal.initialData?.inventory || []
       });
     }
   }, [modal.isOpen, modal.initialData, modal.forcedCustom]);
@@ -257,6 +290,7 @@ export function Modal({ modal, closeModal }) {
       hands: found.hands || 'Uma Mão',
       tier: found.tier !== undefined ? (typeof found.tier === 'string' ? parseInt(found.tier.replace(/\D/g, '')) : found.tier) : 0,
       upgrade: found.upgrade || 0,
+      carga: found.carga || 1,
       damageType: found.damageType || 'Corte',
       description: found.description || ''
     });
@@ -342,14 +376,27 @@ export function Modal({ modal, closeModal }) {
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <span className="text-[8px] text-zinc-500 font-bold uppercase">URL da Imagem</span>
-                  <input
-                    type="text"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
-                    value={localData.image_url || ''}
-                    onChange={(e) => setLocalData({ ...localData, image_url: e.target.value })}
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-zinc-500 font-bold uppercase">URL da Imagem</span>
+                    <input
+                      type="text"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                      value={localData.image_url || ''}
+                      onChange={(e) => setLocalData({ ...localData, image_url: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-center pt-3">
+                    <label className="flex items-center gap-3 bg-black/20 p-3 rounded-xl border border-white/5 cursor-pointer w-full group">
+                      <input
+                        type="checkbox"
+                        checked={localData.is_visible}
+                        onChange={(e) => setLocalData({ ...localData, is_visible: e.target.checked })}
+                        className="accent-red-600"
+                      />
+                      <span className="text-[10px] font-black uppercase text-zinc-400 group-hover:text-white transition-colors">Visível?</span>
+                    </label>
+                  </div>
                 </div>
 
                 {localData.type === 'Simple' && (
@@ -373,14 +420,38 @@ export function Modal({ modal, closeModal }) {
                         </div>
                       ))}
                     </div>
-                    <div className="space-y-1">
-                      <span className="text-[8px] text-zinc-500 font-bold uppercase">PAT Armado (Manual)</span>
-                      <input
-                        type="text"
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
-                        value={localData.armed_pat || '0'}
-                        onChange={(e) => setLocalData({ ...localData, armed_pat: e.target.value })}
-                      />
+
+                    <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/5">
+                      <div className="flex flex-col items-center">
+                        <span className="text-[7px] font-black text-purple-400 uppercase">Acerto</span>
+                        <span className="text-xs font-bold font-mono">1d{calculateAcerto(localData)}</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[7px] font-black text-purple-400 uppercase">Desvio</span>
+                        <span className="text-xs font-bold font-mono">1d{calculateDesvio(localData)}</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[7px] font-black text-purple-400 uppercase">Bloqueio</span>
+                        <span className="text-xs font-bold font-mono">1d{calculateBloqueio(localData)}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[8px] text-zinc-500 font-bold uppercase">Ataque Armado (Manual)</span>
+                        <input
+                          type="text"
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
+                          value={localData.armed_pat || '0'}
+                          onChange={(e) => setLocalData({ ...localData, armed_pat: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1 flex flex-col justify-end">
+                        <span className="text-[8px] text-zinc-500 font-bold uppercase">Ataque Desarmado</span>
+                        <div className="bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-yellow-500 text-xs font-bold font-mono">
+                          1d{Math.floor(calculateDisarmedPAT(localData))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -582,19 +653,34 @@ export function Modal({ modal, closeModal }) {
               </div>
             </div>
 
-            {!modal.forcedCustom && (
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <span className="text-[8px] text-zinc-500 font-bold uppercase">Quantidade</span>
+                <span className="text-[8px] text-zinc-500 font-bold uppercase">Carga (Slots)</span>
                 <input
+                  disabled={!modal.forcedCustom && !isCustom}
                   type="number"
-                  value={localData.amount}
+                  value={localData.carga}
                   min="1"
-                  placeholder="Qtd"
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500"
-                  onChange={(e) => setLocalData({ ...localData, amount: Math.max(1, parseInt(e.target.value) || 1) })}
+                  placeholder="Carga"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500 disabled:opacity-50"
+                  onChange={(e) => setLocalData({ ...localData, carga: Math.max(1, parseInt(e.target.value) || 1) })}
                 />
               </div>
-            )}
+
+              {!modal.forcedCustom && (
+                <div className="space-y-1">
+                  <span className="text-[8px] text-zinc-500 font-bold uppercase">Quantidade</span>
+                  <input
+                    type="number"
+                    value={localData.amount}
+                    min="1"
+                    placeholder="Qtd"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-yellow-500"
+                    onChange={(e) => setLocalData({ ...localData, amount: Math.max(1, parseInt(e.target.value) || 1) })}
+                  />
+                </div>
+              )}
+            </div>
             </>
             )}
           </div>
@@ -639,20 +725,37 @@ export function Modal({ modal, closeModal }) {
               if (modal.fields) {
                 if (modal.npcFields) {
                   // Filter only NPC fields to avoid Supabase errors with unknown columns
-                  const npcData = {
-                    npc_id: localData.npc_id,
-                    name: localData.name || 'Novo NPC',
-                    type: localData.type || 'Simple',
-                    category: localData.category || 'Human',
-                    strength: Number(localData.strength) || 1,
-                    resistance: Number(localData.resistance) || 1,
-                    aptitude: Number(localData.aptitude) || 1,
-                    agility: Number(localData.agility) || 1,
-                    precision: Number(localData.precision) || 1,
-                    armed_pat: localData.armed_pat || '0',
-                    image_url: localData.image_url || null,
-                    rank: localData.rank || null
-                  };
+                const npcData = {
+                  npc_id: localData.npc_id,
+                  name: localData.name || 'Novo NPC',
+                  type: localData.type || 'Simple',
+                  category: localData.category || 'Human',
+                  strength: Number(localData.strength) || 1,
+                  resistance: Number(localData.resistance) || 1,
+                  aptitude: Number(localData.aptitude) || 1,
+                  agility: Number(localData.agility) || 1,
+                  precision: Number(localData.precision) || 1,
+                  armed_pat: localData.armed_pat || '0',
+                  image_url: localData.image_url || null,
+                  rank: localData.rank || null,
+                  is_visible: !!localData.is_visible,
+                  // COMPLEX FIELDS
+                  age: localData.type === 'Complex' ? Number(localData.age) : null,
+                  bloodline: localData.type === 'Complex' ? localData.bloodline : null,
+                  breathing_style: localData.type === 'Complex' ? localData.breathing_style : null,
+                  breathing_lvl: localData.type === 'Complex' ? Number(localData.breathing_lvl) : 0,
+                  height: localData.type === 'Complex' ? localData.height : null,
+                  intelligence: localData.type === 'Complex' ? Number(localData.intelligence) : 0,
+                  charisma: localData.type === 'Complex' ? Number(localData.charisma) : 0,
+                  luck: localData.type === 'Complex' ? Number(localData.luck) : 0,
+                  dollars: localData.type === 'Complex' ? Number(localData.dollars) : 0,
+                  nichirin_color: localData.type === 'Complex' ? localData.nichirin_color : null,
+                  class: localData.type === 'Complex' ? localData.class : null,
+                  anomalies: localData.type === 'Complex' ? (Array.isArray(localData.anomalies) ? localData.anomalies : []) : [],
+                  skills: localData.type === 'Complex' ? (Array.isArray(localData.skills) ? localData.skills : []) : [],
+                  stat_points_available: localData.type === 'Complex' ? Number(localData.stat_points_available) : 0,
+                  inventory: localData.type === 'Complex' ? (Array.isArray(localData.inventory) ? localData.inventory : []) : []
+                };
                   modal.onConfirm(npcData);
                 } else {
                   modal.onConfirm(localData);

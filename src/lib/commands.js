@@ -8,6 +8,7 @@
 
 import { supabase } from './supabase';
 import { MASTER_DISCORD_ID } from '../constants/gameData';
+import { calculateDerivedStats } from './rpg-math';
 
 /**
  * Command Definition Structure:
@@ -33,12 +34,24 @@ export const COMMANDS = [
       const playerIds = getPlayerIdsFromUsernames(players, allPlayers);
       
       // 1. Reset everyone
-      await supabase.from('characters').update({ is_in_combat: false }).neq('rank', 'Mestre');
+      await supabase.from('characters').update({ 
+        is_in_combat: false, 
+        effects: [],
+        current_posture: null 
+      }).not('id', 'is', null);
+
+      await supabase.from('npcs').update({ 
+        is_in_combat: false, 
+        is_enemy: false, 
+        effects: [],
+        current_hp: null,
+        current_posture: null 
+      }).not('id', 'is', null);
       
       // 2. Set specified players
       for (const id of playerIds) {
         const p = allPlayers.find(pl => pl.id === id);
-        const updateData = { 
+        const updateData = {
           is_in_combat: true,
           current_hp: calculateHP(p, hpPerc)
         };
@@ -46,7 +59,7 @@ export const COMMANDS = [
       }
 
       // 3. Set Master combat active
-      await supabase.from('characters').update({ is_in_combat: true }).eq('id', MASTER_DISCORD_ID);
+      await supabase.from('characters').update({ is_in_combat: true }).eq('discord_username', 'EnderU');
 
       // 4. Reset turn to 1 and activate combat
       await supabase.from('global').update({
@@ -58,22 +71,84 @@ export const COMMANDS = [
     }
   },
   {
-    name: "combat add-player",
-    description: "Adds specific players to the ongoing combat",
+    name: "combat add-c",
+    description: "Adds specific players or NPCs to the ongoing combat",
     args: [
       { name: "hp-percentage", type: "number" },
-      { name: "players", type: "array" }
+      { name: "targets", type: "array" }
     ],
-    execute: async ([hpPerc, players], { allPlayers }) => {
-      const playerIds = getPlayerIdsFromUsernames(players, allPlayers);
-      for (const id of playerIds) {
-        const p = allPlayers.find(pl => pl.id === id);
-        await supabase.from('characters').update({ 
-          is_in_combat: true,
-          current_hp: calculateHP(p, hpPerc)
-        }).eq('id', id);
+    execute: async ([hpPerc, targets], { allPlayers }) => {
+      const { data: allNpcs } = await supabase.from('npcs').select('*');
+      
+      let addedCount = 0;
+      for (const targetName of targets) {
+        const cleanName = targetName.startsWith('@.') ? targetName.substring(2) : targetName;
+        const normalizedTarget = cleanName.toLowerCase().trim();
+        
+        // 1. Try to find a player
+        const player = allPlayers.find(p =>
+          p.discord_username?.toLowerCase() === normalizedTarget ||
+          p.char_name?.toLowerCase() === normalizedTarget
+        );
+
+        if (player) {
+          await supabase.from('characters').update({
+            is_in_combat: true,
+            current_hp: calculateHP(player, hpPerc)
+          }).eq('id', player.id);
+          addedCount++;
+          continue;
+        }
+
+        // 2. Try to find an NPC by ID or Name
+        const npc = allNpcs?.find(n =>
+          n.npc_id?.toLowerCase() === normalizedTarget ||
+          n.name?.toLowerCase() === normalizedTarget
+        );
+        
+        if (npc) {
+          const { life: maxLife } = calculateDerivedStats(npc);
+          await supabase.from('npcs').update({
+            is_in_combat: true,
+            current_hp: Math.floor((hpPerc / 100) * maxLife)
+          }).eq('id', npc.id);
+          addedCount++;
+        }
       }
-      return { success: true, message: `Added ${playerIds.length} players.` };
+      return { success: true, message: `Added ${addedCount} combatants.` };
+    }
+  },
+  {
+    name: "combat add-e",
+    description: "Adds NPCs to combat as ENEMIES (shown at the top)",
+    args: [
+      { name: "hp-percentage", type: "number" },
+      { name: "targets", type: "array" }
+    ],
+    execute: async ([hpPerc, targets], { allPlayers }) => {
+      const { data: allNpcs } = await supabase.from('npcs').select('*');
+      
+      let addedCount = 0;
+      for (const targetName of targets) {
+        const cleanName = targetName.startsWith('@.') ? targetName.substring(2) : targetName;
+        const normalizedTarget = cleanName.toLowerCase().trim();
+        
+        const npc = allNpcs?.find(n =>
+          n.npc_id?.toLowerCase() === normalizedTarget ||
+          n.name?.toLowerCase() === normalizedTarget
+        );
+        
+        if (npc) {
+          const { life: maxLife } = calculateDerivedStats(npc);
+          await supabase.from('npcs').update({
+            is_in_combat: true,
+            is_enemy: true,
+            current_hp: Math.floor((hpPerc / 100) * maxLife)
+          }).eq('id', npc.id);
+          addedCount++;
+        }
+      }
+      return { success: true, message: `Added ${addedCount} enemies.` };
     }
   },
   {
@@ -84,7 +159,7 @@ export const COMMANDS = [
       { name: "effect", type: "string" },
       { name: "turns", type: "number", optional: true }
     ],
-    execute: async ([players, effectKey, turns], { allPlayers }) => {
+    execute: async ([targets, effectKey, turns], { allPlayers, allNPCs }) => {
       const { EFFECTS, EFFECT_ALIASES } = await import('../constants/gameData');
       const normalizedKey = effectKey.toLowerCase().trim();
       const actualKey = EFFECT_ALIASES[normalizedKey] || normalizedKey;
@@ -92,36 +167,38 @@ export const COMMANDS = [
       
       if (!effect) return { success: false, message: `Effect "${effectKey}" not found.` };
 
-      const playerIds = getPlayerIdsFromUsernames(players, allPlayers);
+      const cleanUsernames = targets.map(u => u.startsWith('@.') ? u.substring(2) : u);
+      const normalizedTargets = cleanUsernames.map(u => u.toLowerCase().trim());
       
-      for (const id of playerIds) {
-        const p = allPlayers.find(pl => pl.id === id);
-        const currentEffects = Array.isArray(p.effects) ? p.effects : [];
+      let addedCount = 0;
+      
+      for (const targetName of normalizedTargets) {
+        // 1. Find player or NPC
+        let target = allPlayers.find(p => p.discord_username?.toLowerCase() === targetName || p.char_name?.toLowerCase() === targetName);
+        let table = 'characters';
         
-        // Don't add if already has it (optional, but usually effects don't stack linearly like this)
-        if (currentEffects.find(e => e.key === actualKey)) continue;
-
-        const newEffects = [...currentEffects, { ...effect, key: actualKey, addedAtTurn: 0, duration: turns }]; // turn logic will be handled in turn system
-        
-        // Calculate new Max Life with the added effect
-        const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
-        let newMaxLife = baseLife;
-        newEffects.forEach(eff => {
-          if (eff.modifiers?.maxLife) newMaxLife *= eff.modifiers.maxLife;
-        });
-        newMaxLife = Math.floor(newMaxLife);
-
-        const updateData = { effects: newEffects };
-        
-        // Clamp current HP if it exceeds new Max Life
-        if ((p.current_hp || baseLife) > newMaxLife) {
-          updateData.current_hp = newMaxLife;
+        if (!target) {
+          target = allNPCs.find(n => n.npc_id?.toLowerCase() === targetName || n.name?.toLowerCase() === targetName);
+          table = 'npcs';
         }
 
-        await supabase.from('characters').update(updateData).eq('id', id);
+        if (target) {
+          const currentEffects = Array.isArray(target.effects) ? target.effects : [];
+          if (currentEffects.find(e => e.key === actualKey)) continue;
+
+          const newEffects = [...currentEffects, { ...effect, key: actualKey, addedAtTurn: 0, duration: turns }];
+          
+          const { life: newMaxLife } = calculateDerivedStats({ ...target, effects: newEffects });
+
+          const updateData = { effects: newEffects };
+          if ((target.current_hp || newMaxLife) > newMaxLife) updateData.current_hp = newMaxLife;
+
+          await supabase.from(table).update(updateData).eq('id', target.id);
+          addedCount++;
+        }
       }
 
-      return { success: true, message: `Added ${effect.name} to ${playerIds.length} players.` };
+      return { success: true, message: `Added ${effect.name} to ${addedCount} targets.` };
     }
   },
   {
@@ -131,9 +208,17 @@ export const COMMANDS = [
       { name: "players", type: "array" }
     ],
     execute: async ([players], { allPlayers }) => {
-      const playerIds = getPlayerIdsFromUsernames(players, allPlayers);
-      await supabase.from('characters').update({ is_in_combat: false }).in('id', playerIds);
-      return { success: true, message: `Removed ${playerIds.length} players.` };
+      const { data: allNpcs } = await supabase.from('npcs').select('*');
+      const cleanUsernames = players.map(u => u.startsWith('@.') ? u.substring(2) : u);
+      const normalizedUsernames = cleanUsernames.map(u => u.toLowerCase().trim());
+
+      const playerIds = allPlayers.filter(p => normalizedUsernames.includes(p.discord_username?.toLowerCase()) || normalizedUsernames.includes(p.char_name?.toLowerCase())).map(p => p.id);
+      const npcIds = allNpcs.filter(n => normalizedUsernames.includes(n.npc_id?.toLowerCase()) || normalizedUsernames.includes(n.name?.toLowerCase())).map(n => n.id);
+
+      if (playerIds.length > 0) await supabase.from('characters').update({ is_in_combat: false }).in('id', playerIds);
+      if (npcIds.length > 0) await supabase.from('npcs').update({ is_in_combat: false }).in('id', npcIds);
+
+      return { success: true, message: `Removed ${playerIds.length + npcIds.length} combatants.` };
     }
   },
   {
@@ -153,12 +238,28 @@ export const COMMANDS = [
     description: "Ends the current combat session for everyone",
     args: [],
     execute: async () => {
-      await supabase.from('characters').update({ is_in_combat: false }).neq('id', 'dummy');
+      // 1. Reset everyone's combat status and effects
+      await supabase.from('characters').update({ 
+        is_in_combat: false, 
+        effects: [],
+        current_posture: null
+      }).not('id', 'is', null);
+
+      await supabase.from('npcs').update({ 
+        is_in_combat: false, 
+        is_enemy: false, 
+        effects: [],
+        current_hp: null,
+        current_posture: null
+      }).not('id', 'is', null);
+
+      // 2. Reset global combat state
       await supabase.from('global').update({
         current_turn: 1,
         is_combat_active: false
       }).eq('id', 1);
-      return { success: true, message: "Combat finished globally." };
+
+      return { success: true, message: "Combat finished and all combatants cleaned." };
     }
   },
   {
@@ -246,8 +347,13 @@ const getPlayerIdsFromUsernames = (usernames, allPlayers) => {
   // usernames comes from array type "player1,player2" -> ["player1", "player2"]
   // handles both "@.username" and "username"
   const cleanUsernames = usernames.map(u => u.startsWith('@.') ? u.substring(2) : u);
+  const normalizedUsernames = cleanUsernames.map(u => u.toLowerCase().trim());
+  
   return allPlayers
-    .filter(p => cleanUsernames.includes(p.discord_username))
+    .filter(p =>
+      normalizedUsernames.includes(p.discord_username?.toLowerCase() || "") ||
+      normalizedUsernames.includes(p.char_name?.toLowerCase() || "")
+    )
     .map(p => p.id);
 };
 
@@ -284,7 +390,7 @@ export const parseArgs = (inputParts, commandDef) => {
   return args;
 };
 
-export const handleCommand = async (input, user, allPlayers) => {
+export const handleCommand = async (input, user, allPlayers, allNPCs = []) => {
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
   if (!isMaster) return { success: false, message: "Only the Master can use commands." };
 
@@ -318,7 +424,7 @@ export const handleCommand = async (input, user, allPlayers) => {
         return { success: false, message: `Missing arguments for ${cmd.name}` };
       }
 
-      return await cmd.execute(args, { user, allPlayers });
+      return await cmd.execute(args, { user, allPlayers, allNPCs });
     }
   }
 

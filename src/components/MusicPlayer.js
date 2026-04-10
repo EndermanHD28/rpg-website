@@ -6,12 +6,22 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [url, setUrl] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isSFXOpen, setIsSFXOpen] = useState(false);
+  const [activeSounds, setActiveSounds] = useState(new Set());
+  const audioRefs = useRef({});
+  const [sfxList, setSfxList] = useState({ builtIn: [], soundEffects: [] });
+  const [sfxSearchBuiltIn, setSfxSearchBuiltIn] = useState('');
+  const [sfxSearchPlayable, setSfxSearchPlayable] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [hasInteracted, setHasInteracted] = useState(false);
   const [songTitle, setSongTitle] = useState('Loading...');
   const [showTitle, setShowTitle] = useState(false);
   const [volume, setVolume] = useState(initialVolume);
   const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    setVolume(initialVolume);
+  }, [initialVolume]);
   const [played, setPlayed] = useState(0);
   const ytPlayer = useRef(null);
   const lastSyncTime = useRef(0);
@@ -199,6 +209,11 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           console.error("Error destroying player in cleanup:", e);
         }
       }
+      // Stop all playing SFX
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
     };
   }, [url, hasInteracted]);
 
@@ -305,6 +320,65 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
   // Master Sync Pulse - No longer needed as we use music_started_at
 
+  useEffect(() => {
+    if (isMaster) {
+      fetch('/api/sounds')
+        .then(res => res.json())
+        .then(data => setSfxList(data))
+        .catch(err => console.error("Error fetching sounds:", err));
+    }
+  }, [isMaster]);
+
+  const playSFX = (filename, category) => {
+    const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
+    
+    // Stop and restart if already playing
+    if (audioRefs.current[path]) {
+      audioRefs.current[path].pause();
+      audioRefs.current[path].currentTime = 0;
+    }
+
+    const audio = new Audio(path);
+    audio.volume = volume;
+    audioRefs.current[path] = audio;
+    
+    setActiveSounds(prev => new Set(prev).add(path));
+
+    audio.onended = () => {
+      setActiveSounds(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      delete audioRefs.current[path];
+    };
+
+    audio.play().catch(err => {
+      console.error("Error playing SFX:", err);
+      setActiveSounds(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      delete audioRefs.current[path];
+    });
+  };
+
+  const stopSFX = (e, filename, category) => {
+    e.stopPropagation();
+    const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
+    if (audioRefs.current[path]) {
+      audioRefs.current[path].pause();
+      audioRefs.current[path].currentTime = 0;
+      delete audioRefs.current[path];
+      setActiveSounds(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+    }
+  };
+
   const handleUpdateMusic = async () => {
     if (!isMaster) return;
     
@@ -338,8 +412,92 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     <div
       className="fixed bottom-8 right-8 z-[200] flex flex-col items-end gap-3"
       onMouseEnter={() => setShowTitle(true)}
-      onMouseLeave={() => !isOpen && setShowTitle(false)}
+      onMouseLeave={() => !isOpen && !isSFXOpen && setShowTitle(false)}
     >
+      {/* SFX Panel */}
+      {isSFXOpen && isMaster && (
+        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl w-80 mb-2 animate-in fade-in slide-in-from-bottom-4 duration-300 flex flex-col gap-4">
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-[10px] font-black text-zinc-500 uppercase">Sound Effects</p>
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={sfxSearchPlayable}
+                onChange={(e) => setSfxSearchPlayable(e.target.value)}
+                className="bg-black border border-zinc-800 rounded px-2 py-0.5 text-[9px] text-white outline-none focus:border-red-600 w-24"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto custom-scrollbar">
+              {sfxList.soundEffects.filter(s => s.toLowerCase().includes(sfxSearchPlayable.toLowerCase())).map(s => {
+                const path = `/sound_effects/playable/${s}`;
+                const active = activeSounds.has(path);
+                return (
+                  <button 
+                    key={s} 
+                    onClick={() => playSFX(s, 'playable')}
+                    className={`text-[9px] text-left px-2 py-1 rounded truncate transition-colors relative ${
+                      active ? 'bg-red-600 text-white font-bold shadow-[0_0_10px_rgba(220,38,38,0.5)]' : 'bg-zinc-800/50 text-zinc-300 hover:bg-red-600/30'
+                    }`}
+                    title={s}
+                  >
+                    {s.split('.')[0]}
+                    {active && (
+                      <span 
+                        onClick={(e) => stopSFX(e, s, 'playable')}
+                        className="ml-2 bg-black/40 hover:bg-black text-[7px] px-1 rounded border border-white/20"
+                      >
+                        STOP
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {sfxList.soundEffects.length === 0 && <p className="text-[9px] text-zinc-600 italic col-span-2">No effects found</p>}
+            </div>
+          </div>
+
+          <div className="border-t border-zinc-800 pt-3">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-[10px] font-black text-zinc-500 uppercase">Built-In</p>
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={sfxSearchBuiltIn}
+                onChange={(e) => setSfxSearchBuiltIn(e.target.value)}
+                className="bg-black border border-zinc-800 rounded px-2 py-0.5 text-[9px] text-white outline-none focus:border-red-600 w-24"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto custom-scrollbar">
+              {sfxList.builtIn.filter(s => s.toLowerCase().includes(sfxSearchBuiltIn.toLowerCase())).map(s => {
+                const path = `/sound_effects/${s}`;
+                const active = activeSounds.has(path);
+                return (
+                  <button 
+                    key={s} 
+                    onClick={() => playSFX(s, 'builtIn')}
+                    className={`text-[9px] text-left px-2 py-1 rounded truncate transition-colors relative ${
+                      active ? 'bg-zinc-100 text-black font-bold shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700'
+                    }`}
+                    title={s}
+                  >
+                    {s.split('.')[0]}
+                    {active && (
+                      <span 
+                        onClick={(e) => stopSFX(e, s, 'builtIn')}
+                        className="ml-2 bg-black/40 hover:bg-black text-[7px] px-1 rounded border border-white/20 text-white"
+                      >
+                        STOP
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Master Input Panel */}
       {isOpen && isMaster && (
         <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl w-72 mb-2 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -411,8 +569,27 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           </div>
         )}
 
+        {isMaster && (
+          <button
+            onClick={() => {
+              setIsSFXOpen(!isSFXOpen);
+              setIsOpen(false);
+            }}
+            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl group bg-zinc-900 border border-white/10 hover:border-red-600/50 cursor-pointer hover:scale-110 active:scale-95`}
+          >
+            <span className="text-xl group-hover:scale-110 transition-transform">🔊</span>
+          </button>
+        )}
+
         <button
-          onClick={() => isMaster ? setIsOpen(!isOpen) : setShowTitle(!showTitle)}
+          onClick={() => {
+            if (isMaster) {
+              setIsOpen(!isOpen);
+              setIsSFXOpen(false);
+            } else {
+              setShowTitle(!showTitle);
+            }
+          }}
           className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl group ${
             url ? 'bg-red-600' : 'bg-zinc-900 border border-white/10 hover:border-red-600/50'
           } ${isMaster ? 'cursor-pointer hover:scale-110 active:scale-95' : 'cursor-pointer active:scale-95'}`}

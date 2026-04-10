@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { MASTER_DISCORD_ID, ANOMALIAS_LIST, SKILLS_LIST, RARITY_CONFIG } from '../constants/gameData';
 
+import { calculateDerivedStats } from '../lib/rpg-math';
+
 // Components
 import Inventory from '../components/InventoryTemp';
 import LootTableEditorModal from '../components/LootTableEditorModal';
@@ -35,6 +37,7 @@ export default function Home() {
   const [character, setCharacter] = useState(null);
   const [tempChar, setTempChar] = useState(null);
   const [allPlayers, setAllPlayers] = useState([]);
+  const [allNPCs, setAllNPCs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [viewingTarget, setViewingTarget] = useState(null);
@@ -54,23 +57,25 @@ export default function Home() {
   const isActingAsMaster = isMaster && !previewAsPlayer;
   const isViewingOthers = viewingTarget && viewingTarget !== user?.id;
   const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
+  const isNPC = activeChar && allNPCs.some(n => n.id === activeChar.id);
 
   // --- MATH HELPERS ---
-  const presence = activeChar ? (Number(activeChar.strength) || 0) + (Number(activeChar.resistance) || 0) + (Number(activeChar.aptitude) || 0) + (Number(activeChar.agility) || 0) + (Number(activeChar.precision) || 0) : 0;
-  const life = activeChar ? (() => {
-    let l = (Number(activeChar.strength) || 0) + ((Number(activeChar.resistance) || 0) * 7);
-    const effs = Array.isArray(activeChar.effects) ? activeChar.effects : [];
-    effs.forEach(eff => {
-      if (eff.modifiers?.maxLife) l *= eff.modifiers.maxLife;
-    });
-    return Math.floor(l);
-  })() : 0;
-  const posture = activeChar ? ((Number(activeChar.resistance) || 0) * 1.2) + (Number(activeChar.aptitude * 3.4) || 0) : 0;
+  const derivedStats = calculateDerivedStats(activeChar) || {};
+  const { 
+    presence = 0, 
+    life = 0, 
+    posture = 0,
+    luckPerc = 0,
+    charismaPerc = 0,
+    intelligencePerc = 0,
+    strengthPerc = 0,
+    resistancePerc = 0,
+    aptitudePerc = 0,
+    agilityPerc = 0,
+    precisionPerc = 0
+  } = derivedStats;
 
   const getPerc = (val) => presence > 0 ? ((Number(val) / presence) * 100).toFixed(1) : "0.0";
-  const luckPerc = activeChar ? parseFloat(getPerc(activeChar.luck || 0)) : 0;
-  const charismaPerc = activeChar ? parseFloat(getPerc(activeChar.charisma || 0)) : 0;
-  const intelligencePerc = activeChar ? parseFloat(getPerc(activeChar.intelligence || 0)) : 0;
 
   const [now, setNow] = useState(Date.now());
   const [globalLockUntil, setGlobalLockUntil] = useState(0);
@@ -100,6 +105,9 @@ export default function Home() {
       const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
       setAllPlayers(players || []);
 
+      const { data: npcsData } = await supabase.from('npcs').select('*').order('name', { ascending: true });
+      setAllNPCs(npcsData || []);
+
       if (activeUser) {
         const tId = viewingTarget || activeUser.id;
         const char = (players || []).find(p => p.id === tId);
@@ -116,7 +124,8 @@ export default function Home() {
             const newChar = {
               id: activeUser.id,
               discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
-              char_name: "Novo Caçador",
+              char_name: "Novo Recruta",
+              age: 18,
               strength: 3,
               resistance: 3,
               aptitude: 3,
@@ -125,11 +134,11 @@ export default function Home() {
               intelligence: 3,
               luck: 3,
               charisma: 3,
-              stat_points_available: 50,
-              dollars: 500,
+              stat_points_available: 0,
+              dollars: 0,
               inventory: [],
-              rank: 'Recruta',
-              current_hp: 30
+              rank: 'E - Recruta',
+              current_hp: 24 // (3 strength + 3 resistance * 7) = 24
             };
             const { data: createdChar, error: createError } = await supabase
               .from('characters')
@@ -165,7 +174,11 @@ export default function Home() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-      if (msgData) setMessages(msgData.reverse());
+      if (msgData) {
+        // Ensure chronological order
+        const sorted = [...msgData].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        setMessages(sorted);
+      }
       
       setLoading(false);
     };
@@ -208,6 +221,15 @@ export default function Home() {
           setAllPlayers(prev => prev.filter(pl => pl.id !== p.old.id));
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'npcs' }, (p) => {
+        if (p.eventType === 'INSERT') {
+          setAllNPCs(prev => [...prev, p.new].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+        } else if (p.eventType === 'UPDATE') {
+          setAllNPCs(prev => prev.map(n => n.id === p.new.id ? p.new : n));
+        } else if (p.eventType === 'DELETE') {
+          setAllNPCs(prev => prev.filter(n => n.id !== p.old.id));
+        }
+      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (p) => {
         console.log("REALTIME GLOBAL UPDATE RECEIVED:", p.new);
         
@@ -244,20 +266,22 @@ export default function Home() {
           }));
         }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
-        setMessages(prev => {
-          const newList = [...prev, p.new];
-          if (newList.length > 50) {
-            return newList.slice(-50);
-          }
-          return newList;
-        });
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (p) => {
-        setMessages(prev => {
-          if (!p.old || Object.keys(p.old).length === 0) return [];
-          return prev.filter(m => m.id !== p.old.id);
-        });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
+        if (p.eventType === 'INSERT') {
+          setMessages(prev => {
+            if (prev.some(m => m.id === p.new.id)) return prev;
+            const newList = [...prev, p.new].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            if (newList.length > 50) return newList.slice(-50);
+            return newList;
+          });
+        } else if (p.eventType === 'UPDATE') {
+          setMessages(prev => prev.map(m => m.id === p.new.id ? p.new : m));
+        } else if (p.eventType === 'DELETE') {
+          setMessages(prev => {
+            if (!p.old || Object.keys(p.old).length === 0) return [];
+            return prev.filter(m => m.id !== p.old.id);
+          });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
         if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
@@ -341,9 +365,10 @@ export default function Home() {
       // 2. Calculate points spent based on the DIFFERENCE between 
       // our new state (nextState) and the original baseline (character)
       const totalSpent = keys.reduce((acc, k) => {
-        // Treat empty strings or NaN as 3 for the sake of PS calculation
-        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? 3 : Number(nextState[k]);
-        const originalVal = Number(character[k]) || 3;
+        // Treat empty strings or NaN as baseline for the sake of PS calculation
+        const baseline = (activeChar?.is_complex || isNPC) ? 1 : 3;
+        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? baseline : Number(nextState[k]);
+        const originalVal = Number(character[k]) || baseline;
         return acc + (currentVal - originalVal);
       }, 0);
 
@@ -361,10 +386,11 @@ export default function Home() {
       const sanitized = { ...tempChar };
       const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
 
-      // VALIDATION 1: Check for stats lower than 3 or empty
-      const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < 3);
+      // VALIDATION 1: Check for stats lower than 3 (or 1 for complex NPCs) or empty
+      const minStat = (sanitized?.is_complex || isNPC) ? 1 : 3;
+      const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < minStat);
       if (hasInvalidStat) {
-        showToast("Erro: Todos os atributos devem ser pelo menos 3.");
+        showToast(`Erro: Todos os atributos devem ser pelo menos ${minStat}.`);
         return;
       }
 
@@ -390,17 +416,68 @@ export default function Home() {
           closeModal();
 
           if (isActingAsMaster) {
-            const { error } = await supabase.from('characters')
-              .update({ ...sanitized, master_editing_id: null })
+            // Determine if we are editing a player or an NPC
+            const isTargetNPC = allNPCs.some(n => n.id === (viewingTarget || user.id));
+            const table = isTargetNPC ? 'npcs' : 'characters';
+
+            // If it's an NPC, we need to filter/format fields to match the 'npcs' table schema
+            let dataToSave = { ...sanitized };
+            if (isTargetNPC) {
+              dataToSave = {
+                name: sanitized.char_name || sanitized.name,
+                type: sanitized.type,
+                category: sanitized.category,
+                strength: Number(sanitized.strength) || 1,
+                resistance: Number(sanitized.resistance) || 1,
+                aptitude: Number(sanitized.aptitude) || 1,
+                agility: Number(sanitized.agility) || 1,
+                precision: Number(sanitized.precision) || 1,
+                armed_pat: sanitized.armed_pat || '0',
+                image_url: sanitized.image_url || null,
+                rank: sanitized.rank || null,
+                is_visible: !!sanitized.is_visible,
+                // Complex fields
+                age: sanitized.type === 'Complex' ? Number(sanitized.age) : null,
+                bloodline: sanitized.type === 'Complex' ? sanitized.bloodline : null,
+                breathing_style: sanitized.type === 'Complex' ? sanitized.breathing_style : null,
+                breathing_lvl: sanitized.type === 'Complex' ? Number(sanitized.breathing_lvl) : 0,
+                height: sanitized.type === 'Complex' ? sanitized.height : null,
+                intelligence: sanitized.type === 'Complex' ? Number(sanitized.intelligence) : 0,
+                charisma: sanitized.type === 'Complex' ? Number(sanitized.charisma) : 0,
+                luck: sanitized.type === 'Complex' ? Number(sanitized.luck) : 0,
+                dollars: sanitized.type === 'Complex' ? Number(sanitized.dollars) : 0,
+                nichirin_color: sanitized.type === 'Complex' ? sanitized.nichirin_color : null,
+                class: sanitized.type === 'Complex' ? sanitized.class : null,
+                anomalies: sanitized.type === 'Complex' ? (Array.isArray(sanitized.anomalies) ? sanitized.anomalies : []) : [],
+                skills: sanitized.type === 'Complex' ? (Array.isArray(sanitized.skills) ? sanitized.skills : []) : [],
+                stat_points_available: sanitized.type === 'Complex' ? Number(sanitized.stat_points_available) : 0,
+                inventory: sanitized.type === 'Complex' ? (Array.isArray(sanitized.inventory) ? sanitized.inventory : []) : []
+              };
+            } else {
+              dataToSave.master_editing_id = null;
+            }
+
+            // OPTIMISTIC SYNC: Update the local state in allNPCs or allPlayers immediately
+            // to prevent the need for a manual refresh (F5).
+            if (isTargetNPC) {
+              setAllNPCs(prev => prev.map(n => n.id === (viewingTarget || user.id) ? { ...n, ...dataToSave } : n));
+            } else {
+              setAllPlayers(prev => prev.map(p => p.id === (viewingTarget || user.id) ? { ...p, ...dataToSave } : p));
+            }
+
+            const { error } = await supabase.from(table)
+              .update(dataToSave)
               .eq('id', viewingTarget || user.id);
 
             // We also update the local 'character' state to match the DB
             // so that if we are viewing ourselves, our state stays in sync.
-            if (!error && !viewingTarget) {
-              setCharacter(sanitized);
+            if (!error) {
+              // Update local character state to match the sanitized data
+              // This is crucial for NPCs since they might use mapped fields (like char_name -> name)
+              setCharacter(prev => ({ ...prev, ...dataToSave, char_name: dataToSave.name || dataToSave.char_name }));
             }
 
-            if (viewingTarget) {
+            if (viewingTarget && !isTargetNPC) {
               await supabase.from('change_requests').update({ status: 'rejected' }).eq('player_id', viewingTarget).eq('status', 'pending');
             }
             if (!error) showToast("Ficha Sincronizada!");
@@ -453,8 +530,8 @@ export default function Home() {
     <main className="min-h-screen bg-black text-white flex items-stretch">
 
       {/* SIDEBAR */}
-      <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 p-8 flex flex-col justify-between shrink-0 z-[100] overflow-y-auto custom-scrollbar">
-        <div className="space-y-8">
+      <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 flex flex-col justify-between shrink-0 z-[100]">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8">
           <div onClick={() => setActiveTab('home')} className="cursor-pointer">
             <h1 className="text-xl font-black text-red-600 italic leading-none uppercase">Bloodbath</h1>
             <p className="text-[8px] text-zinc-500 font-bold tracking-widest uppercase mt-1">What-If RPG</p>
@@ -514,6 +591,27 @@ export default function Home() {
                       />
                     );
                   })}
+
+                {/* Complex NPCs in Sidebar */}
+                {allNPCs
+                  .filter(npc => npc.type === 'Complex')
+                  .filter(npc => isActingAsMaster || npc.is_visible)
+                  .map(npc => (
+                    <NavButton
+                      key={npc.id}
+                      active={activeTab === 'sheet' && viewingTarget === npc.id}
+                      label={npc.name}
+                      isNPC
+                      onClick={() => {
+                        playSound('tab_change');
+                        setCharacter(npc);
+                        setTempChar(npc);
+                        setViewingTarget(npc.id);
+                        setActiveTab('sheet');
+                      }}
+                    />
+                  ))}
+
                 <NavButton active={activeTab === 'npcs'} label="NPCs" onClick={() => { playSound('tab_change'); setActiveTab('npcs'); }} />
               </div>
             </div>
@@ -536,7 +634,7 @@ export default function Home() {
 
           </div>
         </div>
-        <div className="space-y-4 pt-8">
+        <div className="p-8 pt-4 space-y-4 border-t border-white/5 bg-zinc-950">
           {/* VOLUME SLIDER */}
           <div className="px-4 py-2 bg-zinc-900/30 rounded-2xl border border-white/5 flex items-center gap-3 group">
             <span className="text-xs grayscale group-hover:grayscale-0 transition-all opacity-50 group-hover:opacity-100">🔊</span>
@@ -593,6 +691,13 @@ export default function Home() {
                 setActiveTab('sheet');
               }} className="mt-8 px-8 py-3 bg-white text-black font-black uppercase text-xs rounded-full hover:bg-red-600 hover:text-white transition-all">Ver minha Ficha</button>
             </div>
+            {isActingAsMaster && isNPC && (
+              <div className="absolute top-8 left-8 z-20">
+                <div className="bg-red-600/20 border border-red-500/50 px-4 py-1 rounded-full">
+                  <span className="text-[10px] font-black text-red-500 uppercase italic tracking-widest">Editor de NPC</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -643,18 +748,18 @@ export default function Home() {
                     {isEditing && !isViewingOnly ? (
                       <input
                         type="text"
-                        value={tempChar?.char_name || ""}
-                        onChange={(e) => setTempChar({ ...tempChar, char_name: e.target.value })}
+                        value={tempChar?.char_name || tempChar?.name || ""}
+                        onChange={(e) => setTempChar({ ...tempChar, char_name: e.target.value, name: e.target.value })}
                         className="text-5xl font-black text-red-600 italic uppercase tracking-tighter leading-tight bg-black/20 border-b-2 border-red-600/50 outline-none w-full placeholder:opacity-20"
                         placeholder="NOME DO PERSONAGEM"
                       />
                     ) : (
                       <h2 className="text-5xl font-black text-red-600 italic uppercase tracking-tighter leading-tight">
-                        {(typeof activeChar?.char_name === 'string') ? activeChar.char_name.replace(/^'|'::text$/g, '') : activeChar?.char_name}
+                        {(typeof (activeChar?.char_name || activeChar?.name) === 'string') ? (activeChar?.char_name || activeChar?.name).replace(/^'|'::text$/g, '') : (activeChar?.char_name || activeChar?.name)}
                       </h2>
                     )}
                     <p className="text-zinc-500 text-[10px] font-bold uppercase mt-1 italic leading-none">
-                      ID: {isViewingOthers ? character?.discord_username : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}
+                      ID: {isViewingOthers ? (character?.npc_id || character?.discord_username) : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}
                     </p>
                   </div>
 
@@ -692,7 +797,9 @@ export default function Home() {
 
                     // If not in a "Change Request" session (Master direct edit or simple move), sync DB
                     if (!isEditing) {
-                      supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id).then();
+                      const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                      const table = isNPC ? 'npcs' : 'characters';
+                      supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id).then();
                     }
                   }}
                   onSort={(type) => {
@@ -701,7 +808,9 @@ export default function Home() {
 
                     setTempChar(prev => ({ ...prev, inventory: newList }));
                     if (!isEditing) {
-                      supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id).then();
+                      const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                      const table = isNPC ? 'npcs' : 'characters';
+                      supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id).then();
                     }
                   }}
                   onDelete={(idx) => setModal({
@@ -714,7 +823,9 @@ export default function Home() {
                       newList.splice(idx, 1);
                       setTempChar(prev => ({ ...prev, inventory: newList }));
                       if (!isEditing) {
-                        supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id).then();
+                        const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                        const table = isNPC ? 'npcs' : 'characters';
+                        supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id).then();
                       }
                       closeModal();
                       showToast("Item removido.");
@@ -742,7 +853,9 @@ export default function Home() {
                       setTempChar(prev => ({ ...prev, inventory: newList }));
 
                       if (!isEditing) {
-                        await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
+                        const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                        const table = isNPC ? 'npcs' : 'characters';
+                        await supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id);
                       }
                       closeModal();
                     }
@@ -789,7 +902,9 @@ export default function Home() {
                     // Normal Direct Update
                     setTempChar(prev => ({ ...prev, inventory: newList }));
                     if (!isEditing) {
-                      await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
+                      const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                      const table = isNPC ? 'npcs' : 'characters';
+                      await supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id);
                     }
                   }}
                   onEdit={(idx) => setModal({
@@ -805,7 +920,9 @@ export default function Home() {
                       newList[idx] = { ...newList[idx], ...updatedItem };
                       setTempChar(prev => ({ ...prev, inventory: newList }));
                       if (!isEditing) {
-                        await supabase.from('characters').update({ inventory: newList }).eq('id', activeChar.id);
+                        const isNPC = allNPCs.some(n => n.id === activeChar.id);
+                        const table = isNPC ? 'npcs' : 'characters';
+                        await supabase.from(table).update({ inventory: newList }).eq('id', activeChar.id);
                       }
                       closeModal();
                       showToast("Item atualizado!");
@@ -820,16 +937,23 @@ export default function Home() {
                   luckPerc={luckPerc}
                   charismaPerc={charismaPerc}
                   intelligencePerc={intelligencePerc}
+                  strengthPerc={strengthPerc}
+                  resistancePerc={resistancePerc}
+                  aptitudePerc={aptitudePerc}
+                  agilityPerc={agilityPerc}
+                  precisionPerc={precisionPerc}
                 />
                 <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl">
                   <div className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-3">
                     <h3 className="font-black text-zinc-500 text-[10px] italic">ATRIBUTOS</h3>
-                    <div className={`px-3 py-1 rounded border text-[10px] font-black font-mono leading-none transition-colors ${(activeChar?.stat_points_available < 0)
-                      ? 'bg-red-600/20 text-red-500 border-red-500/50'
-                      : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'
-                      }`}>
-                      {activeChar?.stat_points_available || 0} PS
-                    </div>
+                    {!(activeChar?.is_complex || isNPC) && (
+                      <div className={`px-3 py-1 rounded border text-[10px] font-black font-mono leading-none transition-colors ${(activeChar?.stat_points_available < 0)
+                        ? 'bg-red-600/20 text-red-500 border-red-500/50'
+                        : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'
+                        }`}>
+                        {activeChar?.stat_points_available || 0} PS
+                      </div>
+                    )}
                   </div>
                   <ul className="space-y-2">
                     <StatLine label="Força" statKey="strength" val={activeChar?.strength} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
@@ -856,6 +980,7 @@ export default function Home() {
             <CombatTab
               user={user}
               allPlayers={allPlayers}
+              allNPCs={allNPCs}
               messages={messages}
               isCombatActive={isCombatActive}
               isSessionActive={isSessionActive}
@@ -864,6 +989,7 @@ export default function Home() {
               setActiveTab={setActiveTab}
               turn={turn}
               sharedImage={sharedImage}
+              lootTables={lootTables}
             />
           </div>
         )}
@@ -927,6 +1053,7 @@ export default function Home() {
                           type: d.type,
                           rarity: d.rarity,
                           value: d.value,
+                          carga: d.carga || 1,
                           category: d.category,
                           subtype: d.subtype,
                           hands: d.hands,
@@ -966,6 +1093,7 @@ export default function Home() {
                             type: itemData.type || 'Item',
                             rarity: itemData.rarity || 'Comum',
                             value: itemData.value || 0,
+                            carga: itemData.carga || 1,
                             category: itemData.category || 'Utilitário',
                             subtype: itemData.subtype || null,
                             hands: itemData.hands || 'Uma Mão',
@@ -1023,6 +1151,7 @@ export default function Home() {
                                   type: d.type,
                                   rarity: d.rarity,
                                   value: d.value,
+                                  carga: d.carga || 1,
                                   category: d.category,
                                   subtype: d.subtype,
                                   hands: d.hands,
@@ -1191,6 +1320,12 @@ export default function Home() {
             showToast={showToast}
             setModal={setModal}
             closeModal={closeModal}
+            onVisualizeComplex={(npc) => {
+              setViewingTarget(npc.id);
+              setCharacter(npc);
+              setTempChar(npc);
+              setActiveTab('sheet');
+            }}
           />
         </div>
       )}
@@ -1216,15 +1351,20 @@ export default function Home() {
 }
 
 // HELPERS (OUTSIDE Home to prevent focus loss)
-const NavButton = ({ label, active, onClick, disabled, isUnapproved }) => (
+const NavButton = ({ label, active, onClick, disabled, isUnapproved, isNPC }) => (
   <button
     onClick={onClick}
-    className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all
-      ${active ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-zinc-200'}
+    className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all relative overflow-hidden
+      ${active ? (isNPC ? 'bg-zinc-100 text-black' : 'bg-red-600 text-white') : 'text-zinc-500 hover:text-zinc-200'}
       ${disabled ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer'}
       ${isUnapproved ? 'border border-dashed border-zinc-800' : ''}`}
   >
-    {label} {isUnapproved && <span className="text-[8px] opacity-50 block mt-0.5">(PENDENTE)</span>}
+    <div className="flex items-center gap-2">
+      {isNPC && <span className="text-[8px] bg-black/20 px-1.5 py-0.5 rounded border border-white/5 text-zinc-400">NPC</span>}
+      <span className="truncate">{label}</span>
+    </div>
+    {isUnapproved && <span className="text-[8px] opacity-50 block mt-0.5">(PENDENTE)</span>}
+    {isNPC && active && <div className="absolute inset-y-0 right-0 w-1 bg-red-600" />}
   </button>
 );
 

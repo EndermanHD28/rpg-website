@@ -30,7 +30,10 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
           min_extra_rolls: initialData.min_extra_rolls || 0,
           max_extra_rolls: initialData.max_extra_rolls || 0,
           extra_roll_chance: initialData.extra_roll_chance || 0,
-          items: initialData.items || []
+          items: (initialData.items || []).map(item => ({
+            ...item,
+            weight: item.weight !== undefined ? item.weight : (item.generalChance || 1)
+          }))
         });
         setIsNew(false);
       } else {
@@ -56,7 +59,7 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
       item_id: '',
       minQty: 1,
       maxQty: 1,
-      generalChance: 100,
+      weight: 1,
       individualQtyChance: 10
     });
   };
@@ -156,7 +159,7 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
                   <div key={idx} className="flex justify-between items-center bg-black/40 p-4 rounded-2xl border border-white/5 group">
                     <div>
                       <p className="text-xs font-bold text-white">{libItem?.name || item.item_id}</p>
-                      <p className="text-[9px] text-zinc-500 font-bold uppercase">{item.minQty}-{item.maxQty} unidades • {item.generalChance}% base • {item.individualQtyChance}%/qtd</p>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase">{item.minQty}-{item.maxQty} unidades • Peso: {item.weight} • {item.individualQtyChance}%/qtd</p>
                     </div>
                     <button onClick={() => setLocalData(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))} className="text-red-500 opacity-0 group-hover:opacity-100 transition-all">×</button>
                   </div>
@@ -194,8 +197,8 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[8px] font-black uppercase text-zinc-500">Chance Geral (%)</label>
-                    <input type="number" value={editingItem.generalChance} onChange={(e) => setEditingItem({...editingItem, generalChance: parseInt(e.target.value) || 0})} className="w-full bg-black/20 border border-white/5 rounded px-3 py-2 text-xs text-white" />
+                    <label className="text-[8px] font-black uppercase text-zinc-500">Peso Geral</label>
+                    <input type="number" value={editingItem.weight} onChange={(e) => setEditingItem({...editingItem, weight: parseInt(e.target.value) || 0})} className="w-full bg-black/20 border border-white/5 rounded px-3 py-2 text-xs text-white" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[8px] font-black uppercase text-zinc-500">Chance Individual (%)</label>
