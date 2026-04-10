@@ -73,7 +73,8 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
       title: "Aprovar Mudanças",
       message: `Deseja aplicar as alterações de ${req.player_name}?`,
       onConfirm: async () => {
-        const { error: charError } = await supabase.from('characters')
+
+
         const tempData = { ...req.new_data };
         if (tempData.name) {
           tempData.char_name = tempData.name;
@@ -81,7 +82,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
         }
         console.log("Original new_data:", req.new_data);
         console.log("Modified new_data for update:", tempData);
-        const { error: charError } = await supabase.from("characters")
+        ({ error: charError } = await supabase.from("characters"))
           .update({ ...tempData, needs_celebration: true })
           .eq('id', req.player_id);
 
