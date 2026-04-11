@@ -149,7 +149,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     {item.equipped ? 'Remover' : 'Equipar'}
                   </button>
                 )}
-                {(!isViewingOthers || isActingAsMaster) && (
+                {isActingAsMaster && (
                   <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
                     <button
                       onClick={() => { playSound('random_button'); onEdit(item.originalIdx); }}
