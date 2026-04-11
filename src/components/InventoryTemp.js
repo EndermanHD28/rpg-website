@@ -58,7 +58,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
         </div>
       )}
 
-      <div className="bg-slate-900/50 p-8 rounded-[40px] border-2 border-slate-800 shadow-2xl relative">
+      <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl relative">
         {/* HEADER */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex flex-col">
@@ -85,7 +85,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
         {/* LIST - RESTORED TO LINE DESIGN */}
         <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           {tab === 'Consumível' ? (
-            <p className="text-[10px] text-zinc-700 italic text-center py-10 uppercase font-black tracking-widest">Em desenvolvimento...</p>
+            <p className="text-[10px] text-zinc-500 italic text-center py-10 uppercase font-black tracking-widest">Em desenvolvimento...</p>
           ) : filteredItems.length > 0 ? filteredItems.map((item) => (
             <div key={item.id || `item-${item.originalIdx}`} className="group flex items-center justify-between py-5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] px-3 transition-all relative">
               
@@ -158,13 +158,13 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     >
                       <span className="text-xl">✎</span>
                     </button>
-                    <button onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} className="text-zinc-700 hover:text-red-500 text-2xl font-light px-2">×</button>
+                    <button onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} className="text-zinc-500 hover:text-red-500 text-2xl font-light px-2">×</button>
                   </div>
                 )}
               </div>
             </div>
           )) : (
-            <p className="text-[10px] text-zinc-700 italic text-center py-10 uppercase font-black tracking-widest">Mochila Vazia</p>
+            <p className="text-[10px] text-zinc-500 italic text-center py-10 uppercase font-black tracking-widest">Mochila Vazia</p>
           )}
         </div>
       </div>

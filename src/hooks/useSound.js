@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 
 const SOUNDS = {
   celebration: '/sound_effects/celebration.mp3',
-  error: '/sound_effects/error.wav',
+  error: '/sound_effects/error.mp3',
   stat_point: '/sound_effects/stat_point.wav',
-  tab_change: '/sound_effects/tab_change.wav',
+  tab_change: '/sound_effects/tab_change.mp3',
   random_button: '/sound_effects/random_button.mp3',
 };
 
