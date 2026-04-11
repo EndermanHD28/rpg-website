@@ -69,6 +69,7 @@ export type Database = {
           is_in_combat: boolean | null
           luck: number | null
           master_editing_id: string | null
+          name: string | null
           needs_celebration: boolean | null
           nichirin_color: string | null
           precision: number | null
@@ -102,6 +103,7 @@ export type Database = {
           is_in_combat?: boolean | null
           luck?: number | null
           master_editing_id?: string | null
+          name?: string | null
           needs_celebration?: boolean | null
           nichirin_color?: string | null
           precision?: number | null
@@ -135,6 +137,7 @@ export type Database = {
           is_in_combat?: boolean | null
           luck?: number | null
           master_editing_id?: string | null
+          name?: string | null
           needs_celebration?: boolean | null
           nichirin_color?: string | null
           precision?: number | null
@@ -162,6 +165,8 @@ export type Database = {
           music_timestamp: number | null
           music_updated_at: string | null
           music_url: string | null
+          sfx_triggered_at: string | null
+          sfx_url: string | null
         }
         Insert: {
           approved_once?: boolean | null
@@ -178,6 +183,8 @@ export type Database = {
           music_timestamp?: number | null
           music_updated_at?: string | null
           music_url?: string | null
+          sfx_triggered_at?: string | null
+          sfx_url?: string | null
         }
         Update: {
           approved_once?: boolean | null
@@ -194,6 +201,8 @@ export type Database = {
           music_timestamp?: number | null
           music_updated_at?: string | null
           music_url?: string | null
+          sfx_triggered_at?: string | null
+          sfx_url?: string | null
         }
         Relationships: []
       }

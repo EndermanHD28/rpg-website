@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { MASTER_DISCORD_ID, ANOMALIAS_LIST, SKILLS_LIST, RARITY_CONFIG } from '../constants/gameData';
 
@@ -31,6 +31,11 @@ export default function Home() {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'confirm', input: false, inputValue: '', fields: false });
   const [searchTerm, setSearchTerm] = useState('');
   const [showCelebration, setShowCelebration] = useState(false);
+  const [secretCodeInput, setSecretCodeInput] = useState("");
+  const [fakeDiscordUsernameInput, setFakeDiscordUsernameInput] = useState("");
+  const [showCodeLogin, setShowCodeLogin] = useState(false);
+
+  const SECRET_CODE = "SecretAccount"; // As requested, stored in a variable. For production, consider environment variables.
 
   // --- DATA STATE ---
   const [user, setUser] = useState(null);
@@ -98,7 +103,15 @@ export default function Home() {
       const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
       setLootTables(lootData || []);
       
-      const { data: { user: activeUser } } = await supabase.auth.getUser();
+      let activeUser;
+      const savedFakeUser = localStorage.getItem('fake_discord_user');
+      if (savedFakeUser) {
+        activeUser = JSON.parse(savedFakeUser);
+      } else {
+        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        activeUser = supabaseUser;
+      }
+      
       setUser(activeUser);
       
       // Fetch all players FIRST so we can use it for character/tempChar
@@ -110,11 +123,14 @@ export default function Home() {
 
       if (activeUser) {
         const tId = viewingTarget || activeUser.id;
+        // Check if the user is in the 'players' we just fetched OR check DB directly
         const char = (players || []).find(p => p.id === tId);
+        
         if (char) {
           setCharacter(char);
           setTempChar(char);
         } else {
+          // Double check DB to avoid race conditions with auth event vs fetch
           const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
           if (dbChar) {
             setCharacter(dbChar);
@@ -140,16 +156,21 @@ export default function Home() {
               rank: 'E - Recruta',
               current_hp: 24 // (3 strength + 3 resistance * 7) = 24
             };
+            
+            // Use UPSERT instead of INSERT to handle potential 409 Conflict
             const { data: createdChar, error: createError } = await supabase
               .from('characters')
-              .insert(newChar)
+              .upsert(newChar, { onConflict: 'id' })
               .select()
               .single();
             
             if (!createError && createdChar) {
               setCharacter(createdChar);
               setTempChar(createdChar);
-              setAllPlayers(prev => [...prev, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || "")));
+              setAllPlayers(prev => {
+                const filtered = prev.filter(p => p.id !== createdChar.id);
+                return [...filtered, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || ""));
+              });
               showToast("Nova ficha criada automaticamente!");
             }
           }
@@ -482,6 +503,9 @@ export default function Home() {
             }
             if (!error) showToast("Ficha Sincronizada!");
           } else {
+            // We ensure only one pending request exists per player to avoid 409 Conflict
+            await supabase.from('change_requests').delete().eq('player_id', user.id).eq('status', 'pending');
+
             const { error } = await supabase.from('change_requests').insert({
               player_id: user.id,
               player_name: user?.user_metadata?.full_name || user?.user_metadata?.preferred_username,
@@ -522,6 +546,71 @@ export default function Home() {
         >
           Entrar com Discord
         </button>
+
+        {!showCodeLogin ? (
+          <button
+            onClick={() => setShowCodeLogin(true)}
+            className="text-zinc-500 hover:text-red-500 text-xs font-bold uppercase tracking-widest transition-colors block mx-auto"
+          >
+            Entrar com código
+          </button>
+        ) : (
+          <div className="bg-zinc-900/50 p-4 rounded border border-zinc-800 space-y-4 max-w-xs mx-auto">
+            <input
+              type="text"
+              placeholder="CÓDIGO SECRETO"
+              className="w-full bg-black border border-zinc-700 p-2 text-white text-center font-bold"
+              value={secretCodeInput}
+              onChange={(e) => setSecretCodeInput(e.target.value)}
+            />
+            {secretCodeInput === SECRET_CODE && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <p className="text-[10px] text-green-500 font-bold uppercase">Código Válido</p>
+                <input
+                  type="text"
+                  placeholder="NOME DISCORD (FAKE)"
+                  className="w-full bg-black border border-green-900/50 p-2 text-white text-center font-bold"
+                  value={fakeDiscordUsernameInput}
+                  onChange={(e) => setFakeDiscordUsernameInput(e.target.value)}
+                />
+                <button
+                  onClick={async () => {
+                    if (!fakeDiscordUsernameInput) return;
+                    
+                    // Generate a consistent UUID-like ID based on the username 
+                    // This ensures the same fake username always gets the same character
+                    const hash = Array.from(fakeDiscordUsernameInput).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    const consistentUuid = '00000000-0000-4000-8000-' + hash.toString(16).padStart(12, '0');
+                    
+                    const fakeUser = {
+                      id: consistentUuid,
+                      user_metadata: {
+                        full_name: fakeDiscordUsernameInput,
+                        preferred_username: fakeDiscordUsernameInput
+                      },
+                      is_fake: true
+                    };
+                    setUser(fakeUser);
+                    localStorage.setItem('fake_discord_user', JSON.stringify(fakeUser));
+                    window.location.reload(); // Simple and effective for triggering character creation
+                  }}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-2 rounded text-sm transition-colors"
+                >
+                  ACESSAR
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setShowCodeLogin(false);
+                setSecretCodeInput("");
+              }}
+              className="text-zinc-600 hover:text-white text-[10px] font-bold uppercase"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -664,6 +753,7 @@ export default function Home() {
             onClick={async () => {
               playSound('random_button');
               await supabase.auth.signOut();
+              localStorage.removeItem('fake_discord_user');
               window.location.reload();
             }}
             className="w-full text-[10px] text-red-600/70 hover:text-red-500 transition-all uppercase font-black cursor-pointer text-center py-2 border-t border-white/5"
@@ -885,6 +975,9 @@ export default function Home() {
                         title: "Solicitar Troca",
                         message: "O combate está ativo. Deseja pedir permissão ao Mestre para alterar este equipamento?",
                         onConfirm: async () => {
+                          // Clear previous pending requests to avoid 409 Conflict
+                          await supabase.from('change_requests').delete().eq('player_id', user.id).eq('status', 'pending');
+
                           await supabase.from('change_requests').insert({
                             player_id: user.id,
                             player_name: user?.user_metadata?.full_name,

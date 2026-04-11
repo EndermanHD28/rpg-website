@@ -18,6 +18,8 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [showTitle, setShowTitle] = useState(false);
   const [volume, setVolume] = useState(initialVolume);
   const [duration, setDuration] = useState(0);
+  const [currentSfxUrl, setCurrentSfxUrl] = useState(null);
+  const [currentSfxTriggeredAt, setCurrentSfxTriggeredAt] = useState(null);
 
   useEffect(() => {
     setVolume(initialVolume);
@@ -25,6 +27,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [played, setPlayed] = useState(0);
   const ytPlayer = useRef(null);
   const lastSyncTime = useRef(0);
+  const sfxAudioRef = useRef(null); // Ref for playing synchronized SFX
 
   // YouTube API Logic
   useEffect(() => {
@@ -48,7 +51,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     };
 
     const { videoId, listId } = getUrlParams(url);
-    let interval;
+    let interval = null;
 
     const initializePlayer = () => {
       // Don't re-initialize if the element is missing
@@ -263,6 +266,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     const syncWithSupabase = (data) => {
       if (!data) return;
 
+      // --- Music Sync ---
       if (data.music_url !== undefined) {
         const urlChanged = data.music_url !== url;
         setUrl(data.music_url);
@@ -275,7 +279,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
         }
       }
 
-      // Sync Timestamp (Avoid master syncing to themselves)
+      // Sync Music Timestamp (Avoid master syncing to themselves)
       if (!isMaster && (data.music_started_at || data.music_url)) {
         const startedAt = data.music_started_at ? new Date(data.music_started_at).getTime() : Date.now();
         const now = Date.now();
@@ -294,6 +298,26 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           lastSyncTime.current = targetTime;
         }
       }
+
+      // --- SFX Sync ---
+      if (data.sfx_url !== undefined) {
+        if (data.sfx_url === null) {
+          // Stop current SFX
+          if (sfxAudioRef.current) {
+            sfxAudioRef.current.pause();
+            sfxAudioRef.current.currentTime = 0;
+            sfxAudioRef.current = null;
+          }
+          setCurrentSfxUrl(null);
+          setCurrentSfxTriggeredAt(null);
+        } else if (!isMaster && (data.sfx_url !== currentSfxUrl || (data.sfx_triggered_at && currentSfxTriggeredAt && new Date(data.sfx_triggered_at).getTime() > new Date(currentSfxTriggeredAt).getTime()))) {
+          // Play new SFX on non-master clients
+          console.log("Playing remote SFX:", data.sfx_url);
+          playRemoteSFX(data.sfx_url);
+          setCurrentSfxUrl(data.sfx_url);
+          setCurrentSfxTriggeredAt(data.sfx_triggered_at);
+        }
+      }
     };
 
     const fetchMusic = async () => {
@@ -307,6 +331,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
     fetchMusic();
 
+    let interval = null;
     const channel = supabase.channel('music_sync')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global', filter: 'id=eq.1' }, (p) => {
         syncWithSupabase(p.new);
@@ -314,9 +339,21 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (interval) clearInterval(interval);
+      if (ytPlayer.current) {
+        try {
+          ytPlayer.current.destroy();
+        } catch (e) {
+          console.error("Error destroying player in cleanup:", e);
+        }
+      }
+      // Stop all playing SFX
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
     };
-  }, [isMaster, url]);
+  }, [isMaster, url, currentSfxUrl, currentSfxTriggeredAt]);
 
   // Master Sync Pulse - No longer needed as we use music_started_at
 
@@ -332,57 +369,106 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     }
   }, [isMaster]);
 
-  const playSFX = (filename, category) => {
+  const playSFX = async (filename, category) => {
     const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
-    console.log("Attempting to play SFX:", { filename, category, path, volume });
+    console.log("Attempting to play SFX (Master):", { filename, category, path, volume });
 
-    // Stop and restart if already playing
-    if (audioRefs.current[path]) {
-      audioRefs.current[path].pause();
-      audioRefs.current[path].currentTime = 0;
+    if (isMaster) {
+      const { error } = await supabase
+        .from('global')
+        .update({
+          sfx_url: path,
+          sfx_triggered_at: new Date().toISOString()
+        })
+        .eq('id', 1);
+
+      if (error) {
+        console.error("Error updating global SFX state:", error);
+      } else {
+        // Master also plays locally, but the sync will prevent double-triggering
+        // The conditional logic in syncWithSupabase will handle whether the master should play
+        // or if it's already playing from the local trigger.
+        playRemoteSFX(path); // Master plays it immediately
+        setCurrentSfxUrl(path);
+        setCurrentSfxTriggeredAt(new Date().toISOString());
+      }
+    } else {
+      // For non-masters, direct playback is not allowed; they receive via sync.
+      console.warn("Non-master attempted to play SFX directly.");
     }
-
-    const audio = new Audio(path);
-    audio.volume = volume;
-    audioRefs.current[path] = audio;
-    
-    setActiveSounds(prev => new Set(prev).add(path));
-
-    audio.onended = () => {
-      console.log("SFX ended:", path);
-      setActiveSounds(prev => {
-        const next = new Set(prev);
-        next.delete(path);
-        return next;
-      });
-      delete audioRefs.current[path];
-    };
-
-    audio.play().catch(err => {
-      console.error("Error playing SFX:", path, err);
-      setActiveSounds(prev => {
-        const next = new Set(prev);
-        next.delete(path);
-        return next;
-      });
-      delete audioRefs.current[path];
-    });
   };
 
-  const stopSFX = (e, filename, category) => {
+  const stopSFX = async (e, filename, category) => {
     e.stopPropagation(); // Prevent event from bubbling up to the parent play button
     const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
-    console.log("Attempting to stop SFX:", path);
+    console.log("Attempting to stop SFX (Master):", path);
+
+    if (isMaster) {
+      const { error } = await supabase
+        .from('global')
+        .update({
+          sfx_url: null,
+          sfx_triggered_at: null
+        })
+        .eq('id', 1);
+
+      if (error) {
+        console.error("Error stopping global SFX state:", error);
+      } else {
+        // Master also stops locally
+        if (sfxAudioRef.current) {
+          sfxAudioRef.current.pause();
+          sfxAudioRef.current.currentTime = 0;
+          sfxAudioRef.current = null;
+        }
+        setCurrentSfxUrl(null);
+        setCurrentSfxTriggeredAt(null);
+      }
+    }
+    // Remove from active sounds set immediately regardless of master status
+    setActiveSounds(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+    // Also stop any locally playing SFX (for master, or if a non-master somehow played it)
     if (audioRefs.current[path]) {
       audioRefs.current[path].pause();
       audioRefs.current[path].currentTime = 0;
       delete audioRefs.current[path];
+    }
+  };
+
+  const playRemoteSFX = (sfxPath) => {
+    if (sfxAudioRef.current) {
+      sfxAudioRef.current.pause();
+      sfxAudioRef.current.currentTime = 0;
+    }
+    sfxAudioRef.current = new Audio(sfxPath);
+    sfxAudioRef.current.volume = volume; // Use the global volume
+    
+    // Track active sound for UI
+    setActiveSounds(prev => new Set(prev).add(sfxPath));
+    
+    sfxAudioRef.current.onended = () => {
       setActiveSounds(prev => {
         const next = new Set(prev);
-        next.delete(path);
+        next.delete(sfxPath);
         return next;
       });
-    }
+      if (sfxAudioRef.current?.src.includes(sfxPath)) {
+        sfxAudioRef.current = null;
+      }
+    };
+
+    sfxAudioRef.current.play().catch(err => {
+      console.error("Error playing remote SFX:", sfxPath, err);
+      setActiveSounds(prev => {
+        const next = new Set(prev);
+        next.delete(sfxPath);
+        return next;
+      });
+    });
   };
 
   const handleUpdateMusic = async () => {
