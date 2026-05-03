@@ -146,9 +146,9 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
       {/* HEADER & SEARCH */}
       <div className="flex flex-col md:flex-row justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 gap-6">
         <div className="flex-1">
-          <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Editor de NPCs</h2>
+          <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Biblioteca de NPCs</h2>
           <div className="flex items-center gap-4 mt-2">
-            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest shrink-0">Gerenciamento de Ameaças</p>
+            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest shrink-0">Visualize os NPCs</p>
             <input
               type="text"
               placeholder="Pesquisar NPCs..."

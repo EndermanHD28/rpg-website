@@ -6,14 +6,14 @@ import CombatManager from './Combat/CombatManager';
 
 import { calculateDerivedStats } from '../lib/rpg-math';
 
-export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables }) {
+export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables, showToast }) {
   const [selectedCombatantId, setSelectedCombatantId] = useState(null);
   const [targetingRoll, setTargetingRoll] = useState(null); // { input, diceResult, playerName, playerImage }
   const [displayCombatants, setDisplayCombatants] = useState([]);
 
   const currentCombatants = [
     ...allPlayers.filter(p => p.is_in_combat && (p.discord_username !== 'EnderU' || p.rank !== 'Mestre')),
-    ...allNPCs.filter(n => n.is_in_combat).map(n => ({
+    ...allNPCs.filter(n => n.is_in_combat && n.is_enemy).map(n => ({
       ...n,
       id: `npc-${n.id}`,
       dbId: n.id,
@@ -179,6 +179,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         finishDiceRoll={finishDiceRoll}
         sharedImage={sharedImage}
         lootTables={lootTables}
+        showToast={showToast}
       />
 
       <CombatManager 

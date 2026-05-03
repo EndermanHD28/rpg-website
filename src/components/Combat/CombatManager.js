@@ -147,13 +147,13 @@ export default function CombatManager({
 
                       <div className="flex items-start gap-4">
                         <div className="relative shrink-0">
-                          {p.image_url ? <img src={p.image_url} className="w-10 h-10 rounded-lg object-cover border border-white/10 shadow-xl relative z-10" alt="" /> : <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-xl relative z-10">👤</div>}
+                          {p.image_url ? <img src={p.image_url} className="w-13 h-13 rounded-lg object-cover border border-white/10 shadow-xl relative z-10" alt="" /> : <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-xl relative z-10">👤</div>}
                         </div>
                         <div className="flex-1 min-w-0 pt-1">
                           <h4 className="font-black italic text-white uppercase text-xs tracking-tighter truncate leading-tight mb-0.5">{p.char_name}</h4>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Vitalidade:</span>
+                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Vitalidade:</span>
                               {isActingAsMaster && editingHP === p.id ? (
                                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                                   <input autoFocus value={hpInput} onChange={e => setHpInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleHPSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingHP(null); }} className="bg-zinc-800 border border-red-500/50 rounded px-2 py-0.5 text-white font-mono text-xs w-16 outline-none" />
@@ -162,13 +162,13 @@ export default function CombatManager({
                               ) : (
                                 <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingHP(p.id); setHpInput(currentLife.toString()); } }} className={`flex items-baseline gap-0.5 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1.5 py-0.5 rounded' : ''}`}>
                                   <span className="font-mono text-sm font-black text-red-500">{currentLife}</span>
-                                  <span className="font-mono text-[10px] font-black text-red-900/60">/{maxLife}</span>
+                                  <span className="font-mono text-[11px] font-black text-red-700/60">/{maxLife}</span>
                                 </div>
                               )}
                             </div>
 
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Postura:</span>
+                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Postura:</span>
                               {isActingAsMaster && editingPosture === p.id ? (
                                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                                   <input autoFocus value={postureInput} onChange={e => setPostureInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handlePostureSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingPosture(null); }} className="bg-zinc-800 border border-green-500/50 rounded px-2 py-0.5 text-white font-mono text-xs w-16 outline-none" />
@@ -188,9 +188,9 @@ export default function CombatManager({
                       <div className="flex flex-wrap gap-1">
                         {Array.isArray(p.effects) && p.effects.map((eff, idx) => (
                           <div key={idx} className={`flex items-center gap-1 bg-zinc-950 border border-red-900/30 pl-0.5 pr-1.5 py-0.5 rounded relative ${targetingRoll ? '' : 'hover:border-red-600/50 cursor-help group/eff'}`} title={eff.description}>
-                            <div className="min-w-[1rem] h-4 px-0.5 flex items-center justify-center bg-red-600/10 rounded text-[8px]">{eff.emoji}</div>
-                            <span className="text-[7px] font-black uppercase tracking-wider text-red-500/80">{eff.name}</span>
-                            <span className="text-[8px] font-black font-mono text-zinc-500 ml-0.5 border-l border-white/10 pl-1">{eff.duration ?? '-'}</span>
+                            <div className="min-w-[1rem] h-4 px-0.5 flex items-center justify-center bg-red-600/10 rounded text-[10px]">{eff.emoji}</div>
+                            <span className="text-[9px] font-black uppercase tracking-wider text-red-500/80">{eff.name}</span>
+                            <span className="text-[11px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1">{eff.duration ?? '-'}</span>
                             {isActingAsMaster && (
                               <button
                                 onClick={async (e) => {
@@ -211,10 +211,10 @@ export default function CombatManager({
                       </div>
 
                       <div className="space-y-1">
-                        <div className="relative h-1.5 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
+                        <div className="relative h-2 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
                           <div className={`h-full relative transition-all duration-1000 ease-out ${hpPerc < 25 ? 'bg-gradient-to-r from-red-800 to-red-600 animate-pulse' : 'bg-gradient-to-r from-red-700 to-red-500'}`} style={{ width: `${hpPerc}%` }} />
                         </div>
-                        <div className="relative h-1.5 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
+                        <div className="relative h-2 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
                           <div className={`h-full relative transition-all duration-1000 ease-out bg-gradient-to-r from-green-700 to-green-500`} style={{ width: `${posturePerc}%` }} />
                         </div>
                       </div>
@@ -233,8 +233,9 @@ export default function CombatManager({
                         <div className="flex flex-col gap-2">
                           {(() => {
                             if (!p.is_npc || p.type === 'Complex') {
-                              const equippedWeapon = p.inventory?.find(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca"));
-                              const wPAT = Math.round(equippedWeapon ? calculateWeaponPAT(equippedWeapon, p) : 0);
+                              const equippedWeapons = p.inventory?.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+                              const wPAT1 = equippedWeapons.length > 0 ? Math.round(calculateWeaponPAT(equippedWeapons[0], p)) : null;
+                              const wPAT2 = equippedWeapons.length > 1 ? Math.round(calculateWeaponPAT(equippedWeapons[1], p)) : null;
                               const dPAT = Math.round(calculateDisarmedPAT(p));
                               
                               const acertoValue = calculateAcerto(p);
@@ -243,8 +244,9 @@ export default function CombatManager({
 
                               return (
                                 <div className="flex flex-col gap-2">
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <DiceBadge label="Ataque Armado" val={equippedWeapon ? `1d${wPAT}` : "---"} category="combat" />
+                                  <div className={`grid ${wPAT2 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+                                    <DiceBadge label={wPAT1 ? equippedWeapons[0].name : "Ataque Armado"} val={wPAT1 ? `1d${wPAT1}` : "---"} category="combat" />
+                                    {wPAT2 && <DiceBadge label={equippedWeapons[1].name} val={`1d${wPAT2}`} category="combat" />}
                                     <DiceBadge label="Desarmado" val={`1d${dPAT}`} category="combat" />
                                   </div>
                                   <div className="grid grid-cols-3 gap-2">
@@ -306,7 +308,7 @@ function DiceBadge({ label, val, category }) {
   const style = styles[category] || styles.combat;
   return (
     <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${style.border} ${style.bg}`}>
-      <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest mb-1">{label}</span>
+      <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest mb-1 truncate w-full text-center px-1" title={label}>{label}</span>
       <span className={`text-sm font-black font-mono ${style.text}`}>{val}</span>
     </div>
   );

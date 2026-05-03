@@ -2,7 +2,7 @@
  * ITEM PACK CREATION INSTRUCTIONS:
  * When asked to create a "pack" or "bundle" of items:
  * 1. Define the items in a JSON array.
- * 2. Each item should follow the structure: { name, type, rarity, value, category, subtype, hands, damageType, description, tier, upgrade, isBackpack }
+ * 2. Each item should follow the structure: { name, type, rarity, value, category, subtype, hands, damageType, description, tier, upgrade, isBackpack, cargaIncrease, weight }
  * 3. Instruct the user to copy the JSON and use the "Importar Código" button in the Item Library tab.
  */
 
@@ -152,6 +152,39 @@ export const COMMANDS = [
     }
   },
   {
+    name: "combat remove-e",
+    description: "Removes NPCs from combat",
+    args: [
+      { name: "targets", type: "array" }
+    ],
+    execute: async ([targets], { allPlayers }) => {
+      const { data: allNpcs } = await supabase.from('npcs').select('*');
+      
+      let removedCount = 0;
+      for (const targetName of targets) {
+        const cleanName = targetName.startsWith('@.') ? targetName.substring(2) : targetName;
+        const normalizedTarget = cleanName.toLowerCase().trim();
+        
+        const npc = allNpcs?.find(n =>
+          n.npc_id?.toLowerCase() === normalizedTarget ||
+          n.name?.toLowerCase() === normalizedTarget
+        );
+        
+        if (npc) {
+          await supabase.from('npcs').update({
+            is_in_combat: false,
+            is_enemy: false,
+            current_hp: null,
+            effects: [],
+            current_posture: null
+          }).eq('id', npc.id);
+          removedCount++;
+        }
+      }
+      return { success: true, message: `Removed ${removedCount} enemies.` };
+    }
+  },
+  {
     name: "combat add-effect",
     description: "Adds an effect to specified players",
     args: [
@@ -276,7 +309,7 @@ export const COMMANDS = [
     description: "Clears all messages from the chat",
     args: [],
     execute: async () => {
-      const { error } = await supabase.from('messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      const { error } = await supabase.from('messages').delete().not('id', 'is', null);
       if (error) return { success: false, message: `Error clearing chat: ${error.message}` };
       return { success: true, message: "Chat cleared." };
     }

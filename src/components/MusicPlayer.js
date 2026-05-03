@@ -20,6 +20,12 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [duration, setDuration] = useState(0);
   const [currentSfxUrl, setCurrentSfxUrl] = useState(null);
   const [currentSfxTriggeredAt, setCurrentSfxTriggeredAt] = useState(null);
+  const [isSfxLooping, setIsSfxLooping] = useState(false); 
+  const [sfxDurationInput, setSfxDurationInput] = useState(30); // Re-added with better default for loops
+  const [sfxVolumeInput, setSfxVolumeInput] = useState(1.0);
+
+  // Track last played SFX to prevent double-triggering on local state changes
+  const lastPlayedSfxRef = useRef({ url: null, triggeredAt: null });
 
   useEffect(() => {
     setVolume(initialVolume);
@@ -310,15 +316,48 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           }
           setCurrentSfxUrl(null);
           setCurrentSfxTriggeredAt(null);
-        } else if (!isMaster && (data.sfx_url !== currentSfxUrl || (data.sfx_triggered_at && currentSfxTriggeredAt && new Date(data.sfx_triggered_at).getTime() > new Date(currentSfxTriggeredAt).getTime()))) {
-          // Play new SFX on non-master clients
-          console.log("Playing remote SFX:", data.sfx_url);
-          playRemoteSFX(data.sfx_url);
-          setCurrentSfxUrl(data.sfx_url);
-          setCurrentSfxTriggeredAt(data.sfx_triggered_at);
+          lastPlayedSfxRef.current = { url: null, triggeredAt: null };
+        } else {
+          const isDifferentSfx = data.sfx_url !== lastPlayedSfxRef.current.url;
+          const isNewerTrigger = data.sfx_triggered_at && (!lastPlayedSfxRef.current.triggeredAt || new Date(data.sfx_triggered_at).getTime() > new Date(lastPlayedSfxRef.current.triggeredAt).getTime());
+          
+          if (isDifferentSfx || isNewerTrigger) {
+            // Play new SFX
+            console.log("Sync update received:", data.sfx_url, "Master:", isMaster);
+            
+            // For Master, we only play if they didn't just trigger it themselves
+            if (isMaster && data.sfx_triggered_at === currentSfxTriggeredAt && data.sfx_url === currentSfxUrl) {
+                console.log("Master skipping sync playback as they already played it locally.");
+                lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
+                return;
+            }
+            
+            // Avoid double triggering if we already processed this exact URL/Timestamp in this session
+            if (data.sfx_url === lastPlayedSfxRef.current.url && data.sfx_triggered_at === lastPlayedSfxRef.current.triggeredAt) {
+                console.log("Skipping already played SFX update.");
+                return;
+            }
+
+            const timeSinceTrigger = data.sfx_triggered_at ? (Date.now() - new Date(data.sfx_triggered_at).getTime()) / 1000 : 0;
+            console.log("TEST0")
+            const duration = data.sfx_duration || 3;
+            const loop = data.sfx_loop || false;
+
+            // Only play if it was triggered recently (within 10 seconds to allow for sync lag)
+            if (timeSinceTrigger < 10) {
+              playRemoteSFX(data.sfx_url, data.sfx_volume, loop, duration);
+              lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
+              setCurrentSfxUrl(data.sfx_url);
+              setCurrentSfxTriggeredAt(data.sfx_triggered_at);
+            } else {
+              console.log("SFX triggered too long ago, not playing:", data.sfx_url);
+              lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
+            }
+          }
         }
       }
     };
+
 
     const fetchMusic = async () => {
       const { data, error } = await supabase.from('global').select('*').eq('id', 1).maybeSingle();
@@ -340,6 +379,9 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
     return () => {
       if (interval) clearInterval(interval);
+      if (channel) {
+        channel.unsubscribe();
+      }
       if (ytPlayer.current) {
         try {
           ytPlayer.current.destroy();
@@ -369,28 +411,42 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     }
   }, [isMaster]);
 
-  const playSFX = async (filename, category) => {
+  const playSFX = async (filename, category, sfxLoop = isSfxLooping, sfxVolume = sfxVolumeInput, sfxDuration = sfxDurationInput) => {
     const path = category === 'builtIn' ? `/sound_effects/${filename}` : `/sound_effects/playable/${filename}`;
-    console.log("Attempting to play SFX (Master):", { filename, category, path, volume });
+    const triggeredAt = new Date().toISOString();
+    console.log("Attempting to play SFX (Master):", { filename, category, path, sfxVolume, sfxLoop, sfxDuration });
 
     if (isMaster) {
       const { error } = await supabase
         .from('global')
         .update({
           sfx_url: path,
-          sfx_triggered_at: new Date().toISOString()
+          sfx_triggered_at: triggeredAt,
+          sfx_loop: sfxLoop,
+          sfx_volume: sfxVolume,
+          sfx_duration: sfxDuration
         })
         .eq('id', 1);
 
       if (error) {
-        console.error("Error updating global SFX state:", error);
+        if (error.code === 'PGRST204') {
+          console.warn("Supabase columns missing. Falling back to simple SFX update.");
+          await supabase
+            .from('global')
+            .update({
+              sfx_url: path,
+              sfx_triggered_at: triggeredAt
+            })
+            .eq('id', 1);
+        } else {
+          console.error("Error updating global SFX state:", error);
+        }
       } else {
-        // Master also plays locally, but the sync will prevent double-triggering
-        // The conditional logic in syncWithSupabase will handle whether the master should play
-        // or if it's already playing from the local trigger.
-        playRemoteSFX(path); // Master plays it immediately
-        setCurrentSfxUrl(path);
-        setCurrentSfxTriggeredAt(new Date().toISOString());
+        playRemoteSFX(path, sfxVolume, sfxLoop, sfxDuration); // Master plays it immediately
+        const masterTriggeredAt = triggeredAt;
+        setCurrentSfxUrl(path); // Update local state for master as well
+        setCurrentSfxTriggeredAt(masterTriggeredAt);
+        lastPlayedSfxRef.current = { url: path, triggeredAt: masterTriggeredAt };
       }
     } else {
       // For non-masters, direct playback is not allowed; they receive via sync.
@@ -408,7 +464,9 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
         .from('global')
         .update({
           sfx_url: null,
-          sfx_triggered_at: null
+          sfx_triggered_at: null,
+          sfx_loop: false,
+          sfx_volume: null
         })
         .eq('id', 1);
 
@@ -417,9 +475,18 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       } else {
         // Master also stops locally
         if (sfxAudioRef.current) {
-          sfxAudioRef.current.pause();
-          sfxAudioRef.current.currentTime = 0;
-          sfxAudioRef.current = null;
+          const fadeOut = setInterval(() => {
+            if (sfxAudioRef.current && sfxAudioRef.current.volume > 0.05) {
+              sfxAudioRef.current.volume -= 0.05;
+            } else {
+              clearInterval(fadeOut);
+              if (sfxAudioRef.current) {
+                sfxAudioRef.current.pause();
+                sfxAudioRef.current.currentTime = 0;
+                sfxAudioRef.current = null;
+              }
+            }
+          }, 50);
         }
         setCurrentSfxUrl(null);
         setCurrentSfxTriggeredAt(null);
@@ -439,29 +506,62 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     }
   };
 
-  const playRemoteSFX = (sfxPath) => {
+  const playRemoteSFX = (sfxPath, sfxVolume, sfxLoop = false, sfxDuration = 30) => {
     if (sfxAudioRef.current) {
       sfxAudioRef.current.pause();
       sfxAudioRef.current.currentTime = 0;
     }
     sfxAudioRef.current = new Audio(sfxPath);
-    sfxAudioRef.current.volume = volume; // Use the global volume
+    const targetVolume = (sfxVolume ?? 1.0) * volume;
+    sfxAudioRef.current.volume = Math.max(0, Math.min(1, targetVolume));
+    sfxAudioRef.current.loop = sfxLoop;
     
     // Track active sound for UI
     setActiveSounds(prev => new Set(prev).add(sfxPath));
     
+    // Setup duration-based stop/fade if looping
+    let durationTimeout = null;
+    if (sfxLoop && sfxDuration > 0) {
+      durationTimeout = setTimeout(() => {
+        if (sfxAudioRef.current && sfxAudioRef.current.src.includes(sfxPath)) {
+          // Fade out
+          const fadeOut = setInterval(() => {
+            if (sfxAudioRef.current && sfxAudioRef.current.volume > 0.05) {
+              sfxAudioRef.current.volume -= 0.05;
+            } else {
+              clearInterval(fadeOut);
+              if (sfxAudioRef.current) {
+                sfxAudioRef.current.pause();
+                sfxAudioRef.current.currentTime = 0;
+                sfxAudioRef.current = null;
+              }
+              setActiveSounds(prev => {
+                const next = new Set(prev);
+                next.delete(sfxPath);
+                return next;
+              });
+            }
+          }, 50);
+        }
+      }, sfxDuration * 1000);
+    }
+
     sfxAudioRef.current.onended = () => {
-      setActiveSounds(prev => {
-        const next = new Set(prev);
-        next.delete(sfxPath);
-        return next;
-      });
-      if (sfxAudioRef.current?.src.includes(sfxPath)) {
-        sfxAudioRef.current = null;
+      if (!sfxLoop) {
+        if (durationTimeout) clearTimeout(durationTimeout);
+        setActiveSounds(prev => {
+          const next = new Set(prev);
+          next.delete(sfxPath);
+          return next;
+        });
+        if (sfxAudioRef.current?.src.includes(sfxPath)) {
+          sfxAudioRef.current = null;
+        }
       }
     };
 
     sfxAudioRef.current.play().catch(err => {
+      if (durationTimeout) clearTimeout(durationTimeout);
       console.error("Error playing remote SFX:", sfxPath, err);
       setActiveSounds(prev => {
         const next = new Set(prev);
@@ -509,6 +609,45 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       {/* SFX Panel */}
       {isSFXOpen && isMaster && (
         <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl w-80 mb-2 animate-in fade-in slide-in-from-bottom-4 duration-300 flex flex-col gap-4">
+          <div className="flex flex-col gap-2 mb-4">
+            <div className="flex items-center justify-between gap-2 px-1 mb-1">
+              <label className="text-[9px] font-black text-zinc-500 uppercase">Loop Sound:</label>
+              <button 
+                onClick={() => setIsSfxLooping(!isSfxLooping)}
+                className={`px-3 py-1 rounded text-[9px] font-black uppercase transition-all ${isSfxLooping ? 'bg-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.4)]' : 'bg-zinc-800 text-zinc-500'}`}
+              >
+                {isSfxLooping ? 'ENABLED' : 'DISABLED'}
+              </button>
+            </div>
+            {isSfxLooping && (
+              <div className="flex items-center gap-2 mb-1 animate-in fade-in zoom-in-95 duration-200">
+                <label htmlFor="sfx-duration" className="text-[9px] font-black text-zinc-500 uppercase w-20">Loop Duration (s):</label>
+                <input 
+                  id="sfx-duration"
+                  type="number" 
+                  min="1" 
+                  max="300" 
+                  value={sfxDurationInput}
+                  onChange={(e) => setSfxDurationInput(parseInt(e.target.value) || 1)}
+                  className="bg-black border border-zinc-800 rounded px-2 py-0.5 text-[9px] text-white outline-none focus:border-red-600 w-24"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <label htmlFor="sfx-volume" className="text-[9px] font-black text-zinc-500 uppercase w-20">Volume:</label>
+              <input 
+                id="sfx-volume"
+                type="range" 
+                min="0" 
+                max="1" 
+                step="0.05" 
+                value={sfxVolumeInput}
+                onChange={(e) => setSfxVolumeInput(parseFloat(e.target.value))}
+                className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600 w-24"
+              />
+              <span className="text-[9px] font-mono font-black text-zinc-600 w-8 text-right">{(sfxVolumeInput * 100).toFixed(0)}%</span>
+            </div>
+          </div>
           <div>
             <div className="flex justify-between items-center mb-2">
               <p className="text-[10px] font-black text-zinc-500 uppercase">Sound Effects</p>
@@ -527,7 +666,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
                 return (
                   <button 
                     key={s} 
-                    onClick={() => playSFX(s, 'playable')}
+                    onClick={() => playSFX(s, 'playable', isSfxLooping, sfxVolumeInput)}
                     className={`text-[9px] text-left px-2 py-1 rounded truncate transition-colors relative ${
                       active ? 'bg-red-600 text-white font-bold shadow-[0_0_10px_rgba(220,38,38,0.5)]' : 'bg-zinc-800/50 text-zinc-300 hover:bg-red-600/30'
                     }`}
@@ -567,7 +706,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
                 return (
                   <button 
                     key={s} 
-                    onClick={() => playSFX(s, 'builtIn')}
+                    onClick={() => playSFX(s, 'builtIn', isSfxLooping, sfxVolumeInput)}
                     className={`text-[9px] text-left px-2 py-1 rounded truncate transition-colors relative ${
                       active ? 'bg-zinc-100 text-black font-bold shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700'
                     }`}

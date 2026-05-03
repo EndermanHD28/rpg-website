@@ -11,7 +11,8 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.93.3",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.4",
     "next": "16.1.6",

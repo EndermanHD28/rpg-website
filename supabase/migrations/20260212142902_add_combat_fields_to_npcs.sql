@@ -1,4 +1,0 @@
--- Add combat fields to NPCs table
-ALTER TABLE npcs ADD COLUMN IF NOT EXISTS is_in_combat BOOLEAN DEFAULT false;
-ALTER TABLE npcs ADD COLUMN IF NOT EXISTS current_hp INTEGER;
-ALTER TABLE npcs ADD COLUMN IF NOT EXISTS effects JSONB DEFAULT '[]'::jsonb;

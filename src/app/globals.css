@@ -16,18 +16,21 @@ input::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
 input[type=number] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
 
-button, select, .cursor-pointer {
+button,
+select,
+.cursor-pointer {
   cursor: pointer !important;
   transition: all 0.2s ease;
 }
 
 .bg-bloodbath {
-  background: linear-gradient(to right, #000000 20%, rgba(0,0,0,0) 80%), url('/red-moon.jpg');
+  background: linear-gradient(to right, #000000 20%, rgba(0, 0, 0, 0) 80%), url('/red-moon.jpg');
   background-size: cover;
   background-position: right center;
 }
@@ -36,15 +39,18 @@ button, select, .cursor-pointer {
   width: 6px;
   height: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 10px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
@@ -86,18 +92,137 @@ button, select, .cursor-pointer {
   --tw-exit-translate-y: 0;
 }
 
-.fade-in { --tw-enter-opacity: 0 !important; }
-.fade-out { --tw-exit-opacity: 0 !important; }
-.zoom-in-95 { --tw-enter-scale: 0.95 !important; }
-.zoom-out-95 { --tw-exit-scale: 0.95 !important; }
-.slide-in-from-bottom-8 { --tw-enter-translate-y: 2rem !important; }
-.slide-out-to-bottom-8 { --tw-exit-translate-y: 2rem !important; }
-.slide-in-from-top-1 { --tw-enter-translate-y: -0.25rem !important; }
-.slide-in-from-top-4 { --tw-enter-translate-y: -1rem !important; }
+.fade-in {
+  --tw-enter-opacity: 0 !important;
+}
 
-.duration-150 { animation-duration: 150ms !important; }
-.duration-200 { animation-duration: 200ms !important; }
-.duration-300 { animation-duration: 300ms !important; }
-.duration-500 { animation-duration: 500ms !important; }
-.duration-700 { animation-duration: 700ms !important; }
-.ease-out { animation-timing-function: cubic-bezier(0, 0, 0.2, 1) !important; }
+.fade-out {
+  --tw-exit-opacity: 0 !important;
+}
+
+.zoom-in-95 {
+  --tw-enter-scale: 0.95 !important;
+}
+
+.zoom-out-95 {
+  --tw-exit-scale: 0.95 !important;
+}
+
+.slide-in-from-bottom-8 {
+  --tw-enter-translate-y: 2rem !important;
+}
+
+.slide-out-to-bottom-8 {
+  --tw-exit-translate-y: 2rem !important;
+}
+
+.slide-in-from-top-1 {
+  --tw-enter-translate-y: -0.25rem !important;
+}
+
+.slide-in-from-top-4 {
+  --tw-enter-translate-y: -1rem !important;
+}
+
+.duration-150 {
+  animation-duration: 150ms !important;
+}
+
+.duration-200 {
+  animation-duration: 200ms !important;
+}
+
+.duration-300 {
+  animation-duration: 300ms !important;
+}
+
+.duration-500 {
+  animation-duration: 500ms !important;
+}
+
+.duration-700 {
+  animation-duration: 700ms !important;
+}
+
+.ease-out {
+  animation-timing-function: cubic-bezier(0, 0, 0.2, 1) !important;
+}
+
+/* Fog Animation */
+@keyframes fog-scroll {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.fog-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fog-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 400%; /* 4 images, so 400% */
+  display: flex;
+  animation: fog-scroll 34s linear infinite; /* Adjusted speed because of double path */
+  opacity: 1;
+  filter: saturate(115%) brightness(0.9);
+}
+
+.fog-img {
+  width: 25%; /* 1/4 of container */
+  height: 100%;
+  background-color: #6d0404;
+  /* Um vermelho mais vibrante para o sangue */
+
+  /* A mágica: a imagem vira uma máscara para a cor */
+  -webkit-mask-image: url('/fog-png.png');
+  mask-image: url('/fog-png.png');
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  /* Dá o aspecto de "nuvem" pesada e não só uma transparência */
+  opacity: 0.55;
+  filter: saturate(75%);
+}
+
+.fog-img.mirrored {
+  transform: scaleX(-1);
+}
+
+/* Floating Moon Animation */
+@keyframes moon-float {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(0.75%, -0.75%) rotate(1.65deg);
+  }
+  50% {
+    transform: translate(1.5%, 0) rotate(0deg);
+  }
+  75% {
+    transform: translate(0.75%, 0.75%) rotate(-1.65deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+.moon-animated {
+  animation: moon-float var(--moon-duration, 7s) ease-in-out infinite;
+  scale: 1.1; /* Slight scale to prevent seeing edges when moving */
+  transform-origin: 66% 42%;
+}

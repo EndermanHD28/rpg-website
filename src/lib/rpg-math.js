@@ -1,19 +1,78 @@
+import { LINHAGENS_DATA, RESPIRACOES_DATA } from '../constants/gameData';
+
 const GLOBAL_PAT_MULTIPLIER = 0.6;
+
+export function getStatBuffs(char, statName) {
+  if (!char) return [];
+  const buffs = [];
+
+  // 1. Lineage Buffs
+  // In the DB/state it's called 'bloodline', but the user prompt called it 'lineage'.
+  // Looking at BioGrid.js: field="bloodline"
+  const lineageName = char.bloodline || char.lineage;
+  const lineageData = LINHAGENS_DATA[lineageName];
+  if (lineageData && lineageData.stat_boosts) {
+    lineageData.stat_boosts.forEach(boost => {
+      let applies = false;
+      // Normalized stat names for comparison
+      const targetStat = statName.toLowerCase();
+      const boostStat = boost.stat.toLowerCase();
+
+      if (boostStat === targetStat || boostStat === 'all' || (boostStat === 'all_other' && targetStat !== 'precision')) {
+        applies = true;
+      }
+
+      if (applies && boost.condition) {
+        if (boost.condition.type === 'breathing_keyword') {
+          const breathing = char.breathing_style;
+          const breathingData = RESPIRACOES_DATA[breathing];
+          if (!breathingData || !breathingData.keywords.includes(boost.condition.value)) {
+            applies = false;
+          }
+        } else if (boost.condition.type === 'breathing_style') {
+          if (char.breathing_style !== boost.condition.value) {
+            applies = false;
+          }
+        }
+      }
+
+      if (applies) {
+        buffs.push({ source: 'Linhagem', amount: boost.amount });
+      }
+    });
+  }
+
+  // 2. Anomaly Buffs (Placeholder for now)
+  // 3. Nichirin Buffs (Placeholder for now)
+  // 4. Class Buffs (Placeholder for now)
+
+  return buffs;
+}
+
+export function calculateStatWithBuffs(char, statName, baseValue) {
+  const buffs = getStatBuffs(char, statName);
+  const totalMultiplier = buffs.reduce((acc, buff) => acc + buff.amount, 0);
+  return {
+    total: Math.floor(baseValue * (1 + totalMultiplier)),
+    buffs: buffs,
+    multiplier: totalMultiplier
+  };
+}
 
 export function calculateDisarmedPAT(char) {
   if (!char) return 0;
-  const strength = Number(char.strength) || 0;
-  const resistance = Number(char.resistance) || 0;
+  const strength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
+  const resistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
   // Soco / Improviso Formula: (1.0 * Força + 0.35 * Resistência) * 4
   return ((1.0 * strength + 0.35 * resistance) * 4 * GLOBAL_PAT_MULTIPLIER).toFixed(1);
 }
 
 export function calculateAcerto(char) {
   if (!char) return 0;
-  const sPrecision = Number(char.precision) || 0;
-  const sAgility = Number(char.agility) || 0;
-  const sAptitude = Number(char.aptitude) || 0;
-  const sStrength = Number(char.strength) || 0;
+  const sPrecision = calculateStatWithBuffs(char, 'precision', Number(char.precision) || 0).total;
+  const sAgility = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
+  const sAptitude = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
+  const sStrength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
 
   return Math.round(10 + Math.pow(
     (
@@ -28,9 +87,9 @@ export function calculateAcerto(char) {
 
 export function calculateDesvio(char) {
   if (!char) return 0;
-  const sAgility = Number(char.agility) || 0;
-  const sResistance = Number(char.resistance) || 0;
-  const sAptitude = Number(char.aptitude) || 0;
+  const sAgility = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
+  const sResistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
+  const sAptitude = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
 
   return Math.round(11 + Math.pow(
     (
@@ -44,9 +103,9 @@ export function calculateDesvio(char) {
 
 export function calculateBloqueio(char) {
   if (!char) return 0;
-  const sResistance = Number(char.resistance) || 0;
-  const sStrength = Number(char.strength) || 0;
-  const sAptitude = Number(char.aptitude) || 0;
+  const sResistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
+  const sStrength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
+  const sAptitude = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
 
   // Formula baseada em Resistência, Força e Aptidão
   return Math.round(4 + Math.pow(
@@ -61,7 +120,24 @@ export function calculateBloqueio(char) {
 
 export function calculateSecondaryStat(perc) {
   const p = parseFloat(perc) || 0;
-  return Math.round(20 * Math.pow(p / 20, 0.6215));
+  let power = 0.45;
+  if (p < 8.5) {
+    power = 0.5;
+  } else if (p > 20) {
+    power = 0.4;
+  } else if (p > 11.5) {
+    power = 0.55;
+  }
+  
+  // Base sum to reach 20 when perc is 11.11... (which happens when all 9 stats are 3)
+  // Input: p = 11.1111...
+  // Requirement: result = 20
+  // Formula: X + Math.pow(p, power) = 20
+  // With p=11.11 and power=0.45: Math.pow(11.11, 0.45) ≈ 2.97
+  // So X ≈ 20 - 2.97 ≈ 17.03
+  // Since user said it "currently starts at 13 but should start at 20", 
+  // and we want it to result in 1d20 base (which is 20 in this context of flat values).
+  return Math.round(17.03 + Math.pow(p, power));
 }
 
 export function calculateLootDie(luckPerc) {
@@ -71,17 +147,28 @@ export function calculateLootDie(luckPerc) {
 
 export function calculateDerivedStats(char) {
   if (!char) return null;
+
+  // Apply Buffs from Lineage etc.
+  const strengthWithBuffs = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
+  const resistanceWithBuffs = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
+  const aptitudeWithBuffs = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
+  const agilityWithBuffs = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
+  const precisionWithBuffs = calculateStatWithBuffs(char, 'precision', Number(char.precision) || 0).total;
+  const intelligenceWithBuffs = calculateStatWithBuffs(char, 'intelligence', Number(char.intelligence) || 0).total;
+  const charismaWithBuffs = calculateStatWithBuffs(char, 'charisma', Number(char.charisma) || 0).total;
+  const luckWithBuffs = calculateStatWithBuffs(char, 'luck', Number(char.luck) || 0).total;
+
   const rawPresence = (Number(char.strength) || 0) + (Number(char.resistance) || 0) + (Number(char.aptitude) || 0) + (Number(char.agility) || 0) + (Number(char.precision) || 0);
   const presence = rawPresence * 2; // Matching the sheet's calculation for percentage base
   
   // Posture: Complex formula matches CombatManager and is used in the sheet
   const isComplex = !char.is_npc || char.type === 'Complex';
   const posture = isComplex 
-    ? Math.floor(2 * ((Number(char.resistance) || 0) * 1.2) + (Number(char.aptitude * 3.4) || 0))
-    : Math.floor(((Number(char.strength) || 0) + (Number(char.resistance) || 0) * 7) / 2);
+    ? Math.floor(2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4))
+    : Math.floor((strengthWithBuffs + resistanceWithBuffs * 7) / 2);
   
   // Life: Strength + (Resistance * 7)
-  let life = (Number(char.strength) || 0) + ((Number(char.resistance) || 0) * 7);
+  let life = strengthWithBuffs + (resistanceWithBuffs * 7);
 
   // Apply Max Life Modifiers from effects
   const effects = Array.isArray(char.effects) ? char.effects : [];
@@ -99,15 +186,22 @@ export function calculateDerivedStats(char) {
     rawPresence,
     posture,
     life: Math.floor(life),
-    strengthPerc: calcPerc(char.strength),
-    resistancePerc: calcPerc(char.resistance),
-    aptitudePerc: calcPerc(char.aptitude),
-    agilityPerc: calcPerc(char.agility),
-    precisionPerc: calcPerc(char.precision),
-    intelligencePerc: calcPerc(char.intelligence),
-    charismaPerc: calcPerc(char.charisma),
-    luckPerc: calcPerc(char.luck)
+    strengthPerc: calcPerc(strengthWithBuffs),
+    resistancePerc: calcPerc(resistanceWithBuffs),
+    aptitudePerc: calcPerc(aptitudeWithBuffs),
+    agilityPerc: calcPerc(agilityWithBuffs),
+    precisionPerc: calcPerc(precisionWithBuffs),
+    intelligencePerc: calcPerc(intelligenceWithBuffs),
+    charismaPerc: calcPerc(charismaWithBuffs),
+    luckPerc: calcPerc(luckWithBuffs)
   };
+
+  if (char.inventory) {
+    const equippedBackpack = char.inventory.find(item => item.isBackpack && item.equipped);
+    stats.weight_limit = 6 + (equippedBackpack ? (Number(equippedBackpack.cargaIncrease) || 10) : 0);
+  } else {
+    stats.weight_limit = 6;
+  }
 
   return stats;
 }
@@ -117,10 +211,10 @@ export function calculateWeaponPAT(weapon, char) {
   
   const effects = Array.isArray(char.effects) ? char.effects : [];
   
-  let strength = Number(char.strength) || 0;
-  let precision = Number(char.precision) || 0;
-  let agility = Number(char.agility) || 0;
-  let resistance = Number(char.resistance) || 0;
+  let strength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
+  let precision = calculateStatWithBuffs(char, 'precision', Number(char.precision) || 0).total;
+  let agility = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
+  let resistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
 
   // Apply Stat Modifiers from effects
   effects.forEach(eff => {
@@ -133,18 +227,19 @@ export function calculateWeaponPAT(weapon, char) {
   // EASY TO MODIFY FORMULAS
   const formulas = {
     // 🔫 Armas de Fogo
-    'Sniper': (s, p, a, r) => (0.4 * s) + (2.4 * p),
-    'Pistola': (s, p, a, r) => (0.6 * s) + (1.4 * p),
-    'Revólver': (s, p, a, r) => (1.0 * s) + (1.6 * p),
+    'Sniper': (s, p, a, r) => (0.6 * s) + (2.4 * p),
+    'Pistola': (s, p, a, r) => (0.7 * s) + (1.4 * p),
+    'Revólver': (s, p, a, r) => (0.85 * s) + (1.3 * p),
     'Escopeta / Metralhadora': (s, p, a, r) => (1.2 * s) + (1.2 * p),
-    'SMG (Submetralhadora)': (s, p, a, r) => (0.5 * s) + (1.1 * p) + (0.8 * a),
+    'Submetralhadora': (s, p, a, r) => (0.5 * s) + (1.1 * p) + (0.8 * a),
     // ⚔️ Armas Brancas e Impacto
-    'Faca / Adaga': (s, p, a, r) => (0.4 * s) + (1.2 * p) + (1.0 * a),
-    'Katana (Espada Leve)': (s, p, a, r) => (1.2 * s) + (1.2 * p),
-    'Machado Leve': (s, p, a, r) => (1.5 * s) + (0.7 * p),
-    'Espada Pesada / Machado Pesado': (s, p, a, r) => (2.2 * s) + (0.4 * r),
-    'Martelo Pesado / Marreta': (s, p, a, r) => (2.0 * s) + (1.0 * r),
-    'Soco / Improviso (Tacos/Tábuas)': (s, p, a, r) => (1.0 * s) + (0.35 * r)
+    'Arma de Impacto Leve': (s, p, a, r) => (1.15 * s) + (0.35 * r),
+    'Lâmina Curta': (s, p, a, r) => (0.4 * s) + (1.2 * p) + (1.0 * a),
+    'Espada Leve': (s, p, a, r) => (1.2 * s) + (1.2 * p),
+    'Machado/Porrete Leve': (s, p, a, r) => (1.5 * s) + (0.7 * p),
+    'Espada/Machado Pesado': (s, p, a, r) => (2.2 * s) + (0.4 * r),
+    'Martelo Pesado': (s, p, a, r) => (2.0 * s) + (1.0 * r),
+    'Soco / Improviso': (s, p, a, r) => (1.0 * s) + (0.45 * r)
   };
   const formula = formulas[weapon.subtype];
   base = formula ? formula(strength, precision, agility, resistance) : (1.0 * strength);
@@ -165,7 +260,8 @@ export function calculateWeaponPAT(weapon, char) {
   }
   // BLOODLINE MULTIPLIER (Placeholder for now, can be expanded if gameData provides it)
   const bloodlineMult = 1.0;
-  return (base * tierMult * upgradeMult * bloodlineMult * GLOBAL_PAT_MULTIPLIER).toFixed(1);
+  const customDamageMulti = typeof weapon.damage_multi === 'number' ? weapon.damage_multi : 1.0;
+  return (base * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER).toFixed(1);
 }
 
 export function rollDice(expression, charContext = null) {
@@ -335,14 +431,22 @@ export function rollDice(expression, charContext = null) {
   };
 }
 
-export const rollLoot = (lootTable) => {
+export const rollLoot = (lootTable, multiplier = 1) => {
   const results = [];
   
+  const getAdjustedChance = (chance, mult) => {
+    let mEff = mult;
+    if (chance > 50) {
+      mEff = mult + (1 - mult) * ((chance - 50) / 50);
+    }
+    return Math.min(100, Math.max(0, chance * mEff));
+  };
+
   // 1. Calculate rolls
   let rolls = Math.floor(Math.random() * (lootTable.max_rolls - lootTable.min_rolls + 1)) + lootTable.min_rolls;
   
   // 2. Extra rolls
-  if (Math.random() * 100 < (lootTable.extra_roll_chance || 0)) {
+  if (Math.random() * 100 < getAdjustedChance(lootTable.extra_roll_chance || 0, multiplier)) {
     const extra = Math.floor(Math.random() * (lootTable.max_extra_rolls - lootTable.min_extra_rolls + 1)) + lootTable.min_extra_rolls;
     rolls += extra;
   }
@@ -350,16 +454,26 @@ export const rollLoot = (lootTable) => {
   const items = lootTable.items || [];
   if (items.length === 0) return [];
 
+  // Pre-calculate original relative chances to adjust weights
+  const rawTotalWeight = items.reduce((sum, item) => sum + (Number(item.weight) || Number(item.generalChance) || 0), 0);
+  
+  const adjustedItems = items.map(item => {
+    const rawWeight = Number(item.weight) || Number(item.generalChance) || 0;
+    const relativeChance = rawTotalWeight > 0 ? (rawWeight / rawTotalWeight) * 100 : 0;
+    const newWeight = getAdjustedChance(relativeChance, multiplier);
+    return { ...item, _effectiveWeight: newWeight };
+  });
+
   // 3. Roll for each slot (Weight-based selection)
   for (let i = 0; i < rolls; i++) {
-    const totalWeight = items.reduce((sum, item) => sum + (Number(item.weight) || Number(item.generalChance) || 0), 0);
+    const totalWeight = adjustedItems.reduce((sum, item) => sum + item._effectiveWeight, 0);
     if (totalWeight <= 0) continue;
 
     let random = Math.random() * totalWeight;
     let selectedItem = null;
 
-    for (const itemConfig of items) {
-      const weight = (Number(itemConfig.weight) || Number(itemConfig.generalChance) || 0);
+    for (const itemConfig of adjustedItems) {
+      const weight = itemConfig._effectiveWeight;
       if (random < weight) {
         selectedItem = itemConfig;
         break;
@@ -375,7 +489,7 @@ export const rollLoot = (lootTable) => {
       const possibleExtra = (selectedItem.maxQty || amount) - amount;
       if (possibleExtra > 0) {
         for (let q = 0; q < possibleExtra; q++) {
-          if (Math.random() * 100 < (selectedItem.individualQtyChance || 0)) {
+          if (Math.random() * 100 < getAdjustedChance(selectedItem.individualQtyChance || 0, multiplier)) {
             amount++;
           }
         }

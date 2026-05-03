@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { MASTER_DISCORD_ID, ANOMALIAS_LIST, SKILLS_LIST, RARITY_CONFIG } from '../constants/gameData';
+import { MASTER_DISCORD_ID, ANOMALIAS_LIST, ANOMALIAS_DESCRIPTIONS, SKILLS_LIST, SKILLS_DESCRIPTIONS, RARITY_CONFIG } from '../constants/gameData';
 
-import { calculateDerivedStats } from '../lib/rpg-math';
+import { calculateDerivedStats, getStatBuffs } from '../lib/rpg-math';
 
 // Components
 import Inventory from '../components/InventoryTemp';
@@ -12,11 +12,13 @@ import MasterPanel from '../components/MasterPanel';
 import BioGrid from '../components/BioGrid';
 import DicePanel from '../components/DicePanel';
 import NPCEditor from '../components/NPCEditor';
-import { Toast, Modal } from '../components/UIElements';
+import { Toast, Modal, TooltipWrapper, CustomSelect } from '../components/UIElements';
 import Celebration from '../components/Celebration';
 import CombatTab from '../components/CombatTab';
 import { useSound } from '../hooks/useSound';
 import MusicPlayer from '../components/MusicPlayer';
+import NotificationSystem from '../components/NotificationSystem';
+import ItemsListGeneratorModal from '../components/ItemsListGeneratorModal';
 
 export default function Home() {
   // --- UI STATE ---
@@ -24,6 +26,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('home');
   const [lootTables, setLootTables] = useState([]);
   const [isLootModalOpen, setIsLootModalOpen] = useState(false);
+  const [isListGeneratorOpen, setIsListGeneratorOpen] = useState(false);
   const [editingLootTable, setEditingLootTable] = useState(null);
   const [isViewingOnly, setIsViewingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -63,12 +66,13 @@ export default function Home() {
   const isViewingOthers = viewingTarget && viewingTarget !== user?.id;
   const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
   const isNPC = activeChar && allNPCs.some(n => n.id === activeChar.id);
+  const activeRequest = requests.find(r => r.player_id === (viewingTarget || user?.id));
 
   // --- MATH HELPERS ---
   const derivedStats = calculateDerivedStats(activeChar) || {};
-  const { 
-    presence = 0, 
-    life = 0, 
+  const {
+    presence = 0,
+    life = 0,
     posture = 0,
     luckPerc = 0,
     charismaPerc = 0,
@@ -85,7 +89,33 @@ export default function Home() {
   const [now, setNow] = useState(Date.now());
   const [globalLockUntil, setGlobalLockUntil] = useState(0);
 
-  // --- UTILS ---
+  // Fog persistent animation logic
+  const FOG_DURATION = 34000; // Updated to 34s
+  const fogRef = useRef(null);
+
+  useEffect(() => {
+    if (activeTab === 'home' && fogRef.current) {
+      const startTime = localStorage.getItem('fog_start_time');
+      const now = Date.now();
+
+      if (startTime) {
+        const elapsed = (now - parseInt(startTime)) % FOG_DURATION;
+        const delay = -elapsed;
+        fogRef.current.style.animationDelay = `${delay}ms`;
+      } else {
+        localStorage.setItem('fog_start_time', now.toString());
+      }
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // --- DATA FETCH & REALTIME ---
   const showToast = (message) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message }]);
@@ -95,14 +125,14 @@ export default function Home() {
   const closeModal = () => setModal(m => ({ ...m, isOpen: false, inputValue: '', fields: false }));
 
   // --- DATA FETCH & REALTIME ---
-   useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       const { data: libraryData } = await supabase.from('items').select('*').order('name', { ascending: true });
       setItemLibrary(libraryData || []);
 
       const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
       setLootTables(lootData || []);
-      
+
       let activeUser;
       const savedFakeUser = localStorage.getItem('fake_discord_user');
       if (savedFakeUser) {
@@ -111,9 +141,19 @@ export default function Home() {
         const { data: { user: supabaseUser } } = await supabase.auth.getUser();
         activeUser = supabaseUser;
       }
-      
+
       setUser(activeUser);
-      
+
+      if (activeUser && !isActingAsMaster) {
+        const { data: pendingReq } = await supabase
+          .from('change_requests')
+          .select('*')
+          .eq('player_id', activeUser.id)
+          .eq('status', 'pending')
+          .maybeSingle();
+        setPendingRequest(pendingReq);
+      }
+
       // Fetch all players FIRST so we can use it for character/tempChar
       const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
       setAllPlayers(players || []);
@@ -125,16 +165,16 @@ export default function Home() {
         const tId = viewingTarget || activeUser.id;
         // Check if the user is in the 'players' we just fetched OR check DB directly
         const char = (players || []).find(p => p.id === tId);
-        
+
         if (char) {
           setCharacter(char);
-          setTempChar(char);
+          if (!isEditing) setTempChar(char);
         } else {
           // Double check DB to avoid race conditions with auth event vs fetch
           const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
           if (dbChar) {
             setCharacter(dbChar);
-            setTempChar(dbChar);
+            if (!isEditing) setTempChar(dbChar);
           } else if (tId === activeUser.id) {
             // AUTO-CREATE CHARACTER IF MISSING
             const newChar = {
@@ -156,17 +196,17 @@ export default function Home() {
               rank: 'E - Recruta',
               current_hp: 24 // (3 strength + 3 resistance * 7) = 24
             };
-            
+
             // Use UPSERT instead of INSERT to handle potential 409 Conflict
             const { data: createdChar, error: createError } = await supabase
               .from('characters')
               .upsert(newChar, { onConflict: 'id' })
               .select()
               .single();
-            
+
             if (!createError && createdChar) {
               setCharacter(createdChar);
-              setTempChar(createdChar);
+              if (!isEditing) setTempChar(createdChar);
               setAllPlayers(prev => {
                 const filtered = prev.filter(p => p.id !== createdChar.id);
                 return [...filtered, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || ""));
@@ -200,7 +240,15 @@ export default function Home() {
         const sorted = [...msgData].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         setMessages(sorted);
       }
-      
+
+      if (isMaster) {
+        const { data: reqData } = await supabase
+          .from('change_requests')
+          .select('*')
+          .eq('status', 'pending');
+        setRequests(reqData || []);
+      }
+
       setLoading(false);
     };
     fetchData();
@@ -224,10 +272,14 @@ export default function Home() {
         const characterData = p.new || p.old;
         if (characterData && characterData.id === (viewingTarget || user?.id)) {
           if (p.eventType === 'DELETE') {
-             // Handle character deletion if necessary
+            // Handle character deletion if necessary
           } else {
-            if (!isEditing) {
-              setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
+            // Always update the 'character' state to reflect the latest from DB
+            setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
+
+            // Update 'tempChar' only if we are NOT in editing mode AND there is NO pending request
+            // This ensures tempChar holds the latest approved character data when not actively editing or proposing changes.
+            if (!isEditing && !pendingRequest) {
               setTempChar(p.new);
             }
           }
@@ -253,7 +305,7 @@ export default function Home() {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (p) => {
         console.log("REALTIME GLOBAL UPDATE RECEIVED:", p.new);
-        
+
         // Handle Session Activation
         if (p.new.is_session_active !== undefined) {
           const nowActive = !!p.new.is_session_active;
@@ -264,7 +316,7 @@ export default function Home() {
             return nowActive;
           });
         }
-        
+
         // Handle Combat State
         if (p.new.is_combat_active !== undefined) {
           setIsCombatActive(p.new.is_combat_active);
@@ -307,10 +359,20 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
         if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
           // If our request was approved, sync our local character state immediately
-          // and ensure the celebration flag is set to true so the effect triggers
-          const updatedChar = { ...p.new.new_data, needs_celebration: true };
+          // by merging the new data into our current baseline.
+          const updatedChar = { ...character, ...p.new.new_data, needs_celebration: true };
           setCharacter(updatedChar);
           if (!isEditing) setTempChar(updatedChar);
+        }
+
+        // Keep current player's pendingRequest in sync without a full re-fetch
+        const relevantPlayerId = p.new?.player_id || p.old?.player_id;
+        if (relevantPlayerId === user?.id) {
+          if (p.eventType === 'DELETE' || (p.new && p.new.status !== 'pending')) {
+            setPendingRequest(null);
+          } else if (p.new && p.new.status === 'pending') {
+            setPendingRequest(p.new);
+          }
         }
 
         if (isMaster) {
@@ -327,48 +389,18 @@ export default function Home() {
       authListener.unsubscribe();
       supabase.removeChannel(mainChannel);
     };
-  }, [viewingTarget, user?.id, isEditing, isMaster]);
+  }, [viewingTarget, user?.id, isMaster]);
 
   useEffect(() => {
-    // If we are editing, we don't want to re-fetch allPlayers as it might trigger re-renders
-    if (isEditing) return;
-
-    if (activeTab === 'master' && isMaster) {
-      supabase.from('change_requests').select('*').eq('status', 'pending').then(({ data }) => setRequests(data || []));
-      supabase.from('characters').select('*').order('char_name', { ascending: true }).then(({ data }) => setAllPlayers(data || []));
+    // This useEffect manages tempChar synchronization
+    if (!isEditing) {
+      setTempChar(character);
+    } else if (pendingRequest) {
+      // If we are editing and have a pending request, merge the request onto the current baseline
+      // This ensures that all fields (stats, class, etc.) are correctly loaded
+      setTempChar({ ...character, ...pendingRequest.new_data });
     }
-  }, [activeTab, isMaster, isEditing]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // We only update 'now' if NOT editing to prevent UI re-renders
-      // from closing dropdowns
-      if (!isEditing) {
-        setNow(Date.now());
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isEditing]);
-
-  useEffect(() => {
-    // ONLY trigger if the character is the CURRENT USER'S character
-    if (character?.needs_celebration && character?.id === user?.id) {
-      // SECURITY: Don't show fireworks if Master is just browsing sheets
-      if (isMaster && !previewAsPlayer && viewingTarget) return;
-
-      setShowCelebration(true);
-      showToast("✨ FICHA APROVADA PELO MESTRE! ✨");
-
-      // Reset the flag in the database immediately so it doesn't repeat
-      supabase.from('characters')
-        .update({ needs_celebration: false })
-        .eq('id', character.id)
-        .then();
-
-      // Stop particles after 6 seconds
-      setTimeout(() => setShowCelebration(false), 6000);
-    }
-  }, [character?.needs_celebration, character?.id, user?.id]);
+  }, [isEditing, pendingRequest, character]); // Safe now that the fetch loop is gone
 
   // --- HANDLERS ---
   const handleStatChange = (stat, val) => {
@@ -504,8 +536,24 @@ export default function Home() {
             if (!error) showToast("Ficha Sincronizada!");
           } else {
             // We ensure only one pending request exists per player to avoid 409 Conflict
-            await supabase.from('change_requests').delete().eq('player_id', user.id).eq('status', 'pending');
+            try {
+              console.log("Checking for existing pending requests for user:", user.id);
+              const { data: existingReqs, error: fetchError } = await supabase.from('change_requests').select('id').eq('player_id', user.id).eq('status', 'pending');
+              if (fetchError) console.error("Error fetching existing requests:", fetchError);
+              
+              if (existingReqs && existingReqs.length > 0) {
+                console.log(`Found ${existingReqs.length} existing pending requests. Deleting them...`);
+                const { error: deleteError } = await supabase.from('change_requests').delete().in('id', existingReqs.map(r => r.id));
+                if (deleteError) console.error("Error deleting existing requests:", deleteError);
+                else console.log("Existing requests deleted successfully.");
+              } else {
+                console.log("No existing pending requests found.");
+              }
+            } catch (e) {
+              console.error("Exception in clearing pending requests:", e);
+            }
 
+            console.log("Inserting new change request...");
             const { error } = await supabase.from('change_requests').insert({
               player_id: user.id,
               player_name: user?.user_metadata?.full_name || user?.user_metadata?.preferred_username,
@@ -513,8 +561,14 @@ export default function Home() {
               new_data: sanitized,
               status: 'pending'
             });
-            if (!error) showToast("Pedido Enviado!");
-            else showToast("Erro ao enviar pedido.");
+            
+            if (error) {
+              console.error("Error inserting change request:", error);
+              showToast("Erro ao enviar pedido.");
+            } else {
+              console.log("Change request inserted successfully.");
+              showToast("Pedido Enviado!");
+            }
           }
 
           setIsEditing(false);
@@ -522,7 +576,48 @@ export default function Home() {
         }
       });
     } else {
-      setIsEditing(true);
+      if (pendingRequest) {
+        setModal({
+          isOpen: true,
+          title: "Pedido de Edição Pendente",
+          message: "Você já tem um pedido de edição pendente. O que deseja fazer?",
+          type: "custom", // A new type to indicate custom buttons
+          buttons: [
+            {
+              label: "Editar Pedido Atual",
+              className: "bg-blue-600 hover:bg-blue-700",
+              onClick: () => {
+                playSound('random_button');
+                setTempChar({ ...character, ...pendingRequest.new_data });
+                setIsEditing(true);
+
+                closeModal();
+              }
+            },
+            {
+              label: "Excluir Pedido",
+              className: "bg-red-600 hover:bg-red-700",
+              onClick: async () => {
+                playSound("error");
+                await supabase.from("change_requests").delete().eq("id", pendingRequest.id);
+                setPendingRequest(null);
+                showToast("Pedido de edição excluído.");
+                closeModal();
+              }
+            },
+            {
+              label: "Cancelar",
+              className: "bg-zinc-700 hover:bg-zinc-800",
+              onClick: () => {
+                playSound('random_button');
+                closeModal();
+              }
+            }
+          ]
+        });
+      } else {
+        setIsEditing(true);
+      }
     }
   };
 
@@ -576,12 +671,12 @@ export default function Home() {
                 <button
                   onClick={async () => {
                     if (!fakeDiscordUsernameInput) return;
-                    
+
                     // Generate a consistent UUID-like ID based on the username 
                     // This ensures the same fake username always gets the same character
                     const hash = Array.from(fakeDiscordUsernameInput).reduce((acc, char) => acc + char.charCodeAt(0), 0);
                     const consistentUuid = '00000000-0000-4000-8000-' + hash.toString(16).padStart(12, '0');
-                    
+
                     const fakeUser = {
                       id: consistentUuid,
                       user_metadata: {
@@ -637,7 +732,7 @@ export default function Home() {
                   const myChar = allPlayers.find(p => p.id === user?.id);
                   if (myChar) {
                     setCharacter(myChar);
-                    setTempChar(myChar);
+                    if (!isEditing) setTempChar(myChar);
                   }
                   setViewingTarget(null);
                   setActiveTab('sheet');
@@ -647,7 +742,7 @@ export default function Home() {
             </div>
 
             <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent mx-4" />
-            
+
             {/* CATEGORIA FICHAS */}
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Fichas</p>
@@ -657,7 +752,7 @@ export default function Home() {
                   .map(p => {
                     const isApproved = !!p.approved_once;
                     const canView = isActingAsMaster || isApproved;
-                    
+
                     return (
                       <NavButton
                         key={p.id}
@@ -673,7 +768,7 @@ export default function Home() {
                           }
                           playSound('tab_change');
                           setCharacter(p);
-                          setTempChar(p);
+                          if (!isEditing) setTempChar(p);
                           setViewingTarget(p.id);
                           setActiveTab('sheet');
                         }}
@@ -708,7 +803,7 @@ export default function Home() {
             {isActingAsMaster && (
               <>
                 <div className="h-px bg-gradient-to-r from-transparent via-red-950 to-transparent mx-4" />
-                
+
                 {/* CATEGORIA MESTRE */}
                 <div>
                   <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
@@ -766,16 +861,54 @@ export default function Home() {
       {/* CONTENT AREA */}
       <section className="flex-1 min-h-screen bg-zinc-950 relative flex flex-col">
         {activeTab === 'home' && (
-          <div className="h-full flex items-center relative">
-            <div className="absolute inset-0 bg-[url('/red-moon.jpg')] bg-cover bg-right opacity-70" style={{ maskImage: 'linear-gradient(to left, #000 0%, transparent 80%)', WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)' }}></div>
-            <div className="relative z-10 p-20 space-y-4 max-w-2xl">
-              <h2 className="text-7xl font-black italic uppercase tracking-tighter leading-[0.85] text-white">A Lua foi<br /><span className="text-red-600">manchada</span></h2>
-              <p className="text-zinc-400 font-medium italic text-lg leading-relaxed">A luz é a única esperança de um mundo devastado. Esta será uma aventura que jamais será esquecida. Porque será um BANHO DE SANGUE.</p>             <button onClick={() => {
+          <div className="h-full flex items-center relative overflow-hidden">
+            <div 
+              className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right moon-animated" 
+              style={{ 
+                maskImage: 'linear-gradient(to left, #000 0%, transparent 80%)', 
+                WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)',
+                '--moon-duration': '30s'
+              }}
+            ></div>
+            {/* Overlay de Vinheta - Coloque logo abaixo do background da lua */}
+            <div className="absolute inset-0 z-[6] pointer-events-none bg-[radial-gradient(circle,_transparent_40%,_rgba(0,0,0,0.8)_100%)]"></div>
+
+            {/* Overlay de Textura/Ruído (Opcional, precisa de um asset de noise) */}
+            <div className="absolute inset-0 z-[7] opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+            {/* Fog Overlay */}
+            <div className="fog-container">
+              <div className="fog-layer" ref={fogRef}>
+                <div className="fog-img"></div>
+                <div className="fog-img mirrored"></div>
+                <div className="fog-img"></div>
+                <div className="fog-img mirrored"></div>
+              </div>
+            </div>
+
+            {/* Fade Overlay to protect sidebar area */}
+            <div className="absolute inset-0 z-[5] bg-gradient-to-r from-black via-black/20 to-transparent w-1/2 pointer-events-none"></div>
+
+            <div className="relative z-10 p-20 space-y-4 max-w-4xl">
+              <h2 className="text-7xl font-black italic uppercase tracking-tighter leading-[0.85] text-white">What if?<br /><span className="text-red-600">Bloodbath</span></h2>
+
+              <div className="border-l-2 border-zinc-400 pl-6 py-2 space-y-4">
+                <p className="text-zinc-400 font-medium italic text-xl leading-relaxed max-w-xl">
+                  "O Sol irá se pôr e a Lua aparecerá. <br />
+                  Uma rachadura irá cicatrizá-la. <br />
+                  Então, <span className="text-[rgb(205,205,205)]">Deus abandonará os humanos</span>."
+                </p>
+                <p className="text-white font-bold italic text-lg tracking-widest uppercase">
+                  Capítulo 1: O Sol se pôs.
+                </p>
+              </div>
+
+
+              <button onClick={() => {
                 playSound('tab_change');
                 const myChar = allPlayers.find(p => p.id === user?.id);
                 if (myChar) {
                   setCharacter(myChar);
-                  setTempChar(myChar);
+                  if (!isEditing) setTempChar(myChar);
                 }
                 setViewingTarget(null);
                 setActiveTab('sheet');
@@ -803,9 +936,9 @@ export default function Home() {
                     {(!isViewingOthers || isActingAsMaster) && (
                       <button
                         onClick={() => { playSound('random_button'); toggleEditMode(); }}
-                        className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : 'bg-yellow-600 text-black'}`}
+                        className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : (activeRequest ? 'bg-lime-400 text-black border-2 border-lime-500' : 'bg-yellow-600 text-black')}`}
                       >
-                        {isEditing ? "CONCLUIR" : "EDITAR"}
+                        {isEditing ? "CONCLUIR" : (activeRequest ? "EDITAR !" : "EDITAR")}
                       </button>
                     )}
 
@@ -858,8 +991,8 @@ export default function Home() {
 
                   {/* ANOMALIAS & HABILIDADES */}
                   <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <TagBox label="Anomalias" list={ANOMALIAS_LIST} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
-                    <TagBox label="Habilidades" list={SKILLS_LIST} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
+                    <TagBox label="Anomalias" list={ANOMALIAS_LIST} descriptions={ANOMALIAS_DESCRIPTIONS} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
+                    <TagBox label="Habilidades" list={SKILLS_LIST} descriptions={SKILLS_DESCRIPTIONS} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
                   </div>
 
                   {/* BOTTOM STATS BOXES */}
@@ -936,6 +1069,7 @@ export default function Home() {
                         id: Date.now(),
                         type: newItem.type || 'Item',
                         isBackpack: !!newItem.isBackpack, // Ensure boolean
+                        cargaIncrease: newItem.cargaIncrease || 10,
                         equipped: false
                       };
 
@@ -967,7 +1101,58 @@ export default function Home() {
                       }
                     }
 
-                    newList[idx].equipped = !newList[idx].equipped;
+                    // BACKPACK CARGA LOGIC
+                    if (item.isBackpack) {
+                      let simulatedList = newList.map(i => ({...i}));
+
+                      if (!item.equipped) {
+                        // Equipping a new backpack
+                        // First, unequip any existing backpack
+                        const currentlyEquippedIdx = simulatedList.findIndex(i => i.isBackpack && i.equipped);
+                        if (currentlyEquippedIdx !== -1) {
+                          simulatedList[currentlyEquippedIdx].equipped = false;
+                        }
+                        // Equip the new one
+                        simulatedList[idx].equipped = true;
+                        
+                        // Check if valid
+                        const newEquippedBackpack = simulatedList.find(i => i.isBackpack && i.equipped);
+                        const newMaxSlots = 6 + (newEquippedBackpack ? (Number(newEquippedBackpack.cargaIncrease) || 10) : 0);
+                        const newItemWeight = simulatedList.reduce((acc, i) => {
+                          if (i.isBackpack && i.equipped) return acc;
+                          return acc + (Number(i.amount) || 1) * (Number(i.carga) || 1);
+                        }, 0);
+
+                        if (newItemWeight > newMaxSlots) {
+                          showToast(`Erro: Trocar de mochila excederia sua carga máxima (${newItemWeight}/${newMaxSlots}).`);
+                          return;
+                        }
+                        
+                        // Apply simulated changes
+                        if (currentlyEquippedIdx !== -1) {
+                          newList[currentlyEquippedIdx].equipped = false;
+                        }
+                        newList[idx].equipped = true;
+                      } else {
+                        // Unequipping the backpack
+                        simulatedList[idx].equipped = false;
+                        
+                        const newMaxSlots = 6;
+                        const newItemWeight = simulatedList.reduce((acc, i) => {
+                          if (i.isBackpack && i.equipped) return acc;
+                          return acc + (Number(i.amount) || 1) * (Number(i.carga) || 1);
+                        }, 0);
+
+                        if (newItemWeight > newMaxSlots) {
+                          showToast(`Erro: Remover a mochila excederia sua carga máxima (${newItemWeight}/${newMaxSlots}).`);
+                          return;
+                        }
+                        
+                        newList[idx].equipped = false;
+                      }
+                    } else {
+                      newList[idx].equipped = !newList[idx].equipped;
+                    }
 
                     if (isCombatActive && !isActingAsMaster) {
                       setModal({
@@ -976,16 +1161,39 @@ export default function Home() {
                         message: "O combate está ativo. Deseja pedir permissão ao Mestre para alterar este equipamento?",
                         onConfirm: async () => {
                           // Clear previous pending requests to avoid 409 Conflict
-                          await supabase.from('change_requests').delete().eq('player_id', user.id).eq('status', 'pending');
+                          try {
+                            console.log("Checking for existing pending requests for user (combat):", user.id);
+                            const { data: existingReqs, error: fetchError } = await supabase.from('change_requests').select('id').eq('player_id', user.id).eq('status', 'pending');
+                            if (fetchError) console.error("Error fetching existing requests (combat):", fetchError);
+                            
+                            if (existingReqs && existingReqs.length > 0) {
+                              console.log(`Found ${existingReqs.length} existing pending requests (combat). Deleting them...`);
+                              const { error: deleteError } = await supabase.from('change_requests').delete().in('id', existingReqs.map(r => r.id));
+                              if (deleteError) console.error("Error deleting existing requests (combat):", deleteError);
+                              else console.log("Existing requests deleted successfully (combat).");
+                            } else {
+                              console.log("No existing pending requests found (combat).");
+                            }
+                          } catch (e) {
+                            console.error("Exception in clearing pending requests (combat):", e);
+                          }
 
-                          await supabase.from('change_requests').insert({
+                          console.log("Inserting new change request (combat)...");
+                          const { error } = await supabase.from('change_requests').insert({
                             player_id: user.id,
                             player_name: user?.user_metadata?.full_name,
                             old_data: character,
                             new_data: { ...character, inventory: newList },
                             status: 'pending'
                           });
-                          showToast("Pedido de troca enviado!");
+                          
+                          if (error) {
+                            console.error("Error inserting change request (combat):", error);
+                            showToast("Erro ao enviar pedido.");
+                          } else {
+                            console.log("Change request inserted successfully (combat).");
+                            showToast("Pedido de troca enviado!");
+                          }
                           closeModal();
                         }
                       });
@@ -1038,9 +1246,9 @@ export default function Home() {
                 />
                 <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl">
                   <div className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-3">
-                    <h3 className="font-black text-zinc-500 text-[10px] italic">ATRIBUTOS</h3>
+                    <h3 className="font-black text-zinc-500 text-[12px] italic">ATRIBUTOS</h3>
                     {!(activeChar?.is_complex || isNPC) && (
-                      <div className={`px-3 py-1 rounded border text-[10px] font-black font-mono leading-none transition-colors ${(activeChar?.stat_points_available < 0)
+                      <div className={`px-3 py-1 rounded border text-[15px] font-black font-mono leading-none transition-colors ${(activeChar?.stat_points_available < 0)
                         ? 'bg-red-600/20 text-red-500 border-red-500/50'
                         : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'
                         }`}>
@@ -1049,17 +1257,17 @@ export default function Home() {
                     )}
                   </div>
                   <ul className="space-y-2">
-                    <StatLine label="Força" statKey="strength" val={activeChar?.strength} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
-                    <StatLine label="Resistência" statKey="resistance" val={activeChar?.resistance} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
-                    <StatLine label="Aptidão" statKey="aptitude" val={activeChar?.aptitude} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
-                    <StatLine label="Agilidade" statKey="agility" val={activeChar?.agility} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
-                    <StatLine label="Precisão" statKey="precision" val={activeChar?.precision} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} />
+                    <StatLine label="Força" statKey="strength" val={activeChar?.strength} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
+                    <StatLine label="Resistência" statKey="resistance" val={activeChar?.resistance} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
+                    <StatLine label="Aptidão" statKey="aptitude" val={activeChar?.aptitude} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
+                    <StatLine label="Agilidade" statKey="agility" val={activeChar?.agility} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
+                    <StatLine label="Precisão" statKey="precision" val={activeChar?.precision} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
                   </ul>
                   <div className="mt-8 border-t border-zinc-800 pt-6 uppercase italic text-[9px] text-cyan-500 font-black mb-4 tracking-widest">Especialidades</div>
                   <ul className="space-y-2">
-                    <StatLine label="Inteligência" statKey="intelligence" val={activeChar?.intelligence} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial />
-                    <StatLine label="Sorte" statKey="luck" val={activeChar?.luck} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial />
-                    <StatLine label="Carisma" statKey="charisma" val={activeChar?.charisma} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial />
+                    <StatLine label="Inteligência" statKey="intelligence" val={activeChar?.intelligence} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial activeChar={activeChar} />
+                    <StatLine label="Sorte" statKey="luck" val={activeChar?.luck} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial activeChar={activeChar} />
+                    <StatLine label="Carisma" statKey="charisma" val={activeChar?.charisma} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} isSpecial activeChar={activeChar} />
                   </ul>
                 </div>
               </div>
@@ -1114,23 +1322,23 @@ export default function Home() {
           <div className="p-12">
             <div className="max-w-4xl mx-auto space-y-8">
               <div className="flex justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800">
-                <div className="flex-1">
+                <div className="flex-1 pr-8">
                   <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Biblioteca de Itens</h2>
                   <div className="flex items-center gap-4 mt-2">
                     <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest shrink-0">Gerenciamento Centralizado</p>
                     <input
                       type="text"
                       placeholder="Pesquisar itens..."
-                      className="bg-black/40 border border-white/5 rounded-full px-6 py-1.5 text-xs text-white outline-none focus:border-yellow-500/50 w-64"
+                      className="w-full bg-black/40 border border-white/5 rounded-full px-6 py-1.5 text-xs text-white outline-none focus:border-yellow-500/50 w-64"
                       onChange={(e) => {
-                        const val = e.target.value.toLowerCase().replace(/\s/g, '');
+                        const val = e.target.value.toLowerCase().replace(/s/g, '');
                         // We use a local state for this later if needed, but for now we can filter library directly
                         setSearchTerm(e.target.value);
                       }}
                     />
                   </div>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3">
                   <button
                     onClick={() => setModal({
                       isOpen: true,
@@ -1147,9 +1355,12 @@ export default function Home() {
                           rarity: d.rarity,
                           value: d.value,
                           carga: d.carga || 1,
+                          isBackpack: !!d.isBackpack,
+                          cargaIncrease: d.cargaIncrease || 10,
                           category: d.category,
                           subtype: d.subtype,
                           hands: d.hands,
+                          damage_multi: d.damage_multi,
                           damageType: d.damageType,
                           description: d.description
                         });
@@ -1162,14 +1373,21 @@ export default function Home() {
                         }
                       }
                     })}
-                    className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
+                    className="w-full bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
                   >
                     + Criar Novo Item
                   </button>
-                  <button
-                    onClick={() => setModal({
-                      isOpen: true,
-                      title: "Importar Itens via Código",
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setIsListGeneratorOpen(true)}
+                      className="flex-1 bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
+                    >
+                      Gerar Lista
+                    </button>
+                    <button
+                      onClick={() => setModal({
+                        isOpen: true,
+                        title: "Importar Itens via Código",
                       input: true,
                       inputValue: '',
                       setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
@@ -1179,22 +1397,24 @@ export default function Home() {
                           if (!json || typeof json !== 'string') throw new Error("Entrada inválida.");
                           const items = JSON.parse(json.trim());
                           const itemsArray = Array.isArray(items) ? items : [items];
-                          
+
                           const preparedItems = itemsArray.map(itemData => ({
                             item_id: itemData.item_id,
                             name: itemData.name,
                             type: itemData.type || 'Item',
                             rarity: itemData.rarity || 'Comum',
                             value: itemData.value || 0,
-                            carga: itemData.carga || 1,
+                            carga: itemData.weight !== undefined ? itemData.weight : (itemData.carga !== undefined ? itemData.carga : 1),
                             category: itemData.category || 'Utilitário',
                             subtype: itemData.subtype || null,
                             hands: itemData.hands || 'Uma Mão',
+                            damage_multi: itemData.damage_multi !== undefined ? itemData.damage_multi : 1.0,
                             damageType: itemData.damageType || null,
                             description: itemData.description || null,
-                            tier: itemData.tier !== undefined ? (typeof itemData.tier === 'string' ? parseInt(itemData.tier.replace(/\D/g, '')) : itemData.tier) : 1,
+                            tier: itemData.tier !== undefined ? (typeof itemData.tier === 'string' ? parseInt(itemData.tier.replace(/D/g, '')) : itemData.tier) : 1,
                             upgrade: itemData.upgrade || 0,
-                            isBackpack: !!itemData.isBackpack
+                            isBackpack: !!itemData.isBackpack,
+                            cargaIncrease: itemData.cargaIncrease || 10
                           }));
 
                           const { error } = await supabase.from('items').insert(preparedItems);
@@ -1209,11 +1429,12 @@ export default function Home() {
                         }
                       }
                     })}
-                    className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
+                    className="flex-1 bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
                   >
-                    {} Importar Código
+                    { } Importar Código
                   </button>
                 </div>
+              </div>
               </div>
 
               <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
@@ -1225,70 +1446,74 @@ export default function Home() {
                         {itemLibrary
                           .filter(i => (i.type || 'Item') === cat)
                           .filter(i => {
-                            const search = searchTerm.toLowerCase().replace(/\s/g, '');
-                            return i.name.toLowerCase().replace(/\s/g, '').includes(search);
+                            const search = searchTerm.toLowerCase().replace(/s/g, '');
+                            const name = i.name.toLowerCase().replace(/s/g, '');
+                            return name.includes(search);
                           })
                           .map(item => (
-                          <div
-                            key={item.id}
-                            onClick={() => setModal({
-                              isOpen: true,
-                              title: "Editar Item Global",
-                              fields: true,
-                              forcedCustom: true,
-                              initialData: item,
-                              rarityConfig: RARITY_CONFIG,
-                              onConfirm: async (d) => {
-                                const { error } = await supabase.from('items').update({
-                                  name: d.name,
-                                  type: d.type,
-                                  rarity: d.rarity,
-                                  value: d.value,
-                                  carga: d.carga || 1,
-                                  category: d.category,
-                                  subtype: d.subtype,
-                                  hands: d.hands,
-                                  damageType: d.damageType,
-                                  description: d.description
-                                }).eq('id', item.id);
-                                if (!error) {
-                                  showToast("Item Atualizado!");
-                                  const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
-                                  setItemLibrary(data || []);
-                                  closeModal();
-                                }
-                              },
-                              onDelete: async () => {
-                                const { error } = await supabase.from('items').delete().eq('id', item.id);
-                                if (!error) {
-                                  // REMOVE FROM LOOT TABLES
-                                  const updatedLootTables = lootTables.map(lt => ({
-                                    ...lt,
-                                    items: lt.items.filter(i => i.item_id !== item.item_id)
-                                  }));
-                                  
-                                  // Batch update loot tables in supabase
-                                  for (const lt of updatedLootTables) {
-                                    await supabase.from('loot_tables').update({ items: lt.items }).eq('id', lt.id);
+                            <div
+                              key={item.id}
+                              onClick={() => setModal({
+                                isOpen: true,
+                                title: "Editar Item Global",
+                                fields: true,
+                                forcedCustom: true,
+                                initialData: item,
+                                rarityConfig: RARITY_CONFIG,
+                                onConfirm: async (d) => {
+                                  const { error } = await supabase.from('items').update({
+                                    name: d.name,
+                                    type: d.type,
+                                    rarity: d.rarity,
+                                    value: d.value,
+                                    carga: d.carga || 1,
+                                    isBackpack: !!d.isBackpack,
+                                    cargaIncrease: d.cargaIncrease || 10,
+                                    category: d.category,
+                                    subtype: d.subtype,
+                                    hands: d.hands,
+                                    damage_multi: d.damage_multi,
+                                    damageType: d.damageType,
+                                    description: d.description
+                                  }).eq('id', item.id);
+                                  if (!error) {
+                                    showToast("Item Atualizado!");
+                                    const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                                    setItemLibrary(data || []);
+                                    closeModal();
                                   }
-                                  
-                                  setLootTables(updatedLootTables);
-                                  showToast("Item Removido e Tabelas de Loot atualizadas!");
-                                  const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
-                                  setItemLibrary(data || []);
-                                  closeModal();
+                                },
+                                onDelete: async () => {
+                                  const { error } = await supabase.from('items').delete().eq('id', item.id);
+                                  if (!error) {
+                                    // REMOVE FROM LOOT TABLES
+                                    const updatedLootTables = lootTables.map(lt => ({
+                                      ...lt,
+                                      items: lt.items.filter(i => i.item_id !== item.item_id)
+                                    }));
+
+                                    // Batch update loot tables in supabase
+                                    for (const lt of updatedLootTables) {
+                                      await supabase.from('loot_tables').update({ items: lt.items }).eq('id', lt.id);
+                                    }
+
+                                    setLootTables(updatedLootTables);
+                                    showToast("Item Removido e Tabelas de Loot atualizadas!");
+                                    const { data } = await supabase.from('items').select('*').order('name', { ascending: true });
+                                    setItemLibrary(data || []);
+                                    closeModal();
+                                  }
                                 }
-                              }
-                            })}
-                            className="p-3 bg-black/40 rounded-xl border border-white/5 hover:border-yellow-500/50 cursor-pointer transition-all flex justify-between items-center group"
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold text-white group-hover:text-yellow-500 transition-colors">{item.name}</span>
-                              <span className={`text-[8px] font-black uppercase tracking-tighter ${RARITY_CONFIG[item.rarity]?.color}`}>{item.rarity}</span>
+                              })}
+                              className="p-3 bg-black/40 rounded-xl border border-white/5 hover:border-yellow-500/50 cursor-pointer transition-all flex justify-between items-center group"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-white group-hover:text-yellow-500 transition-colors">{item.name}</span>
+                                <span className={`text-[8px] font-black uppercase tracking-tighter ${RARITY_CONFIG[item.rarity]?.color}`}>{item.rarity}</span>
+                              </div>
+                              <span className="text-[9px] font-mono font-bold text-zinc-600 group-hover:text-zinc-400">{item.value}$</span>
                             </div>
-                            <span className="text-[9px] font-mono font-bold text-zinc-600 group-hover:text-zinc-400">{item.value}$</span>
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     </div>
                   ))}
@@ -1297,148 +1522,164 @@ export default function Home() {
             </div>
           </div>
         )}
-      </section>
 
-      {activeTab === 'loot' && isActingAsMaster && (
-        <div className="p-12">
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="flex justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800">
-              <div className="flex-1 pr-8">
-                <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Tabelas de Loot</h2>
-                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-2">Configuração de Recompensas</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setEditingLootTable(null);
-                    setIsLootModalOpen(true);
-                  }}
-                  className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
-                >
-                  + Nova Tabela
-                </button>
-                <button
-                  onClick={() => setModal({
-                    isOpen: true,
-                    title: "Importar Loot Tables via Código",
-                    input: true,
-                    inputValue: '',
-                    setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
-                    message: "Cole o código JSON das loot tables abaixo:",
-                    onConfirm: async (json) => {
-                      try {
-                        if (!json || typeof json !== 'string') throw new Error("Entrada inválida.");
-                        const tables = JSON.parse(json.trim());
-                        const tablesArray = Array.isArray(tables) ? tables : [tables];
-                        
-                        const preparedTables = tablesArray.map(t => ({
-                          name: t.name,
-                          min_rolls: t.min_rolls || 1,
-                          max_rolls: t.max_rolls || 1,
-                          items: t.items || []
-                        }));
-
-                        const { error } = await supabase.from('loot_tables').insert(preparedTables);
-                        if (error) throw error;
-
-                        showToast(`${preparedTables.length} Loot Tables Importadas!`);
-                        const { data } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
-                        setLootTables(data || []);
-                        closeModal();
-                      } catch (err) {
-                        showToast(`Erro na importação: ${err.message}`);
-                      }
-                    }
-                  })}
-                  className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
-                >
-                  Importar Código
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {lootTables.map(lt => (
-                  <div key={lt.id}
+        {activeTab === 'loot' && isActingAsMaster && (
+          <div className="p-12">
+            <div className="max-w-4xl mx-auto space-y-8">
+              <div className="flex justify-between items-center bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800">
+                <div className="flex-1 pr-8">
+                  <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Tabelas de Loot</h2>
+                  <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-2">Configuração de Recompensas</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
                     onClick={() => {
-                      setEditingLootTable(lt);
+                      setEditingLootTable(null);
                       setIsLootModalOpen(true);
                     }}
-                    className="p-4 bg-black/40 rounded-2xl border border-white/5 flex justify-between items-center group hover:border-yellow-500/50 transition-all cursor-pointer"
+                    className="bg-yellow-500 text-black px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-all"
                   >
-                    <div>
-                      <p className="text-sm font-black text-white">{lt.name}</p>
-                      <p className="text-[9px] text-zinc-500 font-bold uppercase">{lt.items?.length || 0} Itens • {lt.min_rolls}-{lt.max_rolls} Rolls</p>
+                    + Nova Tabela
+                  </button>
+                  <button
+                    onClick={() => setModal({
+                      isOpen: true,
+                      title: "Importar Loot Tables via Código",
+                      input: true,
+                      inputValue: '',
+                      setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
+                      message: "Cole o código JSON das loot tables abaixo:",
+                      onConfirm: async (json) => {
+                        try {
+                          if (!json || typeof json !== 'string') throw new Error("Entrada inválida.");
+                          const tables = JSON.parse(json.trim());
+                          const tablesArray = Array.isArray(tables) ? tables : [tables];
+
+                          const preparedTables = tablesArray.map(t => ({
+                            name: t.name,
+                            min_rolls: t.min_rolls || 1,
+                            max_rolls: t.max_rolls || 1,
+                            min_extra_rolls: t.min_extra_rolls || 0,
+                            max_extra_rolls: t.max_extra_rolls || 0,
+                            extra_roll_chance: t.extra_roll_chance || 0,
+                            items: t.items || []
+                          }));
+
+                          const { error } = await supabase.from('loot_tables').insert(preparedTables);
+                          if (error) throw error;
+
+                          showToast(`${preparedTables.length} Loot Tables Importadas!`);
+                          const { data } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
+                          setLootTables(data || []);
+                          closeModal();
+                        } catch (err) {
+                          showToast(`Erro na importação: ${err.message}`);
+                        }
+                      }
+                    })}
+                    className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[10px] hover:text-white hover:border-zinc-500 transition-all"
+                  >
+                    Importar Código
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 p-10 rounded-[40px] border border-zinc-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {lootTables.map(lt => (
+                    <div key={lt.id}
+                      onClick={() => {
+                        setEditingLootTable(lt);
+                        setIsLootModalOpen(true);
+                      }}
+                      className="p-4 bg-black/40 rounded-2xl border border-white/5 flex justify-between items-center group hover:border-yellow-500/50 transition-all cursor-pointer"
+                    >
+                      <div>
+                        <p className="text-sm font-black text-white">{lt.name}</p>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase">{lt.items?.length || 0} Itens • ${lt.min_rolls}-${lt.max_rolls} Rolls</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingLootTable(lt);
+                            setIsLootModalOpen(true);
+                          }}
+                          className="text-[10px] font-black text-zinc-600 hover:text-white uppercase"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          setModal({
+                            isOpen: true,
+                            title: "Excluir Tabela",
+                            message: `Deseja excluir a tabela "${lt.name}"? Esta ação é irreversível.`,
+                            type: 'danger',
+                            onConfirm: async () => {
+                              await supabase.from('loot_tables').delete().eq('id', lt.id);
+                              setLootTables(prev => prev.filter(t => t.id !== lt.id));
+                              showToast("Tabela excluída.");
+                              closeModal();
+                            }
+                          });
+                        }} className="text-[10px] font-black text-red-900 hover:text-red-500 uppercase">Excluir</button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                       <button
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           setEditingLootTable(lt);
-                           setIsLootModalOpen(true);
-                         }}
-                         className="text-[10px] font-black text-zinc-600 hover:text-white uppercase"
-                       >
-                         Editar
-                       </button>
-                       <button onClick={(e) => {
-                         e.stopPropagation();
-                         setModal({
-                           isOpen: true,
-                           title: "Excluir Tabela",
-                           message: `Deseja excluir a tabela "${lt.name}"? Esta ação é irreversível.`,
-                           type: 'danger',
-                           onConfirm: async () => {
-                             await supabase.from('loot_tables').delete().eq('id', lt.id);
-                             setLootTables(prev => prev.filter(t => t.id !== lt.id));
-                             showToast("Tabela excluída.");
-                             closeModal();
-                           }
-                         });
-                       }} className="text-[10px] font-black text-red-900 hover:text-red-500 uppercase">Excluir</button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {activeTab === 'npcs' && (
-        <div className="p-12">
-          <NPCEditor
-            isActingAsMaster={isActingAsMaster}
-            showToast={showToast}
-            setModal={setModal}
-            closeModal={closeModal}
-            onVisualizeComplex={(npc) => {
-              setViewingTarget(npc.id);
-              setCharacter(npc);
-              setTempChar(npc);
-              setActiveTab('sheet');
-            }}
+        {activeTab === 'npcs' && (
+          <div className="p-12">
+            <NPCEditor
+              isActingAsMaster={isActingAsMaster}
+              showToast={showToast}
+              setModal={setModal}
+              closeModal={closeModal}
+              onVisualizeComplex={(npc) => {
+                setViewingTarget(npc.id);
+                setCharacter(npc);
+                setTempChar(npc);
+                setActiveTab('sheet');
+              }}
+            />
+          </div>
+        )}
+
+        <Toast toasts={toasts} setToasts={setToasts} />
+        <Modal modal={modal} closeModal={closeModal} />
+        <ItemsListGeneratorModal
+          isOpen={isListGeneratorOpen}
+          closeModal={() => setIsListGeneratorOpen(false)}
+          library={itemLibrary}
+          showToast={showToast}
+        />
+        <LootTableEditorModal
+          isOpen={isLootModalOpen}
+          closeModal={() => {
+            setIsLootModalOpen(false);
+            // Re-fetch loot tables after closing to see new entries
+            supabase.from('loot_tables').select('*').order('name', { ascending: true })
+              .then(({ data }) => setLootTables(data || []));
+          }}
+          library={itemLibrary}
+          showToast={showToast}
+          initialData={editingLootTable}
+        />
+        <Celebration active={showCelebration} />
+        {activeTab === 'home' && (
+          <NotificationSystem 
+            user={user} 
+            isActingAsMaster={isActingAsMaster} 
+            showToast={showToast} 
           />
-        </div>
-      )}
-
-      <Toast toasts={toasts} setToasts={setToasts} />
-      <Modal modal={modal} closeModal={closeModal} />
-      <LootTableEditorModal
-        isOpen={isLootModalOpen}
-        closeModal={() => {
-          setIsLootModalOpen(false);
-          // Re-fetch loot tables after closing to see new entries
-          supabase.from('loot_tables').select('*').order('name', { ascending: true })
-            .then(({ data }) => setLootTables(data || []));
-        }}
-        library={itemLibrary}
-        showToast={showToast}
-        initialData={editingLootTable}
-      />
-      <Celebration active={showCelebration} />
-      <MusicPlayer isMaster={isActingAsMaster} currentVolume={volume} />
+        )}
+        <MusicPlayer isMaster={isActingAsMaster} currentVolume={volume} />
+      </section>
     </main>
   );
 }
@@ -1465,16 +1706,21 @@ const StatBox = ({ label, value, color, textColor }) => (
   <div className={`bg-black/40 p-5 rounded-2xl border-2 ${color} shadow-lg shrink-0`}><p className={`text-[10px] ${textColor} font-black italic mb-1`}>{label}</p><p className="text-4xl font-black">{value}</p></div>
 );
 
-const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, isSpecial = false }) => {
+const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, isSpecial = false, activeChar }) => {
   const v = val ?? 3;
   const perc = getPerc(v);
   const getStatColor = (p) => {
     const pf = parseFloat(p);
-    if (pf >= 30) return 'text-cyan-400';
-    if (pf >= 15) return 'text-green-400';
-    if (pf >= 10) return 'text-yellow-400';
+    if (pf >= 20) return 'text-cyan-400';
+    if (pf > 11.5) return 'text-green-400';
+    if (pf >= 8.5) return 'text-yellow-400';
     return 'text-red-700';
   };
+
+  const buffs = activeChar ? getStatBuffs(activeChar, statKey) : [];
+  const hasBuffs = buffs.length > 0;
+  const tooltipText = buffs.map(b => `(${b.source}) ${b.amount > 0 ? '+' : ''}${(b.amount * 100).toFixed(0)}%`).join('\n');
+
   return (
     <li className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 uppercase font-bold text-xs">
       <span className="text-zinc-500">{label}</span>
@@ -1492,25 +1738,64 @@ const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, i
             />
             <button onClick={() => handleStatChange(statKey, v + 1)} className="px-3 py-1 hover:bg-white/10">+</button>
           </div>
-        ) : <span className="text-yellow-500 font-mono text-lg">{v}</span>}
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="text-yellow-500 font-mono text-lg">{v}</span>
+            <TooltipWrapper text={hasBuffs ? tooltipText : null}>
+              <span className={`text-[12px] font-black cursor-default transition-colors ${hasBuffs ? 'text-green-500 cursor-help' : 'text-zinc-600'}`}>
+                (?)
+              </span>
+            </TooltipWrapper>
+          </div>
+        )}
       </div>
     </li>
   );
 };
 
-const TagBox = ({ label, list, activeList, field, isEditing, setTempChar, color = "text-gray-300 bg-white/5 border-white/5" }) => (
+const getEmoji = (desc) => {
+  if (!desc || desc === "Sem descrição.") return null;
+  const firstWord = desc.split(" ")[0];
+  return !/[a-zA-Z0-9]/.test(firstWord) ? firstWord : null;
+};
+
+const TagBox = ({ label, list, activeList, field, isEditing, setTempChar, descriptions, color = "text-gray-300 bg-white/5 border-white/5" }) => (
   <div className="p-4 bg-black/20 rounded-2xl border border-white/5">
     <div className="flex justify-between items-center mb-3">
       <span className="text-zinc-500 text-[9px] font-black italic uppercase leading-none">{label}:</span>
       {isEditing && (
-        <select onChange={(e) => { if (e.target.value && !(activeList || []).includes(e.target.value)) setTempChar(p => ({ ...p, [field]: [...(activeList || []), e.target.value] })) }} className="bg-zinc-800 text-[10px] rounded px-2 outline-none">
-          <option value="">ADICIONAR</option>
-          {list.filter(x => !(activeList || []).includes(x)).map(x => (<option key={x} value={x}>{x}</option>))}
-        </select>
+        <div className="w-28">
+          <CustomSelect
+            value=""
+            placeholder="ADICIONAR..."
+            className="bg-zinc-800 text-[10px] rounded px-2 py-1 w-full outline-none cursor-pointer flex justify-between items-center"
+            dropdownClassName="absolute z-[100] top-full left-0 w-full mt-1 bg-zinc-900 border border-white/10 rounded shadow-2xl py-1 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200"
+            options={list.filter(x => !(activeList || []).includes(x))}
+            descriptions={descriptions}
+            onChange={(val) => {
+              if (val && !(activeList || []).includes(val)) {
+                setTempChar(p => ({ ...p, [field]: [...(activeList || []), val] }));
+              }
+            }}
+          />
+        </div>
       )}
     </div>
     <div className="flex flex-wrap gap-2">
-      {(activeList || []).length > 0 ? activeList.map((x, i) => (<span key={i} className={`text-[10px] italic px-2 py-1 rounded border flex items-center gap-2 ${color} leading-none`}>{x}{isEditing && (<button onClick={() => setTempChar(p => ({ ...p, [field]: activeList.filter(y => y !== x) }))} className="text-red-500 ml-1">×</button>)}</span>)) : (<p className="text-[10px] text-zinc-600 italic uppercase">Nenhum</p>)}
+      {(activeList || []).length > 0 ? activeList.map((x, i) => {
+        const desc = descriptions?.[x];
+        const emoji = getEmoji(desc);
+        return (
+          <TooltipWrapper key={i} text={desc || "Sem descrição."}>
+            <span className={`text-[10px] italic px-2 py-1 rounded border flex items-center gap-2 ${color} leading-none`}>
+              {emoji ? `${emoji} ${x}` : x}
+              {isEditing && (
+                <button onClick={() => setTempChar(p => ({ ...p, [field]: activeList.filter(y => y !== x) }))} className="text-red-500 ml-1">×</button>
+              )}
+            </span>
+          </TooltipWrapper>
+        );
+      }) : (<p className="text-[10px] text-zinc-600 italic uppercase">Nenhum</p>)}
     </div>
   </div>
 );

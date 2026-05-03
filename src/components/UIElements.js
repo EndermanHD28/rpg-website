@@ -121,6 +121,14 @@ export function useTooltip() {
 export function TooltipWrapper({ children, text }) {
   const { showTooltip, hideTooltip } = useTooltip();
 
+  useEffect(() => {
+    return () => {
+      // Use a generic hide to avoid dependency loops
+      hideTooltip();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleMouseEnter = (e) => {
     if (!text) return;
     showTooltip(text, 500);
@@ -137,7 +145,7 @@ export function TooltipWrapper({ children, text }) {
   );
 }
 
-export function CustomSelect({ value, onChange, options, descriptions, label }) {
+export function CustomSelect({ value, onChange, options, descriptions, label, className, dropdownClassName, placeholder }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const { hideTooltip } = useTooltip();
@@ -156,14 +164,14 @@ export function CustomSelect({ value, onChange, options, descriptions, label }) 
     <div className="relative w-full" ref={containerRef}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none cursor-pointer flex justify-between items-center min-h-[38px]"
+        className={className || "bg-slate-800 border border-white/10 rounded px-3 py-2 w-full text-sm outline-none cursor-pointer flex justify-between items-center min-h-[38px]"}
       >
-        <span>{value || `Selecionar ${label}...`}</span>
-        <span className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+        <span>{value || placeholder || `Selecionar ${label}...`}</span>
+        <span className={`transition-transform duration-200 ml-2 ${isOpen ? 'rotate-180' : ''}`}>▼</span>
       </div>
 
       {isOpen && (
-        <div className="absolute z-[100] top-full left-0 w-full mt-1 bg-slate-900 border border-white/10 rounded shadow-2xl py-1 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+        <div className={dropdownClassName || "absolute z-[100] top-full left-0 w-full mt-1 bg-slate-900 border border-white/10 rounded shadow-2xl py-1 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200"}>
           {options.map((o) => (
             <TooltipWrapper key={o} text={descriptions?.[o]}>
               <div
@@ -204,9 +212,11 @@ export function Modal({ modal, closeModal }) {
   const [localData, setLocalData] = useState({
     item_id: '',
     name: '',
+    type: 'Item',
     rarity: 'Comum',
     value: 0,
     isBackpack: false,
+    cargaIncrease: 10,
     category: '',
     subtype: '',
     hands: 'Uma Mão',
@@ -214,8 +224,34 @@ export function Modal({ modal, closeModal }) {
     upgrade: 0,
     amount: 1,
     carga: 1,
+    damage_multi: 1.0,
     damageType: 'Corte',
-    description: ''
+    description: '',
+    npc_id: '',
+    strength: 1,
+    resistance: 1,
+    aptitude: 1,
+    agility: 1,
+    precision: 1,
+    armed_pat: '0',
+    image_url: '',
+    rank: '',
+    is_visible: false,
+    age: 0,
+    bloodline: 'Nenhuma',
+    breathing_style: 'Nenhuma',
+    breathing_lvl: 0,
+    height: '',
+    intelligence: 0,
+    charisma: 0,
+    luck: 0,
+    dollars: 0,
+    nichirin_color: 'Nenhuma',
+    class: 'Civil',
+    anomalies: [],
+    skills: [],
+    stat_points_available: 0,
+    inventory: []
   });
 
   // Reset internal state when modal opens
@@ -231,6 +267,7 @@ export function Modal({ modal, closeModal }) {
         rarity: modal.initialData?.rarity || 'Comum',
         value: modal.initialData?.value || 0, 
         isBackpack: modal.initialData?.isBackpack || false,
+        cargaIncrease: modal.initialData?.cargaIncrease || 10,
         category: modal.initialData?.category || '',
         subtype: modal.initialData?.subtype || '',
         hands: modal.initialData?.hands || 'Uma Mão',
@@ -238,6 +275,7 @@ export function Modal({ modal, closeModal }) {
         upgrade: modal.initialData?.upgrade || 0,
         amount: modal.initialData?.amount || 1,
         carga: modal.initialData?.carga || 1,
+        damage_multi: modal.initialData?.damage_multi !== undefined ? modal.initialData.damage_multi : 1.0,
         damageType: modal.initialData?.damageType || 'Corte',
         description: modal.initialData?.description || '',
         // NPC FIELDS
@@ -291,8 +329,11 @@ export function Modal({ modal, closeModal }) {
       tier: found.tier !== undefined ? (typeof found.tier === 'string' ? parseInt(found.tier.replace(/\D/g, '')) : found.tier) : 0,
       upgrade: found.upgrade || 0,
       carga: found.carga || 1,
+      damage_multi: found.damage_multi !== undefined ? found.damage_multi : 1.0,
       damageType: found.damageType || 'Corte',
-      description: found.description || ''
+      description: found.description || '',
+      isBackpack: !!found.isBackpack,
+      cargaIncrease: found.cargaIncrease || 10
     });
   };
 
@@ -549,6 +590,19 @@ export function Modal({ modal, closeModal }) {
                   <span className="text-[10px] font-black uppercase text-zinc-400">É uma Mochila?</span>
                 </label>
 
+                {localData.isBackpack && (
+                  <div className="space-y-1">
+                    <span className="text-[8px] font-black text-zinc-500 uppercase">Aumento de Carga</span>
+                    <input
+                      disabled={!modal.forcedCustom && !isCustom}
+                      type="number"
+                      value={localData.cargaIncrease}
+                      onChange={(e) => setLocalData({ ...localData, cargaIncrease: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30"
+                    />
+                  </div>
+                )}
+
                 {!localData.isBackpack && (
                   <>
                     <div className="grid grid-cols-2 gap-2">
@@ -569,7 +623,7 @@ export function Modal({ modal, closeModal }) {
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-[10px] outline-none font-black uppercase disabled:opacity-20"
                       >
                         <option value="">Tipo...</option>
-                        {localData.category && WEAPON_SUBTYPES[localData.category].map(s => <option key={s} value={s}>{s}</option>)}
+                        {localData.category && WEAPON_SUBTYPES[localData.category] && WEAPON_SUBTYPES[localData.category].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
 
@@ -587,19 +641,25 @@ export function Modal({ modal, closeModal }) {
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Tier</span>
                             <select
-                              disabled={modal.forcedCustom && !modal.isInventoryEdit}
+                              disabled={!modal.forcedCustom && !isCustom}
                               value={localData.tier} onChange={(e) => setLocalData({ ...localData, tier: parseInt(e.target.value) || 0 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30">
                               {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
                             </select>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Upgrade</span>
                             <input
                               disabled={modal.forcedCustom && !modal.isInventoryEdit}
                               type="number" value={localData.upgrade} onChange={(e) => setLocalData({ ...localData, upgrade: parseInt(e.target.value) || 0 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30" />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[8px] font-black text-zinc-500 uppercase">Mult. Dano</span>
+                            <input
+                              disabled={!modal.forcedCustom && !isCustom}
+                              type="text" value={localData.damage_multi} onChange={(e) => setLocalData({ ...localData, damage_multi: e.target.value })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30" />
                           </div>
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Dano</span>
@@ -706,71 +766,92 @@ export function Modal({ modal, closeModal }) {
 
         {/* Replace the button div at the bottom of the Modal component in src/components/UIElements.js */}
         <div className="flex gap-3">
-          {modal.onDelete && (
-            <button
-              onClick={() => modal.onDelete(localData)}
-              className="px-4 py-3 rounded-full bg-red-900/40 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-900/60 transition-all cursor-pointer"
-            >
-              Excluir
-            </button>
+          {modal.type === 'custom' ? (
+            modal.buttons.map((button, index) => (
+              <button
+                key={index}
+                onClick={button.onClick}
+                className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${button.className}`}
+              >
+                {button.label}
+              </button>
+            ))
+          ) : (
+            <>
+              {modal.onDelete && (
+                <button
+                  onClick={() => modal.onDelete(localData)}
+                  className="px-4 py-3 rounded-full bg-red-900/40 text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-900/60 transition-all cursor-pointer"
+                >
+                  Excluir
+                </button>
+              )}
+              <button
+                onClick={closeModal}
+                className="flex-1 px-6 py-3 rounded-full bg-slate-800 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (modal.fields) {
+                    if (modal.npcFields) {
+                      // Filter only NPC fields to avoid Supabase errors with unknown columns
+                    const npcData = {
+                      npc_id: localData.npc_id,
+                      name: localData.name || 'Novo NPC',
+                      type: localData.type || 'Simple',
+                      category: localData.category || 'Human',
+                      strength: Number(localData.strength) || 1,
+                      resistance: Number(localData.resistance) || 1,
+                      aptitude: Number(localData.aptitude) || 1,
+                      agility: Number(localData.agility) || 1,
+                      precision: Number(localData.precision) || 1,
+                      armed_pat: localData.armed_pat || '0',
+                      image_url: localData.image_url || null,
+                      rank: localData.rank || null,
+                      is_visible: !!localData.is_visible,
+                      // COMPLEX FIELDS
+                      age: localData.type === 'Complex' ? Number(localData.age) : null,
+                      bloodline: localData.type === 'Complex' ? localData.bloodline : null,
+                      breathing_style: localData.type === 'Complex' ? localData.breathing_style : null,
+                      breathing_lvl: localData.type === 'Complex' ? Number(localData.breathing_lvl) : 0,
+                      height: localData.type === 'Complex' ? localData.height : null,
+                      intelligence: localData.type === 'Complex' ? Number(localData.intelligence) : 0,
+                      charisma: localData.type === 'Complex' ? Number(localData.charisma) : 0,
+                      luck: localData.type === 'Complex' ? Number(localData.luck) : 0,
+                      dollars: localData.type === 'Complex' ? Number(localData.dollars) : 0,
+                      nichirin_color: localData.type === 'Complex' ? localData.nichirin_color : null,
+                      class: localData.type === 'Complex' ? localData.class : null,
+                      anomalies: localData.type === 'Complex' ? (Array.isArray(localData.anomalies) ? localData.anomalies : []) : [],
+                      skills: localData.type === 'Complex' ? (Array.isArray(localData.skills) ? localData.skills : []) : [],
+                      stat_points_available: localData.type === 'Complex' ? Number(localData.stat_points_available) : 0,
+                      inventory: localData.type === 'Complex' ? (Array.isArray(localData.inventory) ? localData.inventory : []) : []
+                    };
+                      modal.onConfirm(npcData);
+                    } else {
+                      let finalDamageMulti = 1.0;
+                      if (typeof localData.damage_multi === 'string') {
+                        const parsed = parseFloat(localData.damage_multi.replace(',', '.'));
+                        if (!isNaN(parsed) && parsed > 0) finalDamageMulti = parsed;
+                      } else if (typeof localData.damage_multi === 'number' && localData.damage_multi > 0) {
+                        finalDamageMulti = localData.damage_multi;
+                      }
+                      modal.onConfirm({ ...localData, damage_multi: finalDamageMulti });
+                    }
+                  } else {
+                    modal.onConfirm(modal.inputValue);
+                  }
+                }}
+                className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${modal.type === 'danger'
+                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
+                  : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
+                  }`}
+              >
+                Confirmar
+              </button>
+            </>
           )}
-          <button
-            onClick={closeModal}
-            className="flex-1 px-6 py-3 rounded-full bg-slate-800 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => {
-              if (modal.fields) {
-                if (modal.npcFields) {
-                  // Filter only NPC fields to avoid Supabase errors with unknown columns
-                const npcData = {
-                  npc_id: localData.npc_id,
-                  name: localData.name || 'Novo NPC',
-                  type: localData.type || 'Simple',
-                  category: localData.category || 'Human',
-                  strength: Number(localData.strength) || 1,
-                  resistance: Number(localData.resistance) || 1,
-                  aptitude: Number(localData.aptitude) || 1,
-                  agility: Number(localData.agility) || 1,
-                  precision: Number(localData.precision) || 1,
-                  armed_pat: localData.armed_pat || '0',
-                  image_url: localData.image_url || null,
-                  rank: localData.rank || null,
-                  is_visible: !!localData.is_visible,
-                  // COMPLEX FIELDS
-                  age: localData.type === 'Complex' ? Number(localData.age) : null,
-                  bloodline: localData.type === 'Complex' ? localData.bloodline : null,
-                  breathing_style: localData.type === 'Complex' ? localData.breathing_style : null,
-                  breathing_lvl: localData.type === 'Complex' ? Number(localData.breathing_lvl) : 0,
-                  height: localData.type === 'Complex' ? localData.height : null,
-                  intelligence: localData.type === 'Complex' ? Number(localData.intelligence) : 0,
-                  charisma: localData.type === 'Complex' ? Number(localData.charisma) : 0,
-                  luck: localData.type === 'Complex' ? Number(localData.luck) : 0,
-                  dollars: localData.type === 'Complex' ? Number(localData.dollars) : 0,
-                  nichirin_color: localData.type === 'Complex' ? localData.nichirin_color : null,
-                  class: localData.type === 'Complex' ? localData.class : null,
-                  anomalies: localData.type === 'Complex' ? (Array.isArray(localData.anomalies) ? localData.anomalies : []) : [],
-                  skills: localData.type === 'Complex' ? (Array.isArray(localData.skills) ? localData.skills : []) : [],
-                  stat_points_available: localData.type === 'Complex' ? Number(localData.stat_points_available) : 0,
-                  inventory: localData.type === 'Complex' ? (Array.isArray(localData.inventory) ? localData.inventory : []) : []
-                };
-                  modal.onConfirm(npcData);
-                } else {
-                  modal.onConfirm(localData);
-                }
-              } else {
-                modal.onConfirm(modal.inputValue);
-              }
-            }}
-            className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${modal.type === 'danger'
-              ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
-              : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
-              }`}
-          >
-            Confirmar
-          </button>
         </div>
       </div>
     </div>

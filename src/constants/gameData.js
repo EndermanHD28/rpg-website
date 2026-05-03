@@ -47,11 +47,182 @@ export const LINHAGEM_DESCRIPTIONS = {
   "Tsugikuni": "+20% **Resistência e Agilidade** se a Respiração for {Celeste}\n+25% **Força e Resistência** se a Respiração for {Incandescente}\n+15% em **Todos os Status**"
 };
 
+export const LINHAGENS_DATA = {
+  "Mitoka": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.10 }
+    ]
+  },
+  "Tamayo": {
+    stat_boosts: [
+      { stat: "intelligence", amount: 0.10 }
+    ]
+  },
+  "Lireou": {
+    stat_boosts: [
+      { stat: "charisma", amount: 0.20 }
+    ]
+  },
+  "Tomioka": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.15, condition: { type: "breathing_keyword", value: "Fluxo" } }
+    ]
+  },
+  "Shinomiya": {
+    stat_boosts: [
+      { stat: "agility", amount: 0.15 }
+    ]
+  },
+  "Kochou": {
+    stat_boosts: [
+      { stat: "agility", amount: 0.15, condition: { type: "breathing_keyword", value: "Natural" } }
+    ]
+  },
+  "Shinazugawa (Sanemi)": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.20 },
+      { stat: "agility", amount: 0.10, condition: { type: "breathing_keyword", value: "Natural" } }
+    ]
+  },
+  "Agatsuma": {
+    stat_boosts: [
+      { stat: "agility", amount: 0.20 },
+      { stat: "strength", amount: 0.10, condition: { type: "breathing_keyword", value: "Energia" } }
+    ]
+  },
+  "Hashibira": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.25, condition: { type: "breathing_keyword", value: "Brutal" } }
+    ]
+  },
+  "Urokodaki": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.20, condition: { type: "breathing_keyword", value: "Fluxo" } }
+    ]
+  },
+  "Tsuyuri": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.15 }
+    ]
+  },
+  "Iguro": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.25, condition: { type: "breathing_keyword", value: "Fluxo" } },
+      { stat: "precision", amount: 0.25, condition: { type: "breathing_keyword", value: "Natural" } },
+      { stat: "intelligence", amount: 0.15 }
+    ]
+  },
+  "Soyama": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.15 },
+      { stat: "agility", amount: 0.15 }
+    ]
+  },
+  "Rengoku": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.15, condition: { type: "breathing_keyword", value: "Incandescente" } },
+      { stat: "all_other", amount: 0.08 }
+    ]
+  },
+  "Kanroji": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.25 },
+      { stat: "charisma", amount: 0.10 },
+      { stat: "intelligence", amount: -0.15 }
+    ]
+  },
+  "Uzui (Tengen)": {
+    stat_boosts: [
+      { stat: "agility", amount: 0.10, condition: { type: "breathing_keyword", value: "Mecânica" } },
+      { stat: "strength", amount: 0.20 }
+    ]
+  },
+  "Kamado": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.15, condition: { type: "breathing_style", value: "💥 Hinokami Kagura" } }
+    ]
+  },
+  "Lireou (Douma)": {
+    stat_boosts: [
+      { stat: "charisma", amount: 0.15 }
+    ]
+  },
+  "Himejima": {
+    stat_boosts: [
+      { stat: "strength", amount: 0.30, condition: { type: "breathing_keyword", value: "Impacto" } },
+      { stat: "resistance", amount: 0.30 }
+    ]
+  },
+  "Kamado (Tanjiro)": {
+    stat_boosts: [
+      { stat: "precision", amount: 0.25, condition: { type: "breathing_keyword", value: "Fluxo" } },
+      { stat: "agility", amount: 0.15, condition: { type: "breathing_keyword", value: "Fluxo" } },
+      { stat: "strength", amount: 0.25, condition: { type: "breathing_keyword", value: "Incandescente" } },
+      { stat: "resistance", amount: 0.15, condition: { type: "breathing_keyword", value: "Incandescente" } },
+      { stat: "all", amount: 0.10 }
+    ]
+  },
+  "Tsugikuni": {
+    stat_boosts: [
+      { stat: "resistance", amount: 0.20, condition: { type: "breathing_keyword", value: "Celeste" } },
+      { stat: "agility", amount: 0.20, condition: { type: "breathing_keyword", value: "Celeste" } },
+      { stat: "strength", amount: 0.25, condition: { type: "breathing_keyword", value: "Incandescente" } },
+      { stat: "resistance", amount: 0.25, condition: { type: "breathing_keyword", value: "Incandescente" } },
+      { stat: "all", amount: 0.15 }
+    ]
+  }
+};
+
+export const RESPIRACOES_DATA = {
+  "Água": { keywords: ["Fluxo"] },
+  "Chama": { keywords: ["Incandescente"] },
+  "Trovão": { keywords: ["Energia"] },
+  "Fera": { keywords: ["Brutal"] },
+  "Inseto": { keywords: ["Natural"] },
+  "Névoa": { keywords: ["Brisa"] },
+  "Vento": { keywords: ["Natural"] },
+  "Pedra": { keywords: ["Impacto"] },
+  "Som": { keywords: ["Mecânica"] },
+  "Lua": { keywords: ["Celeste"] },
+  "Sol": { keywords: ["Incandescente"] },
+  "Flor": { keywords: ["Natural"] },
+  "Serpente": { keywords: ["Fluxo"] },
+  "Amor": { keywords: ["Brutal"] }
+};
+
 export const RESPIRACOES = ["Nenhuma", "Água", "Chama", "Trovão", "Fera", "Inseto", "Sol", "Lua", "Névoa"];
 export const CORES = ["Nenhuma", "Vermelha", "Azul", "Amarela", "Verde", "Cinza", "Preta", "Rosa", "Índigo", "Roxa"];
-export const ANOMALIAS_LIST = ["Fúria Total", "Carateca", "Vampirismo", "Deus do Sol", "Marca do Caçador", "Mundo Transparente"];
-export const CLASSES_LIST = ["Civil", "Aprendiz", "Caçador de Onis", "Tsuguko", "Hashira", "Exterminador"];
-export const SKILLS_LIST = ["Olfacto Aguçado", "Audição Aguçada", "Visão Aguçada", "Tato Aguçado", "Paladar Aguçado", "Resistência à Venenos", "Flexibilidade Extrema", "Mestre em Esgrima"];
+export const ANOMALIAS_LIST = [
+  "Super Audição", "Super Olfato", "Olho Superior", "Visão Térmica", "Densidade Óssea", "Despertar",
+  "Processamento Metódico", "Hiper-Foco", "Psicose de Combate", "Estado Altruísta", "Devorador de Onis", "Marechi"
+];
+
+export const ANOMALIAS_DESCRIPTIONS = {
+  "Super Audição": "🔊 Permite detectar sons através de paredes em um raio curto.\nImunidade aos debuffs de <🕶️ Cegueira>",
+  "Super Olfato": "🌫️ Detecta a presença de Onis a quilômetros.\nNo combate, aumenta a janela de Crítico para 18-20",
+  "Olho Superior": "👁‍🗨 O usuário processa o movimento em câmera lenta.\nPermite realizar um Parry no dado de Desvio.\nSe usado juntamento com <👁‍🗨/🔍 Mundo Transparente>, garante uma anulação de dado de Desvio, Bloqueio ou Ataque do adversário por combate.\nAo ser ativado 3 vezes, a anomalia torna-se <🕶️ Cego>",
+  "Visão Térmica": "🔍 Mutação que permite enxergar o calor corporal.\nEssencial para snipers em bunkers escuros ou florestas.\nIgnora furtividade inimiga simples",
+  "Densidade Óssea": "🧬 Seu esqueleto é duro como aço.\nRecebe um bônus fixo de +20% de Resistência.",
+  "Despertar": "⚡ Ao chegar em Condição Crítica (12% HP), regenere 20% da Vida Máxima.\nA postura torna-se Infinita e o próximo dado de Ataque será um crítico perfeito",
+  "Processamento Metódico": "👓 Se você observar um inimigo agir por 2 turnos, você aprende o padrão dele.\nGanha +20% de chance de Desvio contra aquele inimigo específico pelo resto da luta",
+  "Hiper-Foco": "🌪️ Você aprende rápido.\nGanha +20% de Pontos de Status (PS) ao final de cada missão",
+  "Psicose de Combate": "🧨 Em batalha, você perde o medo.\nImunidade a efeitos de atordoamento, terror, ilusões e dor leve ~ média",
+  "Estado Altruísta": "🌲 Você não emite a intenção de matar",
+  "Devorador de Onis": "🩸/🍽️ Permite comer carne de Oni (1x por combate)\n1d100 (90+): Recebe Kekkijutsu enfraquecido temporariamente\n1d100 (50-89): Regenera 15% da Vida\n1d100 (01-49): Recebe <Nocauteado> por 1 turno",
+  "Marechi": "⭐/🩸 Seu sangue é um banquete para Onis.\nInimigos focam em você, mas recebem <Atordoado> por 1 turno a primeira vez que te morderem"
+};
+
+export const CLASSES_LIST = ["Vanguarda", "Artista", "Atirador", "Assaltante", "Infiltrador"];
+export const SKILLS_LIST = ["Computação", "Programação", "Eletrônica", "Mecânica", "Medicina", "Química"];
+
+export const SKILLS_DESCRIPTIONS = {
+  "Computação": "Sem descrição.",
+  "Programação": "Sem descrição.",
+  "Eletrônica": "Sem descrição.",
+  "Mecânica": "Sem descrição.",
+  "Medicina": "Sem descrição.",
+  "Química": "Sem descrição.",
+};
 
 export const RARITY_CONFIG = {
   "Comum": { color: "text-gray-400" },
@@ -62,8 +233,8 @@ export const RARITY_CONFIG = {
 
 export const WEAPON_CATEGORIES = ["Arma de Fogo", "Arma Branca"];
 export const WEAPON_SUBTYPES = {
-  "Arma de Fogo": ["Sniper", "Pistola", "Revólver", "Escopeta / Metralhadora", "SMG (Submetralhadora)"],
-  "Arma Branca": ["Faca / Adaga", "Katana (Espada Leve)", "Machado Leve", "Espada Pesada / Machado Pesado", "Martelo Pesado / Marreta", "Soco / Improviso (Tacos/Tábuas)"]
+  "Arma de Fogo": ["Sniper", "Pistola", "Revólver", "Escopeta / Metralhadora", "Submetralhadora"],
+  "Arma Branca": ["Lâmina Curta", "Arma de Impacto Leve", "Espada Leve", "Machado/Porrete Leve", "Espada/Machado Pesado", "Martelo Pesado", "Soco / Improviso"]
 };
 export const HANDS_OPTIONS = ["Uma Mão", "Duas Mãos"];
 export const TIERS = [0, 1, 2, 3, 4];

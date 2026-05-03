@@ -33,13 +33,13 @@ export default function DicePanel({
   const disarmedPat = calculateDisarmedPAT(activeChar);
 
   return (
-    <div className="bg-slate-900/80 p-6 rounded-[30px] border-2 border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
-      <h3 className="font-black text-cyan-500 text-[10px] italic mb-4 tracking-widest uppercase">Dados Resumidos</h3>
+    <div className="bg-slate-900/80 p-6 rounded-[30px] border-2 border-cyan-500/30 shadow-[0_0_25px_rgba(6,182,212,0.1)]">
+      <h3 className="font-black text-cyan-500 text-[13px] italic mb-3 tracking-widest uppercase">Dados Resumidos</h3>
 
       <div className="space-y-6">
         {/* CATEGORIA COMBATE */}
         <div className="space-y-2">
-          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest ml-1">Combate</p>
+          <p className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-">Combate</p>
           <div className="space-y-3">
             {equippedWeapons.length > 0 ? equippedWeapons.map((w, idx) => (
               <PatStat
@@ -61,7 +61,7 @@ export default function DicePanel({
 
         {/* CATEGORIA OUTROS */}
         <div className="space-y-2">
-          <p className="text-[8px] font-black text-zinc-500 uppercase tracking-widest ml-1">Outros</p>
+          <p className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1">Outros</p>
           <div className="space-y-3">
             <SecondaryStat label="Convencimento" value={convincimento} sub={`Carisma (${charismaPerc}%)`} />
             <SecondaryStat label="Raciocínio" value={raciocinio} sub={`Inteligência (${intelligencePerc}%)`} />
@@ -87,30 +87,30 @@ const DataRow = ({ label, value, subtitle }) => (
 const SecondaryStat = ({ label, value, sub }) => (
   <div className="flex justify-between items-center bg-blue-500/5 p-3 rounded-xl border border-blue-500/20">
     <div className="flex flex-col">
-      <span className="text-[9px] font-black text-blue-400 uppercase italic leading-none">{label}</span>
-      <span className="text-[7px] text-blue-500/60 font-bold uppercase mt-1">{sub}</span>
+      <span className="text-[11px] font-black text-blue-400 uppercase italic leading-none">{label}</span>
+      <span className="text-[10px] text-blue-500/60 font-bold uppercase mt-1">{sub}</span>
     </div>
-    <span className="text-sm font-mono font-black text-blue-400">1d{value}</span>
+    <span className="text-[15px] font-mono font-black text-blue-400">1d{value}</span>
   </div>
 );
 
 const PatStat = ({ label, value, sub }) => (
   <div className="flex justify-between items-center bg-red-500/5 p-3 rounded-xl border border-red-500/20">
     <div className="flex flex-col">
-      <span className="text-[9px] font-black text-red-500 uppercase italic leading-none">{label}</span>
-      <span className="text-[7px] text-red-600/60 font-bold uppercase mt-1">{sub}</span>
+      <span className="text-[11px] font-black text-red-500 uppercase italic leading-none">{label}</span>
+      <span className="text-[10px] text-red-600/60 font-bold uppercase mt-1">{sub}</span>
     </div>
-    <span className="text-sm font-mono font-black text-red-500">1d{value}</span>
+    <span className="text-[15px] font-mono font-black text-red-500">1d{value}</span>
   </div>
 );
 
 const LootStat = ({ label, value, sub, isDiceNotation = false }) => (
   <div className="flex justify-between items-center bg-yellow-500/5 p-3 rounded-xl border border-yellow-500/20">
     <div className="flex flex-col">
-      <span className="text-[9px] font-black text-yellow-600 uppercase italic leading-none">{label}</span>
-      <span className="text-[7px] text-yellow-700/60 font-bold uppercase mt-1">{sub}</span>
+      <span className="text-[11px] font-black text-yellow-600 uppercase italic leading-none">{label}</span>
+      <span className="text-[10px] text-yellow-700/60 font-bold uppercase mt-1">{sub}</span>
     </div>
-    <span className="text-sm font-mono font-black text-yellow-500">
+    <span className="text-[15px] font-mono font-black text-yellow-500">
       {isDiceNotation ? `1d${value}` : `1d${value}`}
     </span>
   </div>
@@ -119,8 +119,8 @@ const LootStat = ({ label, value, sub, isDiceNotation = false }) => (
 const CombatStat = ({ label, value, sub }) => (
   <div className="flex justify-between items-center bg-purple-500/5 p-3 rounded-xl border border-purple-500/20">
     <div className="flex flex-col">
-      <span className="text-[9px] font-black text-purple-100 uppercase italic leading-none">{label}</span>
-      <span className="text-[7px] text-purple-300/40 font-bold uppercase mt-1">{sub}</span>
+      <span className="text-[11px] font-black text-purple-100 uppercase italic leading-none">{label}</span>
+      <span className="text-[10px] text-purple-300/40 font-bold uppercase mt-1">{sub}</span>
     </div>
     <span className="text-sm font-mono font-black text-purple-100">1d{value}</span>
   </div>

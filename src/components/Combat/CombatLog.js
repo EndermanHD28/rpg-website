@@ -14,6 +14,7 @@ import {
 } from '../../lib/rpg-math';
 import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
+import { TooltipWrapper } from '../UIElements';
 
 export default function CombatLog({ 
   user, 
@@ -31,7 +32,8 @@ export default function CombatLog({
   combatants,
   finishDiceRoll,
   sharedImage,
-  lootTables = []
+  lootTables = [],
+  showToast
 }) {
   const [input, setInput] = useState("");
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -45,6 +47,7 @@ export default function CombatLog({
   const [showLootSelector, setShowLootSelector] = useState(false);
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
+  const [lootRollInputs, setLootRollInputs] = useState({});
   const [suggestions, setSuggestions] = useState([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [suggestionData, setSuggestionData] = useState(null);
@@ -119,8 +122,11 @@ export default function CombatLog({
   };
 
   useEffect(() => {
-    if (isAtBottomRef.current) {
-      scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isAtBottomRef.current && chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
   }, [messages]);
 
@@ -143,10 +149,7 @@ export default function CombatLog({
       setIsVisible(false);
       setIsContrastActive(false);
       setIsBigImage(false);
-      const timer = setTimeout(() => {
-        setDisplayImage(sharedImage);
-      }, 700);
-      return () => clearTimeout(timer);
+      setDisplayImage(null);
     }
   }, [sharedImage?.url, sharedImage?.contrast]);
 
@@ -163,12 +166,25 @@ export default function CombatLog({
     // 1. Get current player character
     const playerChar = allPlayers?.find(p => p.id === user?.id);
     if (!playerChar) {
-      alert("Personagem não encontrado.");
+      if (showToast) showToast("Personagem não encontrado.");
+      else alert("Personagem não encontrado.");
+      return;
+    }
+
+    // Calculate current weight
+    const currentInventory = playerChar.inventory || [];
+    const currentWeight = currentInventory.reduce((acc, item) => acc + (Number(item.carga) || 0), 0);
+    const itemWeight = Number(itemToPick.carga) || 1; // Default to 1 if not specified
+    const maxWeight = calculateDerivedStats(playerChar).weight_limit || 0;
+
+    if (currentWeight + itemWeight > maxWeight) {
+      if (showToast) showToast("Inventário Cheio! Você não tem Cargas suficientes.");
+      else alert("Inventário Cheio! Você não tem Cargas suficientes.");
       return;
     }
 
     // 2. Add to inventory
-    const newInventory = [...(playerChar.inventory || [])];
+    const newInventory = [...currentInventory];
     const itemToAdd = {
       ...itemToPick,
       id: Date.now() + Math.random(),
@@ -179,7 +195,8 @@ export default function CombatLog({
     // 3. Update character in Supabase
     const { error: charError } = await supabase.from('characters').update({ inventory: newInventory }).eq('id', playerChar.id);
     if (charError) {
-      alert("Erro ao atualizar inventário: " + charError.message);
+      if (showToast) showToast("Erro ao atualizar inventário: " + charError.message);
+      else alert("Erro ao atualizar inventário: " + charError.message);
       return;
     }
 
@@ -202,73 +219,119 @@ export default function CombatLog({
     });
   };
 
-  const handleLootRoll = async (msgId) => {
+  const handleDiscard = async (msgId, itemIdx) => {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
 
     const parts = msg.content.split('|');
-    const diceExpr = parts[5];
-    
-    // Perform the roll
-    const result = rollDice(diceExpr);
-    if (!result) return;
+    const items = JSON.parse(parts[6]);
+    const itemToPick = items[itemIdx];
 
-    const rollerName = user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
-    
-    // Update the message content
-    // Parts: 0:LOOT_INTERACTION, 1:location, 2:tier, 3:masterName, 4:masterAvatar, 5:diceExpr, 6:itemsJson, 7:rollResult, 8:rollerName
-    parts[7] = result.total.toString();
-    parts[8] = rollerName;
-    
+    if (!itemToPick || itemToPick.qty <= 0) return;
+
+    // 1. Remove from message or decrement quantity
+    let newItems = [...items];
+    newItems[itemIdx] = { ...itemToPick, qty: Math.max(0, itemToPick.qty - 1) };
+
+    // 2. Update message in Supabase
+    parts[6] = JSON.stringify(newItems);
     const newContent = parts.join('|');
+    
     await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
   };
 
-  const sendLoot = async (lootTable) => {
-    const rolledItems = rollLoot(lootTable);
-    if (rolledItems.length === 0) {
-      alert("Nenhum item gerado nesta rolagem.");
+  const handleLootRoll = async (msgId) => {
+    console.log('handleLootRoll called for msgId:', msgId);
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) {
+      console.error('Message not found for id:', msgId);
       return;
     }
 
-    // Format items for the interaction string
-    // items in rollLoot are { item_id, amount }. We need full item data.
-    // We can fetch full data from supabase.from('items') or use itemLibrary if we have it.
-    // Actually, I should probably use the items defined in lootTable.items which should have names.
-    // Wait, rollLoot returns grouped results with item_id.
+    const parts = msg.content.split('|');
+    const userDice = lootRollInputs[msgId] || parts[5];
+    console.log('Rolling dice:', userDice);
     
+    // Perform the roll
+    const result = rollDice(userDice);
+    console.log('Roll result:', result);
+    if (!result) {
+      console.error('Roll failed for expression:', userDice);
+      return;
+    }
+
+    // Calculate multiplier based on result
+    let multiplier = 1;
+    if (result.total >= 10) {
+      multiplier = result.total / 10;
+    } else {
+      multiplier = (result.total / 18) + (8 / 18);
+    }
+
+    // Fetch the loot table
+    const { data: lootTable, error: tableError } = await supabase.from('loot_tables').select('*').eq('name', parts[1]).single();
+    if (tableError || !lootTable) {
+      if (showToast) showToast("Erro ao buscar tabela de espólio.");
+      else alert("Erro ao buscar tabela de espólio.");
+      return;
+    }
+
+    // Roll the loot with the multiplier
+    const rolledItems = rollLoot(lootTable, multiplier);
+    
+    // Fetch actual item data
     const itemIds = [...new Set(rolledItems.map(ri => ri.item_id))];
-    const { data: allItems, error: itemsError } = await supabase.from('items').select('*').in('item_id', itemIds);
-    
-    if (itemsError) {
-      alert("Erro ao buscar dados dos itens: " + itemsError.message);
-      return;
+    let itemsWithData = [];
+    if (itemIds.length > 0) {
+      const { data: allItems } = await supabase.from('items').select('*').in('item_id', itemIds);
+      itemsWithData = rolledItems.map(ri => {
+        const itemData = allItems?.find(i => i.item_id === ri.item_id);
+        return {
+          id: ri.item_id,
+          name: itemData?.name || ri.item_id,
+          qty: ri.amount,
+          rarity: itemData?.rarity || 'Comum',
+          type: itemData?.type || 'Item',
+          value: itemData?.value || 0,
+          description: itemData?.description || "",
+          category: itemData?.category || "",
+          subtype: itemData?.subtype || "",
+          hands: itemData?.hands || "",
+          tier: itemData?.tier || 0,
+          upgrade: itemData?.upgrade || 0,
+          isBackpack: !!itemData?.isBackpack,
+          cargaIncrease: itemData?.cargaIncrease || 10,
+          carga: itemData?.carga || 1
+        };
+      });
     }
-    
-    const itemsWithData = rolledItems.map(ri => {
-      const itemData = allItems?.find(i => i.item_id === ri.item_id);
-      return {
-        id: ri.item_id,
-        name: itemData?.name || ri.item_id,
-        qty: ri.amount,
-        rarity: itemData?.rarity || 'Comum',
-        type: itemData?.type || 'Item',
-        value: itemData?.value || 0,
-        description: itemData?.description || "",
-        category: itemData?.category || "",
-        subtype: itemData?.subtype || "",
-        hands: itemData?.hands || "",
-        tier: itemData?.tier || 0,
-        upgrade: itemData?.upgrade || 0,
-        isBackpack: !!itemData?.isBackpack
-      };
-    });
 
+    const rollerName = user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
+    console.log('Roller name:', rollerName);
+    
+    // Update the message content
+    // Parts: 0:LOOT_INTERACTION, 1:location, 2:tier, 3:masterName, 4:masterAvatar, 5:diceExpr, 6:itemsJson, 7:rollResult, 8:rollerName
+    const newParts = [...parts];
+    newParts[6] = JSON.stringify(itemsWithData);
+    newParts[7] = result.total.toString();
+    newParts[8] = rollerName || "Anonymous";
+    
+    const newContent = newParts.join('|');
+    console.log('Updating message in Supabase with new content:', newContent);
+    const { error } = await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
+    if (error) {
+      console.error('Supabase update error:', error);
+    } else {
+      console.log('Supabase update successful');
+    }
+  };
+
+  const sendLoot = async (lootTable) => {
     const masterChar = allPlayers.find(p => p.rank === 'Mestre');
     const avatar = masterChar?.image_url || "";
     const username = masterChar?.discord_username || ".enderu";
     
-    const content = `LOOT_INTERACTION|${lootTable.name}|${lootTable.max_rolls}|${username}|${avatar}|${lootDicePlaceholder}|${JSON.stringify(itemsWithData)}|0|none`;
+    const content = `LOOT_INTERACTION|${lootTable.name}|${lootTable.max_rolls}|${username}|${avatar}|${lootDicePlaceholder}|[]|0|none`;
     
     await supabase.from('messages').insert({
       player_name: "SISTEMA",
@@ -504,13 +567,37 @@ export default function CombatLog({
     setShowGifPicker(false);
   };
 
+  const toggleGifPicker = () => {
+    setShowGifPicker(!showGifPicker);
+    setShowDiceQuickMenu(false);
+    setShowLootSelector(false);
+  };
+
+  const toggleDiceQuickMenu = () => {
+    setShowDiceQuickMenu(!showDiceQuickMenu);
+    setShowGifPicker(false);
+    setShowLootSelector(false);
+  };
+
+  const toggleLootSelector = () => {
+    setShowLootSelector(!showLootSelector);
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
+  };
+
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
 
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
+    setShowLootSelector(false);
+
     setIsUploading(true);
     try {
-      const { data: files } = await supabase.storage.from('chat_images').list();
+      const { data: files, error: listError } = await supabase.storage.from('chat_images').list();
+      if (listError) throw listError;
+      
       if (files?.length >= 50) {
         const oldest = files.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
         await supabase.storage.from('chat_images').remove([oldest.name]);
@@ -541,17 +628,31 @@ export default function CombatLog({
       }
 
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${finalFile.name.split('.').pop()}`;
-      await supabase.storage.from('chat_images').upload(fileName, finalFile);
+      const { data: uploadData, error: uploadError } = await supabase.storage.from('chat_images').upload(fileName, finalFile);
+      if (uploadError) throw uploadError;
+      
       const publicUrl = supabase.storage.from('chat_images').getPublicUrl(fileName).data.publicUrl;
 
       const playerChar = allPlayers?.find(p => p.id === user?.id);
       const playerName = playerChar?.char_name || user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
       const img = new Image();
       img.src = publicUrl;
-      img.onload = () => supabase.from('messages').insert({
-        player_name: playerName,
-        content: `IMAGE|${publicUrl}|${img.width}|${img.height}`
-      });
+      img.onload = async () => {
+        console.log("Image loaded, inserting message...", publicUrl);
+        const { error: msgError } = await supabase.from('messages').insert({
+          player_name: playerName,
+          content: `IMAGE|${publicUrl}|${img.width}|${img.height}`
+        });
+        if (msgError) {
+          console.error("Message insert error:", msgError);
+          alert("Erro ao registrar imagem no chat: " + msgError.message);
+        } else {
+          console.log("Message inserted successfully");
+        }
+      };
+      img.onerror = () => {
+        alert("Erro ao carregar a imagem após o upload.");
+      };
     } catch (err) {
       alert("Erro ao enviar imagem: " + err.message);
     } finally {
@@ -561,7 +662,7 @@ export default function CombatLog({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 relative h-full transition-all duration-500">
+    <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 relative h-full overflow-hidden">
       {isContrastActive && <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm animate-in fade-in transition-all duration-1000" />}
 
       <div className={`absolute top-8 right-8 z-[90] transition-all duration-700 ease-in-out ${isVisible ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'} ${isBigImage ? 'scale-150 origin-top-right translate-x-[-10%] translate-y-[10%]' : 'scale-100'}`}>
@@ -592,7 +693,7 @@ export default function CombatLog({
         </div>
       )}
       
-      <div className={`shrink-0 bg-black/40 border-b border-white/5 relative transition-all duration-700 ${targetingRoll ? 'z-[75]' : 'z-[60]'}`}>
+      <div className={`shrink-0 bg-black/40 border-b border-white/5 relative ${targetingRoll ? 'z-[75]' : 'z-[60]'}`}>
         <div className="p-8 flex justify-between items-center transition-all duration-700">
           <div>
             <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Sessão Ativa</h2>
@@ -605,7 +706,7 @@ export default function CombatLog({
           </div>
         </div>
 
-        <div className={`px-8 transition-all duration-1000 ease-in-out overflow-hidden flex gap-4 overflow-x-auto custom-scrollbar no-scrollbar ${isCombatActive ? 'pb-8 opacity-100 max-h-[200px]' : 'pb-0 opacity-0 max-h-0 pointer-events-none'}`}>
+        <div className={`px-8 transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden flex gap-4 overflow-x-auto no-scrollbar ${isCombatActive ? 'pb-8 opacity-100 max-h-[400px]' : 'pb-0 opacity-0 max-h-0 pointer-events-none'}`}>
           {combatants.filter(c => c.is_enemy).slice(0, 5).map(enemy => {
               const { life: maxLife, posture: maxPosture } = calculateDerivedStats(enemy);
               const currentLife = enemy.current_hp ?? maxLife;
@@ -625,7 +726,7 @@ export default function CombatLog({
                       setTargetingRoll(null);
                     }
                   }}
-                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''}`}
+                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster ? 'pointer-events-none' : ''}`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/5 blur-[40px] -z-10 group-hover:bg-red-600/10 transition-colors" />
                   
@@ -657,8 +758,12 @@ export default function CombatLog({
                           </div>
                         ) : (
                           <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingHP(enemy.id); setHpInput(currentLife.toString()); } }} className={`flex items-baseline gap-1 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1 rounded' : ''}`}>
-                            <span className="font-mono text-[10px] font-black text-red-500">{currentLife}</span>
-                            <span className="font-mono text-[8px] font-black text-red-900/60">/{maxLife}</span>
+                            {isActingAsMaster && (
+                              <>
+                                <span className="font-mono text-[10px] font-black text-red-500">{currentLife}</span>
+                                <span className="font-mono text-[8px] font-black text-red-900/60">/{maxLife}</span>
+                              </>
+                            )}
                           </div>
                         )}
 
@@ -669,21 +774,25 @@ export default function CombatLog({
                           </div>
                         ) : (
                           <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingPosture(enemy.id); setPostureInput(currentPosture.toString()); } }} className={`flex items-baseline gap-1 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1 rounded' : ''}`}>
-                            <span className="font-mono text-[10px] font-black text-green-500">{currentPosture}</span>
-                            <span className="font-mono text-[8px] font-black text-green-900/60">/{maxPosture}</span>
+                            {isActingAsMaster && (
+                              <>
+                                <span className="font-mono text-[10px] font-black text-green-500">{currentPosture}</span>
+                                <span className="font-mono text-[8px] font-black text-green-900/60">/{maxPosture}</span>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
 
                     <div className="space-y-1 mb-1.5">
-                      <div className="relative h-1 bg-black rounded-full overflow-hidden border border-white/5">
+                      <div className="relative h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
                         <div
                           className={`h-full transition-all duration-1000 ease-out ${hpPerc < 25 ? 'bg-gradient-to-r from-red-800 to-red-600 animate-pulse' : 'bg-gradient-to-r from-red-700 to-red-500'}`}
                           style={{ width: `${hpPerc}%` }}
                         />
                       </div>
-                      <div className="relative h-1 bg-black rounded-full overflow-hidden border border-white/5">
+                      <div className="relative h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
                         <div
                           className={`h-full transition-all duration-1000 ease-out bg-gradient-to-r from-green-700 to-green-500`}
                           style={{ width: `${posturePerc}%` }}
@@ -703,13 +812,14 @@ export default function CombatLog({
                       <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest italic group-hover:text-red-500/50 transition-colors">Combatente</span>
                     </div>
 
-                    <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-500">
+                    <div className={`grid transition-all duration-500 ${isActingAsMaster ? 'grid-rows-[0fr] group-hover:grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
                       <div className="overflow-hidden">
                         <div className="pt-2 mt-2 border-t border-white/5 flex flex-col gap-2">
                           {(() => {
                             if (enemy.type === 'Complex') {
-                              const equippedWeapon = enemy.inventory?.find(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca"));
-                              const wPAT = Math.round(equippedWeapon ? calculateWeaponPAT(equippedWeapon, enemy) : 0);
+                              const equippedWeapons = enemy.inventory?.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+                              const wPAT1 = equippedWeapons.length > 0 ? Math.round(calculateWeaponPAT(equippedWeapons[0], enemy)) : null;
+                              const wPAT2 = equippedWeapons.length > 1 ? Math.round(calculateWeaponPAT(equippedWeapons[1], enemy)) : null;
                               const dPAT = Math.round(calculateDisarmedPAT(enemy));
                               
                               const acertoValue = calculateAcerto(enemy);
@@ -720,9 +830,15 @@ export default function CombatLog({
                                 <>
                                   <div className="flex gap-2">
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
-                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Ataque Armado</span>
-                                      <span className="text-[9px] font-black text-red-500 font-mono">{equippedWeapon ? `1d${wPAT}` : "---"}</span>
+                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={wPAT1 ? equippedWeapons[0].name : "Ataque Armado"}>{wPAT1 ? equippedWeapons[0].name : "Ataque Armado"}</span>
+                                      <span className="text-[9px] font-black text-red-500 font-mono">{wPAT1 ? `1d${wPAT1}` : "---"}</span>
                                     </div>
+                                    {wPAT2 && (
+                                      <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
+                                        <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={equippedWeapons[1].name}>{equippedWeapons[1].name}</span>
+                                        <span className="text-[9px] font-black text-red-500 font-mono">1d{wPAT2}</span>
+                                      </div>
+                                    )}
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
                                       <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Desarmado</span>
                                       <span className="text-[9px] font-black text-red-500 font-mono">1d{dPAT}</span>
@@ -799,7 +915,7 @@ export default function CombatLog({
           </div>
         </div>
 
-      <div ref={chatContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar relative transition-all duration-500 ${targetingRoll ? 'blur-sm pointer-events-none select-none' : ''}`}>
+      <div ref={chatContainerRef} onScroll={handleScroll} className={`flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar relative ${targetingRoll ? 'blur-sm pointer-events-none select-none' : ''}`}>
 
         {groupedMessages.map((group, i) => {
           const sender = allPlayers.find(p => p.char_name === group.player_name || p.discord_username === group.player_name || p.discord_username === group.player_name?.replace(/^@/, '') || p.user_metadata?.full_name === group.player_name || p.user_metadata?.preferred_username === group.player_name) || allNPCs.find(n => n.name === group.player_name || n.npc_id === group.player_name);
@@ -912,12 +1028,21 @@ export default function CombatLog({
                         );
                       }
                       if (m.content.startsWith('LOOT_INTERACTION|')) {
-                        const [, location, tier, masterName, masterAvatar, diceExpr, itemsJson, rollResult = "0", rollerName = "none"] = m.content.split('|');
+                        const parts = m.content.split('|');
+                        const location = parts[1] || "";
+                        const tier = parts[2] || "";
+                        const masterName = parts[3] || "";
+                        const masterAvatar = parts[4] || "";
+                        const diceExpr = parts[5] || "";
+                        const itemsJson = parts[6] || "[]";
+                        const rollResult = parts[7] || "0";
+                        const rollerName = parts[8] || "none";
+
                         const lootItems = JSON.parse(itemsJson);
-                        const isRolled = parseInt(rollResult) > 0;
+                        const isRolled = rollResult && rollResult !== "0";
                         const allCollected = lootItems.length > 0 && lootItems.every(item => item.qty === 0);
 
-                        if (lootItems.length === 0) {
+                        if (isRolled && lootItems.length === 0) {
                           return (
                             <div key={m.id || `${i}-${mi}`} className="bg-zinc-900/50 border border-white/5 rounded-2xl p-6 my-2 opacity-50 italic text-[10px] text-zinc-500 text-center uppercase tracking-widest">
                               O baú está vazio.
@@ -934,42 +1059,78 @@ export default function CombatLog({
                                 <img src="/chest.png" alt="" className={`w-8 h-8 object-contain ${allCollected ? 'grayscale opacity-50' : 'animate-bounce'}`} />
                               </div>
                               <div>
-                                <h4 className="text-white font-black italic uppercase text-sm tracking-tighter">{location}</h4>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-[9px] font-black uppercase tracking-widest ${allCollected ? 'text-zinc-500' : 'text-yellow-500'}`}>Espólio Encontrado</span>
-                                  <span className="text-[8px] bg-white/5 px-1.5 py-0.5 rounded text-zinc-500 font-mono">{diceExpr}</span>
-                                  {isRolled && <span className="text-[10px] font-black text-yellow-500 ml-2 animate-in zoom-in duration-500">Resultado: {rollResult}</span>}
-                                </div>
+                                <h4 className="text-white font-black italic uppercase text-sm tracking-tighter">
+                                  {isActingAsMaster ? `Espólio Encontrado (${location})` : 'Espólio Encontrado'}
+                                </h4>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${allCollected ? 'text-zinc-500' : 'text-yellow-500'}`}>{allCollected ? 'Já saqueado' : 'Saqueável'}</span>
+                                    {isRolled && <span className="text-[10px] font-black text-yellow-500 ml-2 animate-in zoom-in duration-500">Resultado: {rollResult}</span>}
+                                  </div>
                               </div>
                             </div>
 
                             {!isRolled ? (
-                              <div className="flex flex-col items-center gap-4 py-8 bg-black/40 border border-white/5 rounded-2xl">
+                              <div className="flex flex-col items-center gap-4 py-8 bg-black/40 border border-white/5 rounded-2xl px-6">
                                 <div className="w-16 h-16 relative">
                                   <img src="/dice.gif" alt="" className="w-full h-full object-contain opacity-50" />
                                 </div>
-                                <button
-                                  onClick={() => handleLootRoll(m.id)}
-                                  className="px-8 py-3 bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-yellow-500 hover:text-black transition-all"
-                                >
-                                  Rolar Dado para Saquear
-                                </button>
+                                <div className="w-full flex items-center gap-3">
+                                  <input
+                                    value={lootRollInputs[m.id] || ""}
+                                    onChange={(e) => setLootRollInputs(prev => ({ ...prev, [m.id]: e.target.value }))}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleLootRoll(m.id)}
+                                    placeholder={diceExpr}
+                                    className="flex-1 bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-center text-lg font-black text-yellow-500 outline-none focus:border-yellow-500/50 transition-all font-mono"
+                                  />
+                                  <button
+                                    onClick={() => handleLootRoll(m.id)}
+                                    className="px-8 py-4 bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-yellow-500 hover:text-black transition-all whitespace-nowrap"
+                                  >
+                                    Saquear
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-700">
                                 {lootItems.map((item, idx) => (
                                   <div key={idx} className={`flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl transition-all group/item ${item.qty === 0 ? 'opacity-50 grayscale' : 'hover:border-yellow-500/30'}`}>
-                                    <div className="flex flex-col">
-                                      <span className="text-xs font-bold text-zinc-200">{item.name} <span className={`text-[10px] ml-1 ${item.qty === 0 ? 'text-zinc-500' : 'text-yellow-500'}`}>x{item.qty}</span></span>
-                                      <span className={`text-[8px] font-black uppercase tracking-tighter ${RARITY_CONFIG[item.rarity]?.color || 'text-zinc-500'}`}>{item.rarity}</span>
+                                    <TooltipWrapper text={item.qty > 0 ? item.description : ""}>
+                                      <div className={`flex flex-col flex-1 ${item.qty > 0 ? 'cursor-help' : ''}`}>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-bold text-zinc-200">{item.name} <span className={`text-[10px] ml-1 ${item.qty === 0 ? 'text-zinc-500' : 'text-yellow-500'}`}>x{item.qty}</span></span>
+                                          {item.qty > 0 && (
+                                            <span className="text-[8px] bg-zinc-800/50 text-zinc-400 border border-white/5 px-1 rounded font-black uppercase tracking-tighter">
+                                              {item.type}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2 items-center mt-0.5">
+                                          <span className={`text-[9px] font-black uppercase tracking-tighter ${RARITY_CONFIG[item.rarity]?.color || 'text-zinc-500'}`}>{item.rarity}</span>
+                                          {item.qty > 0 && (
+                                            <>
+                                              <span className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">Val: {item.value}$</span>
+                                              <span className="text-[9px] font-black text-orange-500/80 uppercase tracking-tighter">Cargas: {item.carga}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </TooltipWrapper>
+                                    <div className="flex items-center gap-2 shrink-0 ml-4" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        disabled={item.qty === 0}
+                                        onClick={(e) => { e.stopPropagation(); handleDiscard(m.id, idx); }}
+                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${item.qty === 0 ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed' : 'bg-red-500/10 border border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white'}`}
+                                      >
+                                        Descartar
+                                      </button>
+                                      <button
+                                        disabled={item.qty === 0}
+                                        onClick={(e) => { e.stopPropagation(); handlePickUp(m.id, idx); }}
+                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${item.qty === 0 ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed' : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500 hover:text-black'}`}
+                                      >
+                                        Coletar
+                                      </button>
                                     </div>
-                                    <button
-                                      disabled={item.qty === 0}
-                                      onClick={() => handlePickUp(m.id, idx)}
-                                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${item.qty === 0 ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed' : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500 hover:text-black'}`}
-                                    >
-                                      Coletar
-                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -1006,7 +1167,7 @@ export default function CombatLog({
         <div ref={scrollRef} className="h-px w-full" style={{ overflowAnchor: 'auto' }} />
       </div>
 
-      <form onSubmit={sendMsg} className={`shrink-0 p-8 bg-black/60 border-t border-white/5 relative transition-all duration-500 ${targetingRoll ? 'blur-sm pointer-events-none select-none' : ''}`}>
+      <form onSubmit={sendMsg} className={`shrink-0 p-8 bg-black/60 border-t border-white/5 relative ${targetingRoll ? 'blur-sm pointer-events-none select-none' : ''}`}>
         {suggestionData && (
           <div className="absolute bottom-full left-8 mb-4 px-6 py-2 bg-zinc-900/90 border border-white/10 rounded-full shadow-2xl backdrop-blur-md">
             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -1176,16 +1337,16 @@ export default function CombatLog({
             <input value={input} onChange={handleInputChange} onKeyDown={onKeyDown} placeholder="Interaja com o mundo..." disabled={!!targetingRoll} className="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-8 pr-24 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl disabled:opacity-50" />
             <div className="absolute right-3 top-1/2 -translate-y-[60%] flex items-center gap-1">
               {isActingAsMaster && (
-                <button type="button" onClick={() => setShowLootSelector(!showLootSelector)} className={`p-2 transition-all ${showLootSelector ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Espólio">
+                <button type="button" onClick={toggleLootSelector} className={`p-2 transition-all ${showLootSelector ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Espólio">
                   <span className="text-xl">📦</span>
                 </button>
               )}
-              <button type="button" onClick={() => setShowDiceQuickMenu(!showDiceQuickMenu)} className={`p-2 transition-all ${showDiceQuickMenu ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Rolagem Rápida">
+              <button type="button" onClick={toggleDiceQuickMenu} className={`p-2 transition-all ${showDiceQuickMenu ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Rolagem Rápida">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-5a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 14h.01"/><path d="M18 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg>
               </button>
               <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
               <button type="button" disabled={isUploading} onClick={() => fileInputRef.current?.click()} className={`p-2 transition-all ${isUploading ? 'animate-pulse text-yellow-500' : 'text-zinc-500 hover:text-white'}`} title="Anexar Imagem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg></button>
-              <button type="button" onClick={() => setShowGifPicker(!showGifPicker)} className={`p-2 transition-all ${showGifPicker ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Inserir GIF"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+              <button type="button" onClick={toggleGifPicker} className={`p-2 transition-all ${showGifPicker ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Inserir GIF"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
               <button type="submit" disabled={!input.trim()} className="p-2 text-zinc-500 hover:text-white disabled:opacity-30 transition-colors" title="Enviar mensagem"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
             </div>
           </div>

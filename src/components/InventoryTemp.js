@@ -10,8 +10,9 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
   const [tab, setTab] = useState('Item');
 
   const equippedItems = inventory.filter(i => i.equipped);
-  const hasBackpack = inventory.some(item => item.isBackpack && item.equipped);
-  const maxSlots = hasBackpack ? 15 : 4;
+  const equippedBackpack = inventory.find(item => item.isBackpack && item.equipped);
+  const hasBackpack = !!equippedBackpack;
+  const maxSlots = 6 + (equippedBackpack ? (Number(equippedBackpack.cargaIncrease) || 10) : 0);
   const itemWeight = inventory.reduce((acc, item) => {
     // If it's a backpack, it doesn't occupy its own slot while equipped
     if (item.isBackpack && item.equipped) return acc;
@@ -62,8 +63,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
         {/* HEADER */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex flex-col">
-            <h3 className="font-black text-zinc-500 uppercase tracking-widest text-[10px] italic">Inventário</h3>
-            <p className={`text-[10px] font-black mt-1 ${itemWeight > maxSlots ? 'text-red-500 animate-pulse' : 'text-zinc-500'}`}>
+            <h3 className="font-black text-zinc-500 uppercase tracking-widest text-[13px] italic">Inventário</h3>
+            <p className={`text-[12px] font-black mt-1 ${itemWeight > maxSlots ? 'text-red-500 animate-pulse' : 'text-zinc-500'}`}>
               Carga: {itemWeight} / {maxSlots} {hasBackpack && " (Mochila Ativa)"}
             </p>
           </div>
@@ -164,7 +165,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
               </div>
             </div>
           )) : (
-            <p className="text-[10px] text-zinc-500 italic text-center py-10 uppercase font-black tracking-widest">Mochila Vazia</p>
+            <p className="text-[12px] text-zinc-500 italic text-center py-10 uppercase font-black tracking-widest">Mochila Vazia</p>
           )}
         </div>
       </div>
