@@ -95,6 +95,25 @@
     "damage_multi": 1
   },
   {
+    "id": "18c73ddf-56f6-427e-8ded-dfefb692b23f",
+    "name": "Alternador Estraçalhado",
+    "rarity": "Comum",
+    "value": 4,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Alternador que parece ter pertencido à um Motor V8. Está destruído, é lixo.",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "item.broken_alternator",
+    "carga": 2,
+    "cargaIncrease": 10,
+    "damage_multi": 1
+  },
+  {
     "id": "54137ec8-3a77-40be-a2a8-653765a54987",
     "name": "Bandagem Esterilizada",
     "rarity": "Comum",

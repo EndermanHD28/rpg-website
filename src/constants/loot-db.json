@@ -1,5 +1,31 @@
 [
   {
+    "id": 8,
+    "created_at": "2026-05-03T22:14:31.272757+00:00",
+    "name": "improvised.car_alternator",
+    "min_rolls": 1,
+    "max_rolls": 1,
+    "extra_roll_chance": 0,
+    "min_extra_rolls": 0,
+    "max_extra_rolls": 0,
+    "items": [
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 1,
+        "item_id": "item.alternador_v8",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 2,
+        "item_id": "item.broken_alternator",
+        "individualQtyChance": 100
+      }
+    ]
+  },
+  {
     "id": 3,
     "created_at": "2026-04-10T16:36:42.603973+00:00",
     "name": "npc_drop.bandit",
@@ -19,14 +45,421 @@
     ]
   },
   {
+    "id": 7,
+    "created_at": "2026-05-03T22:00:23.300608+00:00",
+    "name": "residential.bathroom",
+    "min_rolls": 1,
+    "max_rolls": 4,
+    "extra_roll_chance": 40,
+    "min_extra_rolls": 1,
+    "max_extra_rolls": 1,
+    "items": [
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 250,
+        "item_id": "item.bandagem",
+        "individualQtyChance": 30
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 220,
+        "item_id": "item.ibuprofeno",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 180,
+        "item_id": "item.espelho_sinalizacao",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 160,
+        "item_id": "item.pote_plastico",
+        "individualQtyChance": 40
+      },
+      {
+        "maxQty": 3,
+        "minQty": 1,
+        "weight": 140,
+        "item_id": "item.cacos_ceramica",
+        "individualQtyChance": 50
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 110,
+        "item_id": "item.tesoura_comum",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 90,
+        "item_id": "weapon.estilete_aco",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 80,
+        "item_id": "item.esponja_aco",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 45,
+        "item_id": "item.kit_medico",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 35,
+        "item_id": "item.kit_socorros_sala",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 25,
+        "item_id": "item.kit_sutura",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 15,
+        "item_id": "item.luminaria_emergencia",
+        "individualQtyChance": 100
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "created_at": "2026-05-03T21:58:42.378496+00:00",
+    "name": "residential.bedroom",
+    "min_rolls": 1,
+    "max_rolls": 3,
+    "extra_roll_chance": 30,
+    "min_extra_rolls": 1,
+    "max_extra_rolls": 2,
+    "items": [
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 280,
+        "item_id": "item.almofada_velha",
+        "individualQtyChance": 40
+      },
+      {
+        "maxQty": 3,
+        "minQty": 1,
+        "weight": 260,
+        "item_id": "item.meias_lixo",
+        "individualQtyChance": 20
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 240,
+        "item_id": "item.cobertor_la",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 200,
+        "item_id": "item.revista_velha",
+        "individualQtyChance": 30
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 180,
+        "item_id": "item.cinto_couro",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 160,
+        "item_id": "item.caderno_moleskine",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 150,
+        "item_id": "item.cabo_usb_lixo",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 140,
+        "item_id": "item.isqueiro_bic",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 120,
+        "item_id": "item.relogio_gshock",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 100,
+        "item_id": "item.pilhas_duracell",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 80,
+        "item_id": "item.powerbank_anker",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 50,
+        "item_id": "item.mochila_tatica",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 45,
+        "item_id": "item.spray_pimenta",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 40,
+        "item_id": "item.ps2_hardware",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 35,
+        "item_id": "weapon.glock42",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 25,
+        "item_id": "item.radio_baofeng",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 20,
+        "item_id": "weapon.revolver_sw",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 15,
+        "item_id": "item.mochila_militar",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 5,
+        "item_id": "item.laptop_militar",
+        "individualQtyChance": 100
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "created_at": "2026-05-03T21:57:25.977553+00:00",
+    "name": "residential.kitchen",
+    "min_rolls": 2,
+    "max_rolls": 4,
+    "extra_roll_chance": 25,
+    "min_extra_rolls": 1,
+    "max_extra_rolls": 2,
+    "items": [
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 280,
+        "item_id": "item.pano_copa",
+        "individualQtyChance": 50
+      },
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 260,
+        "item_id": "item.esponja_aco",
+        "individualQtyChance": 30
+      },
+      {
+        "maxQty": 3,
+        "minQty": 1,
+        "weight": 240,
+        "item_id": "item.pote_plastico",
+        "individualQtyChance": 40
+      },
+      {
+        "maxQty": 4,
+        "minQty": 1,
+        "weight": 220,
+        "item_id": "item.filtro_cafe",
+        "individualQtyChance": 20
+      },
+      {
+        "maxQty": 2,
+        "minQty": 1,
+        "weight": 190,
+        "item_id": "item.comida_enlatada",
+        "individualQtyChance": 50
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 175,
+        "item_id": "weapon.faca_cozinha",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 160,
+        "item_id": "item.abridor_latas",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 150,
+        "item_id": "item.tesoura_comum",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 140,
+        "item_id": "item.luva_forno",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 130,
+        "item_id": "item.vinagre_frasco",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 120,
+        "item_id": "weapon.garfo_churrasco",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 110,
+        "item_id": "item.timer_cozinha",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 100,
+        "item_id": "weapon.faca_tramontina",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 90,
+        "item_id": "weapon.rolo_massa",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 80,
+        "item_id": "item.isqueiro_bic",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 60,
+        "item_id": "weapon.estilete_aco",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 50,
+        "item_id": "item.whisky_jack",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 45,
+        "item_id": "item.ibuprofeno",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 40,
+        "item_id": "item.zippo_metal",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 35,
+        "item_id": "item.torradeira_sucata",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 30,
+        "item_id": "weapon.cutelo_tramontina",
+        "individualQtyChance": 100
+      },
+      {
+        "maxQty": 1,
+        "minQty": 1,
+        "weight": 15,
+        "item_id": "item.lanterna_surefire",
+        "individualQtyChance": 100
+      }
+    ]
+  },
+  {
     "id": 4,
     "created_at": "2026-05-03T21:36:13.634342+00:00",
     "name": "residential.living_room",
-    "min_rolls": 4,
-    "max_rolls": 9,
+    "min_rolls": 2,
+    "max_rolls": 5,
     "extra_roll_chance": 35,
     "min_extra_rolls": 1,
-    "max_extra_rolls": 3,
+    "max_extra_rolls": 2,
     "items": [
       {
         "maxQty": 2,
