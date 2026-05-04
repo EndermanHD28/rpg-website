@@ -720,13 +720,6 @@ export default function CombatLog({
                   key={enemy.id}
                   onClick={() => {
                     if (targetingRoll) {
-                      // IF NOT MASTER (REAL PRIVILEGE): BLOCK
-                      if (!isMaster) {
-                        if (showToast) showToast("Apenas o mestre pode selecionar inimigos diretamente.");
-                        return;
-                      }
-                      
-                      // IF REAL MASTER: FINALIZE
                       const actorId = (isActingAsMaster ? selectedCombatantId : null) || user?.id;
                       if (enemy.id === actorId) return;
                       finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, enemy);
