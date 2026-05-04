@@ -719,6 +719,7 @@ export default function CombatLog({
                 <div
                   key={enemy.id}
                   onClick={() => {
+                    console.log("Enemy clicked", { enemyId: enemy.id, targetingRoll: !!targetingRoll, isActingAsMaster });
                     if (targetingRoll && isActingAsMaster) {
                       const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
                       if (enemy.id === actorId) return;
@@ -726,9 +727,9 @@ export default function CombatLog({
                       setTargetingRoll(null);
                     }
                   }}
-                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll && isActingAsMaster ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster && !targetingRoll ? 'pointer-events-none' : ''}`}
+                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 ${isActingAsMaster ? 'hover:border-red-600/40' : ''} relative overflow-hidden ${targetingRoll && isActingAsMaster ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster && !targetingRoll ? 'pointer-events-none' : ''}`}
                 >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/5 blur-[40px] -z-10 group-hover:bg-red-600/10 transition-colors" />
+                  <div className={`absolute top-0 right-0 w-24 h-24 ${isActingAsMaster ? 'bg-red-600/5 group-hover:bg-red-600/10' : 'bg-red-600/[0.02]'} blur-[40px] -z-10 transition-colors`} />
                   
                   {isActingAsMaster && !targetingRoll && (
                     <button
@@ -741,7 +742,7 @@ export default function CombatLog({
 
                   <div className="relative shrink-0">
                     {enemy.image_url ? (
-                      <img src={enemy.image_url} className="w-16 h-16 rounded-xl object-cover border border-white/10 shadow-xl group-hover:scale-105 transition-transform" alt="" />
+                      <img src={enemy.image_url} className={`w-16 h-16 rounded-xl object-cover border border-white/10 shadow-xl ${isActingAsMaster ? 'group-hover:scale-105' : ''} transition-transform`} alt="" />
                     ) : (
                       <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center text-3xl">👤</div>
                     )}
@@ -809,7 +810,7 @@ export default function CombatLog({
                           </div>
                         ))}
                       </div>
-                      <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest italic group-hover:text-red-500/50 transition-colors">Combatente</span>
+                      <span className={`text-[7px] font-black text-zinc-600 uppercase tracking-widest italic ${isActingAsMaster ? 'group-hover:text-red-500/50' : ''} transition-colors`}>Combatente</span>
                     </div>
 
                     <div className={`grid transition-all duration-500 ${isActingAsMaster ? 'grid-rows-[0fr] group-hover:grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
