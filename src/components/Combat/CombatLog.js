@@ -719,18 +719,14 @@ export default function CombatLog({
                 <div
                   key={enemy.id}
                   onClick={() => {
-                    if (targetingRoll) {
-                      if (!isActingAsMaster) {
-                        if (showToast) showToast("Apenas o mestre pode selecionar inimigos diretamente.");
-                        return;
-                      }
+                    if (targetingRoll && isActingAsMaster) {
                       const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
                       if (enemy.id === actorId) return;
                       finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, enemy);
                       setTargetingRoll(null);
                     }
                   }}
-                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster && !targetingRoll ? 'pointer-events-none' : ''}`}
+                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll && isActingAsMaster ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster && !targetingRoll ? 'pointer-events-none' : ''}`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/5 blur-[40px] -z-10 group-hover:bg-red-600/10 transition-colors" />
                   
