@@ -126,6 +126,10 @@ export default function CombatManager({
                     key={p.id}
                     onClick={() => {
                       if (targetingRoll) {
+                        if (p.is_enemy && !isActingAsMaster) {
+                          // This case shouldn't be reachable via UI but for safety:
+                          return;
+                        }
                         const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
                         if (p.id === actorId) return;
                         finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, p);
