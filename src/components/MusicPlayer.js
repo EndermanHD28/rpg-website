@@ -80,6 +80,8 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           rel: 0,
           mute: 0,
           loop: 1,
+          enablejsapi: 1,
+          origin: typeof window !== 'undefined' ? window.location.origin : ''
         },
         events: {
           onReady: (event) => {
@@ -105,29 +107,38 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
             event.target.setVolume(volume * 100);
 
             // If Master pauses or plays, we should update music_started_at to keep sync
-            if (isMaster) {
-              if (event.data === window.YT.PlayerState.PLAYING) {
-                const currentTime = event.target.getCurrentTime();
-                const currentVideoData = event.target.getVideoData();
-                const videoId = currentVideoData?.video_id;
-                
-                const startedAt = new Date(Date.now() - currentTime * 1000).toISOString();
-                
-                const updates = { music_started_at: startedAt };
-                
-                // If we are in a playlist, update the music_url to the specific video being played
-                if (videoId && url.includes('list=')) {
-                  const urlObj = new URL(url);
-                  urlObj.searchParams.set('v', videoId);
-                  updates.music_url = urlObj.toString();
-                }
-
-                await supabase
-                  .from('global')
-                  .update(updates)
-                  .eq('id', 1);
+          if (isMaster) {
+            if (event.data === window.YT.PlayerState.PLAYING) {
+              const currentTime = event.target.getCurrentTime();
+              const currentVideoData = event.target.getVideoData();
+              const videoId = currentVideoData?.video_id;
+              
+              const startedAt = new Date(Date.now() - currentTime * 1000).toISOString();
+              
+              const updates = { 
+                music_started_at: startedAt,
+                music_playing: true 
+              };
+              
+              // If we are in a playlist, update the music_url to the specific video being played
+              if (videoId && url.includes('list=')) {
+                const urlObj = new URL(url);
+                urlObj.searchParams.set('v', videoId);
+                updates.music_url = urlObj.toString();
               }
+
+              await supabase
+                .from('global')
+                .update(updates)
+                .eq('id', 1);
+            } else if (event.data === window.YT.PlayerState.PAUSED) {
+              // Master explicitly paused the video
+              await supabase
+                .from('global')
+                .update({ music_playing: false })
+                .eq('id', 1);
             }
+          }
             
             // Handle metadata updates when song changes in playlist
             if (event.data === window.YT.PlayerState.PLAYING) {
@@ -280,6 +291,21 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
         
         if (data.music_url) {
           if (urlChanged) fetchSongTitle(data.music_url);
+          
+    // Force Resume if music_playing is true and we are not playing
+    if (data.music_playing && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
+       const state = ytPlayer.current.getPlayerState();
+       if (state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
+          console.log("Supabase says music should be playing. Forcing play.");
+          ytPlayer.current.playVideo();
+       }
+    } else if (data.music_playing === false && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
+       const state = ytPlayer.current.getPlayerState();
+       if (state === window.YT.PlayerState.PLAYING) {
+          console.log("Supabase says music should be paused. Forcing pause.");
+          ytPlayer.current.pauseVideo();
+       }
+    }
         } else {
           setSongTitle('');
         }
@@ -511,7 +537,12 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       sfxAudioRef.current.pause();
       sfxAudioRef.current.currentTime = 0;
     }
-    sfxAudioRef.current = new Audio(sfxPath);
+    const audio = new Audio();
+    audio.src = sfxPath;
+    audio.autoplay = false;
+    audio.crossOrigin = "anonymous";
+    sfxAudioRef.current = audio;
+    
     const targetVolume = (sfxVolume ?? 1.0) * volume;
     sfxAudioRef.current.volume = Math.max(0, Math.min(1, targetVolume));
     sfxAudioRef.current.loop = sfxLoop;
@@ -519,46 +550,47 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     // Track active sound for UI
     setActiveSounds(prev => new Set(prev).add(sfxPath));
     
-    // Setup duration-based stop/fade if looping
-    let durationTimeout = null;
-    if (sfxLoop && sfxDuration > 0) {
-      durationTimeout = setTimeout(() => {
-        if (sfxAudioRef.current && sfxAudioRef.current.src.includes(sfxPath)) {
-          // Fade out
-          const fadeOut = setInterval(() => {
-            if (sfxAudioRef.current && sfxAudioRef.current.volume > 0.05) {
-              sfxAudioRef.current.volume -= 0.05;
-            } else {
-              clearInterval(fadeOut);
-              if (sfxAudioRef.current) {
-                sfxAudioRef.current.pause();
-                sfxAudioRef.current.currentTime = 0;
-                sfxAudioRef.current = null;
+      // Setup duration-based stop/fade if looping
+      let durationTimeout = null;
+      if (sfxLoop && sfxDuration > 0) {
+        durationTimeout = setTimeout(() => {
+          if (sfxAudioRef.current && sfxAudioRef.current.src && sfxAudioRef.current.src.includes(sfxPath)) {
+            // Fade out
+            const fadeOut = setInterval(() => {
+              if (sfxAudioRef.current && sfxAudioRef.current.volume > 0.05) {
+                sfxAudioRef.current.volume -= 0.05;
+              } else {
+                clearInterval(fadeOut);
+                if (sfxAudioRef.current) {
+                  sfxAudioRef.current.pause();
+                  sfxAudioRef.current.currentTime = 0;
+                  sfxAudioRef.current = null;
+                }
+                setActiveSounds(prev => {
+                  const next = new Set(prev);
+                  next.delete(sfxPath);
+                  return next;
+                });
               }
-              setActiveSounds(prev => {
-                const next = new Set(prev);
-                next.delete(sfxPath);
-                return next;
-              });
-            }
-          }, 50);
-        }
-      }, sfxDuration * 1000);
-    }
-
-    sfxAudioRef.current.onended = () => {
-      if (!sfxLoop) {
-        if (durationTimeout) clearTimeout(durationTimeout);
-        setActiveSounds(prev => {
-          const next = new Set(prev);
-          next.delete(sfxPath);
-          return next;
-        });
-        if (sfxAudioRef.current?.src.includes(sfxPath)) {
-          sfxAudioRef.current = null;
-        }
+            }, 50);
+          }
+        }, sfxDuration * 1000);
       }
-    };
+
+      sfxAudioRef.current.onended = () => {
+        if (!sfxLoop) {
+          if (durationTimeout) clearTimeout(durationTimeout);
+          setActiveSounds(prev => {
+            const next = new Set(prev);
+            next.delete(sfxPath);
+            return next;
+          });
+          // Fix for Uncaught TypeError: Cannot read properties of null (reading 'src')
+          if (sfxAudioRef.current && sfxAudioRef.current.src && sfxAudioRef.current.src.includes(sfxPath)) {
+            sfxAudioRef.current = null;
+          }
+        }
+      };
 
     sfxAudioRef.current.play().catch(err => {
       if (durationTimeout) clearTimeout(durationTimeout);

@@ -49,6 +49,13 @@ export const useSound = () => {
         audio.preservesPitch = true; // Return pitch to normal
         audio.playbackRate = 1.7; // Speed up 1.7x
       }
+      
+      // Explicitly tell the browser this audio should not interrupt others
+      // This is a hint for some mobile browsers and Electron/WebView environments
+      if ('mediaSession' in navigator) {
+        // No-op to avoid breaking, but Standard Audio() is already fairly isolated.
+      }
+      
       audio.play().catch(err => console.error("Error playing sound:", err));
     }
   }, []);

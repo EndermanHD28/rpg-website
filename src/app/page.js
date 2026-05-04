@@ -89,9 +89,13 @@ export default function Home() {
   const [now, setNow] = useState(Date.now());
   const [globalLockUntil, setGlobalLockUntil] = useState(0);
 
+  const playSoundEffect = useCallback((soundName) => {
+    playSound(soundName);
+  }, [playSound]);
+
   useEffect(() => {
     if (character?.needs_celebration) {
-      playSound('celebration');
+      playSoundEffect('celebration');
       setShowCelebration(true);
       
       // Update character immediately in state to clear the flag
@@ -425,7 +429,7 @@ export default function Home() {
 
   // --- HANDLERS ---
   const handleStatChange = (stat, val) => {
-    playSound('stat_point');
+    playSoundEffect('stat_point');
     const nVal = val === "" ? "" : parseInt(val);
     const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
 
@@ -471,7 +475,7 @@ export default function Home() {
 
       // VALIDATION 2: Check for negative PS (Only for players)
       if (!isActingAsMaster && sanitized.stat_points_available < 0) {
-        playSound('error');
+        playSoundEffect('error');
         showToast(`Erro: Você gastou ${Math.abs(sanitized.stat_points_available)} PS a mais do que possui.`);
         return;
       }
@@ -604,38 +608,38 @@ export default function Home() {
           title: "Pedido de Edição Pendente",
           message: "Você já tem um pedido de edição pendente. O que deseja fazer?",
           type: "custom", // A new type to indicate custom buttons
-          buttons: [
-            {
-              label: "Editar Pedido Atual",
-              className: "bg-blue-600 hover:bg-blue-700",
-              onClick: () => {
-                playSound('random_button');
-                setTempChar({ ...character, ...pendingRequest.new_data });
-                setIsEditing(true);
+              buttons: [
+                {
+                  label: "Editar Pedido Atual",
+                  className: "bg-blue-600 hover:bg-blue-700",
+                  onClick: () => {
+                    playSoundEffect('random_button');
+                    setTempChar({ ...character, ...pendingRequest.new_data });
+                    setIsEditing(true);
 
-                closeModal();
-              }
-            },
-            {
-              label: "Excluir Pedido",
-              className: "bg-red-600 hover:bg-red-700",
-              onClick: async () => {
-                playSound("error");
-                await supabase.from("change_requests").delete().eq("id", pendingRequest.id);
-                setPendingRequest(null);
-                showToast("Pedido de edição excluído.");
-                closeModal();
-              }
-            },
-            {
-              label: "Cancelar",
-              className: "bg-zinc-700 hover:bg-zinc-800",
-              onClick: () => {
-                playSound('random_button');
-                closeModal();
-              }
-            }
-          ]
+                    closeModal();
+                  }
+                },
+                {
+                  label: "Excluir Pedido",
+                  className: "bg-red-600 hover:bg-red-700",
+                  onClick: async () => {
+                    playSoundEffect("error");
+                    await supabase.from("change_requests").delete().eq("id", pendingRequest.id);
+                    setPendingRequest(null);
+                    showToast("Pedido de edição excluído.");
+                    closeModal();
+                  }
+                },
+                {
+                  label: "Cancelar",
+                  className: "bg-zinc-700 hover:bg-zinc-800",
+                  onClick: () => {
+                    playSoundEffect('random_button');
+                    closeModal();
+                  }
+                }
+              ]
         });
       } else {
         setIsEditing(true);
@@ -748,9 +752,9 @@ export default function Home() {
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Principal</p>
               <div className="flex flex-col gap-1">
-                <NavButton active={activeTab === 'home'} label="Início" onClick={() => { playSound('tab_change'); setActiveTab('home'); }} />
+                <NavButton active={activeTab === 'home'} label="Início" onClick={() => { playSoundEffect('tab_change'); setActiveTab('home'); }} />
                 <NavButton active={activeTab === 'sheet' && !viewingTarget} label="Ficha" onClick={() => {
-                  playSound('tab_change');
+                  playSoundEffect('tab_change');
                   const myChar = allPlayers.find(p => p.id === user?.id);
                   if (myChar) {
                     setCharacter(myChar);
@@ -759,7 +763,7 @@ export default function Home() {
                   setViewingTarget(null);
                   setActiveTab('sheet');
                 }} />
-                <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => { playSound('tab_change'); setActiveTab('combat'); }} />
+                <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => { playSoundEffect('tab_change'); setActiveTab('combat'); }} />
               </div>
             </div>
 
@@ -784,11 +788,11 @@ export default function Home() {
                         isUnapproved={!isApproved && !isActingAsMaster}
                         onClick={() => {
                           if (!canView) {
-                            playSound('error');
+                            playSoundEffect('error');
                             showToast("Ficha ainda não aprovada pelo mestre.");
                             return;
                           }
-                          playSound('tab_change');
+                          playSoundEffect('tab_change');
                           setCharacter(p);
                           if (!isEditing) setTempChar(p);
                           setViewingTarget(p.id);
@@ -809,7 +813,7 @@ export default function Home() {
                       label={npc.name}
                       isNPC
                       onClick={() => {
-                        playSound('tab_change');
+                        playSoundEffect('tab_change');
                         setCharacter(npc);
                         setTempChar(npc);
                         setViewingTarget(npc.id);
@@ -830,9 +834,9 @@ export default function Home() {
                 <div>
                   <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
                   <div className="flex flex-col gap-1">
-                    <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSound('tab_change'); setActiveTab('master'); }} />
-                    <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSound('tab_change'); setActiveTab('items'); }} />
-                    <NavButton active={activeTab === 'loot'} label="Loot" onClick={() => { playSound('tab_change'); setActiveTab('loot'); }} />
+                  <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSoundEffect('tab_change'); setActiveTab('master'); }} />
+                  <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSoundEffect('tab_change'); setActiveTab('items'); }} />
+                  <NavButton active={activeTab['loot']} label="Loot" onClick={() => { playSoundEffect('tab_change'); setActiveTab('loot'); }} />
                   </div>
                 </div>
               </>
@@ -926,7 +930,7 @@ export default function Home() {
 
 
               <button onClick={() => {
-                playSound('tab_change');
+                playSoundEffect('tab_change');
                 const myChar = allPlayers.find(p => p.id === user?.id);
                 if (myChar) {
                   setCharacter(myChar);
@@ -957,7 +961,7 @@ export default function Home() {
                   <div className="absolute top-8 right-8 z-20 flex flex-col gap-2 items-end">
                     {(!isViewingOthers || isActingAsMaster) && (
                       <button
-                        onClick={() => { playSound('random_button'); toggleEditMode(); }}
+                        onClick={() => { playSoundEffect('random_button'); toggleEditMode(); }}
                         className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${isEditing ? 'bg-green-600' : (activeRequest ? 'bg-lime-400 text-black border-2 border-lime-500' : 'bg-yellow-600 text-black')}`}
                       >
                         {isEditing ? "CONCLUIR" : (activeRequest ? "EDITAR !" : "EDITAR")}
@@ -966,24 +970,12 @@ export default function Home() {
 
                     {isEditing && (
                       <>
-                        <button
-                          onClick={() => { playSound('random_button'); setIsViewingOnly(!isViewingOnly); }}
-                          className="w-44 bg-blue-900/40 text-blue-400 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-blue-900/60 border border-blue-900/30"
-                        >
-                          {isViewingOnly ? "VOLTAR PARA EDIÇÃO" : "VER ORIGINAL"}
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            playSound('random_button');
-                            setTempChar(character);
-                            setIsEditing(false);
-                            setIsViewingOnly(false);
-                          }}
-                          className="w-44 bg-red-900/40 text-red-500 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-red-900/60 cursor-pointer border border-red-900/30"
-                        >
-                          Cancelar
-                        </button>
+          <button onClick={() => { playSoundEffect('random_button'); setIsViewingOnly(!isViewingOnly); }} className="w-44 bg-blue-900/40 text-blue-400 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-blue-900/60 border border-blue-900/30">
+            {isViewingOnly ? "VOLTAR PARA EDIÇÃO" : "VER ORIGINAL"}
+          </button>
+          <button onClick={() => { playSoundEffect('random_button'); setTempChar(character); setIsEditing(false); setIsViewingOnly(false); }} className="w-44 bg-red-900/40 text-red-500 text-[9px] font-bold px-4 py-2 rounded-full uppercase transition-all hover:bg-red-900/60 cursor-pointer border border-red-900/30">
+            Cancelar
+          </button>
                       </>
                     )}
                   </div>
