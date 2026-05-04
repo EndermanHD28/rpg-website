@@ -118,7 +118,7 @@ export function calculateBloqueio(char) {
   ));
 }
 
-export function calculateSecondaryStat(perc) {
+export function calculateSecondaryStat(perc, char = null) {
   const p = parseFloat(perc) || 0;
   let power = 0.45;
   if (p < 8.5) {
@@ -137,7 +137,21 @@ export function calculateSecondaryStat(perc) {
   // So X ≈ 20 - 2.97 ≈ 17.03
   // Since user said it "currently starts at 13 but should start at 20", 
   // and we want it to result in 1d20 base (which is 20 in this context of flat values).
-  return Math.round(17.03 + Math.pow(p, power));
+  let baseValue = Math.round(17.03 + Math.pow(p, power));
+
+  // Special Case: Convencimento buff from Lireou
+  // If this is called for Convencimento (Carisma), we check for the bloodline.
+  // Note: Since this function only takes 'perc', we might need to pass the char context.
+  if (char) {
+    const lineageName = char.bloodline || char.lineage;
+    if (lineageName === 'Lireou') {
+      baseValue = Math.floor(baseValue * 1.20);
+    } else if (lineageName === 'Lireou (Douma)') {
+      baseValue = Math.floor(baseValue * 1.15);
+    }
+  }
+
+  return baseValue;
 }
 
 export function calculateLootDie(luckPerc) {

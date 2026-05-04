@@ -66,7 +66,7 @@ export default function Home() {
   const isViewingOthers = viewingTarget && viewingTarget !== user?.id;
   const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
   const isNPC = activeChar && allNPCs.some(n => n.id === activeChar.id);
-  const activeRequest = requests.find(r => r.player_id === (viewingTarget || user?.id));
+  const activeRequest = requests.find(r => r.player_id === (viewingTarget || user?.id)) || (viewingTarget === null && pendingRequest ? pendingRequest : null);
 
   // --- MATH HELPERS ---
   const derivedStats = calculateDerivedStats(activeChar) || {};
@@ -88,6 +88,17 @@ export default function Home() {
 
   const [now, setNow] = useState(Date.now());
   const [globalLockUntil, setGlobalLockUntil] = useState(0);
+
+  useEffect(() => {
+    if (character?.needs_celebration) {
+      playSound('celebration');
+      setShowCelebration(true);
+      setTimeout(() => {
+        setShowCelebration(false);
+        setCharacter(prev => ({ ...prev, needs_celebration: false }));
+      }, 5000);
+    }
+  }, [character?.needs_celebration, playSound]);
 
   // Fog persistent animation logic
   const FOG_DURATION = 34000; // Updated to 34s
@@ -408,29 +419,30 @@ export default function Home() {
     const nVal = val === "" ? "" : parseInt(val);
     const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
 
-    setTempChar(prev => {
-      // 1. Create the new state object for attributes
-      const nextState = {
-        ...prev,
-        [stat]: nVal
-      };
+      setTempChar(prev => {
+        // 1. Create the new state object for attributes
+        const nextState = {
+          ...prev,
+          [stat]: nVal
+        };
 
-      // 2. Calculate points spent based on the DIFFERENCE between 
-      // our new state (nextState) and the original baseline (character)
-      const totalSpent = keys.reduce((acc, k) => {
-        // Treat empty strings or NaN as baseline for the sake of PS calculation
-        const baseline = (activeChar?.is_complex || isNPC) ? 1 : 3;
-        const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? baseline : Number(nextState[k]);
-        const originalVal = Number(character[k]) || baseline;
-        return acc + (currentVal - originalVal);
-      }, 0);
+        // 2. Calculate points spent based on the DIFFERENCE between 
+        // our new state (nextState) and the original baseline (character)
+        const totalSpent = keys.reduce((acc, k) => {
+          // Treat empty strings or NaN as baseline for the sake of PS calculation
+          const minStat = (activeChar?.is_complex || isNPC) ? 1 : 3;
+          const currentVal = (nextState[k] === "" || isNaN(nextState[k])) ? minStat : Number(nextState[k]);
+          const originalVal = Number(character[k]) || minStat;
+          return acc + (currentVal - originalVal);
+        }, 0);
 
-      // 3. Return the updated object with the freshly calculated PS
-      return {
-        ...nextState,
-        stat_points_available: character.stat_points_available - totalSpent
-      };
-    });
+        // 3. Return the updated object with the freshly calculated PS
+        // We use the character's stat_points_available as the baseline.
+        return {
+          ...nextState,
+          stat_points_available: character.stat_points_available - totalSpent
+        };
+      });
   };
 
   const toggleEditMode = async () => {

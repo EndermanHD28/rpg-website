@@ -83,7 +83,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
         console.log("Original new_data:", req.new_data);
         console.log("Modified new_data for update:", tempData);
         const { error: charError } = await supabase.from("characters")
-          .update({ ...tempData, needs_celebration: true })
+          .update({ ...tempData, needs_celebration: true, approved_once: true })
           .eq('id', req.player_id);
 
         if (!charError) {
