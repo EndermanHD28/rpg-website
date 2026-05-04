@@ -118,7 +118,7 @@ export function calculateBloqueio(char) {
   ));
 }
 
-export function calculateSecondaryStat(perc, char = null) {
+export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
   const p = parseFloat(perc) || 0;
   let power = 0.45;
   if (p < 8.5) {
@@ -141,8 +141,7 @@ export function calculateSecondaryStat(perc, char = null) {
 
   // Special Case: Convencimento buff from Lireou
   // If this is called for Convencimento (Carisma), we check for the bloodline.
-  // Note: Since this function only takes 'perc', we might need to pass the char context.
-  if (char) {
+  if (char && isCharisma) {
     const lineageName = char.bloodline || char.lineage;
     if (lineageName === 'Lireou') {
       baseValue = Math.floor(baseValue * 1.20);

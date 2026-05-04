@@ -93,12 +93,22 @@ export default function Home() {
     if (character?.needs_celebration) {
       playSound('celebration');
       setShowCelebration(true);
+      
+      // Update character immediately in state to clear the flag
+      // This prevents the sound from re-playing on re-renders (like tab changes)
+      setCharacter(prev => ({ ...prev, needs_celebration: false }));
+
+      // Also update in DB so it doesn't trigger again on next reload
+      supabase.from('characters')
+        .update({ needs_celebration: false })
+        .eq('id', character.id)
+        .then();
+
       setTimeout(() => {
         setShowCelebration(false);
-        setCharacter(prev => ({ ...prev, needs_celebration: false }));
       }, 5000);
     }
-  }, [character?.needs_celebration, playSound]);
+  }, [character?.needs_celebration, character?.id, playSound]);
 
   // Fog persistent animation logic
   const FOG_DURATION = 34000; // Updated to 34s

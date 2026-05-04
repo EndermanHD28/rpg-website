@@ -21,9 +21,9 @@ export default function DicePanel({
 }) {
   const lootDie = calculateLootDie(luckPerc);
 
-  const convincimento = calculateSecondaryStat(charismaPerc, activeChar);
-  const raciocinio = calculateSecondaryStat(intelligencePerc, activeChar);
-  const prosperidade = calculateSecondaryStat(luckPerc, activeChar);
+  const convincimento = calculateSecondaryStat(charismaPerc, activeChar, true);
+  const raciocinio = calculateSecondaryStat(intelligencePerc, activeChar, false);
+  const prosperidade = calculateSecondaryStat(luckPerc, activeChar, false);
 
   const acertoValue = calculateAcerto(activeChar);
   const desvioValue = calculateDesvio(activeChar);
