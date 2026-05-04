@@ -719,7 +719,6 @@ export default function CombatLog({
                 <div
                   key={enemy.id}
                   onClick={() => {
-                    console.log("Enemy clicked", { enemyId: enemy.id, targetingRoll: !!targetingRoll, isActingAsMaster, isMaster });
                     if (targetingRoll) {
                       // IF NOT MASTER (REAL PRIVILEGE): BLOCK
                       if (!isMaster) {
