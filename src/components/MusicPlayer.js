@@ -16,7 +16,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [hasInteracted, setHasInteracted] = useState(false);
   const [songTitle, setSongTitle] = useState('Loading...');
   const [showTitle, setShowTitle] = useState(false);
-  const [volume, setVolume] = useState(initialVolume);
+  const [volume, setVolume] = useState(0.5);
   const [duration, setDuration] = useState(0);
   const [currentSfxUrl, setCurrentSfxUrl] = useState(null);
   const [currentSfxTriggeredAt, setCurrentSfxTriggeredAt] = useState(null);
@@ -27,8 +27,14 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   // Track last played SFX to prevent double-triggering on local state changes
   const lastPlayedSfxRef = useRef({ url: null, triggeredAt: null });
 
+  // Track if we have manually set the volume in this session
+  const volumeInitializedRef = useRef(false);
+
   useEffect(() => {
-    setVolume(initialVolume);
+    // Only use initialVolume if we haven't manually adjusted volume yet
+    if (!volumeInitializedRef.current && initialVolume !== undefined) {
+      setVolume(initialVolume);
+    }
   }, [initialVolume]);
   const [played, setPlayed] = useState(0);
   const ytPlayer = useRef(null);
@@ -286,28 +292,33 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       // --- Music Sync ---
       if (data.music_url !== undefined) {
         const urlChanged = data.music_url !== url;
-        setUrl(data.music_url);
-        setPlaying(!!data.music_url);
+        
+        // Only update local state if it actually changed to avoid re-triggering effects
+        if (urlChanged) {
+          setUrl(data.music_url);
+          setPlaying(!!data.music_url);
+          if (data.music_url) {
+            fetchSongTitle(data.music_url);
+          } else {
+            setSongTitle('');
+          }
+        }
         
         if (data.music_url) {
-          if (urlChanged) fetchSongTitle(data.music_url);
-          
-    // Force Resume if music_playing is true and we are not playing
-    if (data.music_playing && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
-       const state = ytPlayer.current.getPlayerState();
-       if (state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
-          console.log("Supabase says music should be playing. Forcing play.");
-          ytPlayer.current.playVideo();
-       }
-    } else if (data.music_playing === false && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
-       const state = ytPlayer.current.getPlayerState();
-       if (state === window.YT.PlayerState.PLAYING) {
-          console.log("Supabase says music should be paused. Forcing pause.");
-          ytPlayer.current.pauseVideo();
-       }
-    }
-        } else {
-          setSongTitle('');
+          // Force Resume if music_playing is true and we are not playing
+          if (data.music_playing && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
+            const state = ytPlayer.current.getPlayerState();
+            if (state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
+              console.log("Supabase says music should be playing. Forcing play.");
+              ytPlayer.current.playVideo();
+            }
+          } else if (data.music_playing === false && ytPlayer.current && ytPlayer.current.getPlayerState && window.YT) {
+            const state = ytPlayer.current.getPlayerState();
+            if (state === window.YT.PlayerState.PLAYING) {
+              console.log("Supabase says music should be paused. Forcing pause.");
+              ytPlayer.current.pauseVideo();
+            }
+          }
         }
       }
 
@@ -348,24 +359,18 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           const isNewerTrigger = data.sfx_triggered_at && (!lastPlayedSfxRef.current.triggeredAt || new Date(data.sfx_triggered_at).getTime() > new Date(lastPlayedSfxRef.current.triggeredAt).getTime());
           
           if (isDifferentSfx || isNewerTrigger) {
-            // Play new SFX
-            console.log("Sync update received:", data.sfx_url, "Master:", isMaster);
-            
             // For Master, we only play if they didn't just trigger it themselves
             if (isMaster && data.sfx_triggered_at === currentSfxTriggeredAt && data.sfx_url === currentSfxUrl) {
-                console.log("Master skipping sync playback as they already played it locally.");
                 lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
                 return;
             }
             
             // Avoid double triggering if we already processed this exact URL/Timestamp in this session
             if (data.sfx_url === lastPlayedSfxRef.current.url && data.sfx_triggered_at === lastPlayedSfxRef.current.triggeredAt) {
-                console.log("Skipping already played SFX update.");
                 return;
             }
 
             const timeSinceTrigger = data.sfx_triggered_at ? (Date.now() - new Date(data.sfx_triggered_at).getTime()) / 1000 : 0;
-            console.log("TEST0")
             const duration = data.sfx_duration || 3;
             const loop = data.sfx_loop || false;
 
@@ -376,14 +381,12 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
               setCurrentSfxUrl(data.sfx_url);
               setCurrentSfxTriggeredAt(data.sfx_triggered_at);
             } else {
-              console.log("SFX triggered too long ago, not playing:", data.sfx_url);
               lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
             }
           }
         }
       }
     };
-
 
     const fetchMusic = async () => {
       const { data, error } = await supabase.from('global').select('*').eq('id', 1).maybeSingle();
@@ -396,7 +399,6 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
     fetchMusic();
 
-    let interval = null;
     const channel = supabase.channel('music_sync')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global', filter: 'id=eq.1' }, (p) => {
         syncWithSupabase(p.new);
@@ -404,24 +406,11 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       .subscribe();
 
     return () => {
-      if (interval) clearInterval(interval);
       if (channel) {
         channel.unsubscribe();
       }
-      if (ytPlayer.current) {
-        try {
-          ytPlayer.current.destroy();
-        } catch (e) {
-          console.error("Error destroying player in cleanup:", e);
-        }
-      }
-      // Stop all playing SFX
-      Object.values(audioRefs.current).forEach(audio => {
-        audio.pause();
-        audio.currentTime = 0;
-      });
     };
-  }, [isMaster, url, currentSfxUrl, currentSfxTriggeredAt]);
+  }, [isMaster]); // Removed url, currentSfxUrl, currentSfxTriggeredAt to prevent effect loops
 
   // Master Sync Pulse - No longer needed as we use music_started_at
 
@@ -823,7 +812,11 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
                   max="1"
                   step="0.01"
                   value={volume}
-                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    const newVol = parseFloat(e.target.value);
+                    setVolume(newVol);
+                    volumeInitializedRef.current = true;
+                  }}
                   className="w-24 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600"
                 />
                 <span className="text-[10px]">🔊</span>

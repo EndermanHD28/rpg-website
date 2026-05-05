@@ -177,8 +177,8 @@ export function calculateDerivedStats(char) {
   // Posture: Complex formula matches CombatManager and is used in the sheet
   const isComplex = !char.is_npc || char.type === 'Complex';
   const posture = isComplex 
-    ? Math.floor(2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4))
-    : Math.floor((strengthWithBuffs + resistanceWithBuffs * 7) / 2);
+    ? Math.floor((2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4)) * 2.5)
+    : Math.floor(((strengthWithBuffs + resistanceWithBuffs * 7) / 2) * 2.5);
   
   // Life: Strength + (Resistance * 7)
   let life = strengthWithBuffs + (resistanceWithBuffs * 7);
@@ -217,6 +217,14 @@ export function calculateDerivedStats(char) {
   }
 
   return stats;
+}
+
+export function calculateCurrentWeight(inventory) {
+  if (!inventory) return 0;
+  return inventory.reduce((acc, item) => {
+    if (item.isBackpack && item.equipped) return acc;
+    return acc + (Number(item.amount) || 1) * (Number(item.carga) || 1);
+  }, 0);
 }
 
 export function calculateWeaponPAT(weapon, char) {

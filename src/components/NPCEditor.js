@@ -24,6 +24,24 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
 
   useEffect(() => {
     fetchNPCs();
+
+    // Subscribe to realtime changes for the 'npcs' table
+    const npcChannel = supabase.channel('npcs_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'npcs' }, (payload) => {
+        console.log("NPC Realtime update received:", payload);
+        if (payload.eventType === 'INSERT') {
+          setNpcs(prev => [...prev, payload.new].sort((a, b) => a.name.localeCompare(b.name)));
+        } else if (payload.eventType === 'UPDATE') {
+          setNpcs(prev => prev.map(npc => npc.id === payload.new.id ? payload.new : npc));
+        } else if (payload.eventType === 'DELETE') {
+          setNpcs(prev => prev.filter(npc => npc.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(npcChannel);
+    };
   }, []);
 
   const fetchNPCs = async () => {

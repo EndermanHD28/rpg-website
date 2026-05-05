@@ -55,3 +55,5 @@ DROP POLICY IF EXISTS "Allow anyone to select change requests" ON public.change_
 CREATE POLICY "Allow anyone to select change requests" ON public.change_requests FOR SELECT TO anon, authenticated USING (true);
 DROP POLICY IF EXISTS "Allow authenticated to update change requests" ON public.change_requests;
 CREATE POLICY "Allow authenticated to update change requests" ON public.change_requests FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow anyone to delete change requests" ON public.change_requests;
+CREATE POLICY "Allow anyone to delete change requests" ON public.change_requests FOR DELETE TO anon, authenticated USING (true);

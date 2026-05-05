@@ -87,7 +87,7 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
           .eq('id', req.player_id);
 
         if (!charError) {
-          await supabase.from('change_requests').update({ status: 'approved' }).eq('id', req.id);
+          await supabase.from('change_requests').delete().match({ id: req.id });
           playSound('celebration');
           showToast("Mudanças Aplicadas!");
         } else {
@@ -100,8 +100,12 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
   };
 
   const handleReject = async (id) => {
-    const { error } = await supabase.from('change_requests').update({ status: 'rejected' }).eq('id', id);
-    if (!error) showToast("Pedido Recusado.");
+    const { error } = await supabase.from('change_requests').delete().match({ id: id });
+    if (!error) {
+      showToast("Pedido Recusado.");
+    } else {
+      console.error("Error rejecting request:", error);
+    }
   };
 
   const handleAddPS = (p) => {

@@ -1,7 +1,7 @@
 /* src/components/InventoryTemp.js */
 "use client";
 import { useState } from 'react';
-import { calculateWeaponPAT } from '../lib/rpg-math';
+import { calculateWeaponPAT, calculateCurrentWeight } from '../lib/rpg-math';
 import { useSound } from '../hooks/useSound';
 import { TooltipWrapper } from './UIElements';
 
@@ -13,11 +13,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
   const equippedBackpack = inventory.find(item => item.isBackpack && item.equipped);
   const hasBackpack = !!equippedBackpack;
   const maxSlots = 6 + (equippedBackpack ? (Number(equippedBackpack.cargaIncrease) || 10) : 0);
-  const itemWeight = inventory.reduce((acc, item) => {
-    // If it's a backpack, it doesn't occupy its own slot while equipped
-    if (item.isBackpack && item.equipped) return acc;
-    return acc + (Number(item.amount) || 1) * (Number(item.carga) || 1);
-  }, 0);
+  const itemWeight = calculateCurrentWeight(inventory);
 
   // Filter items for the current tab and keep track of original index
   const filteredItems = inventory.map((item, originalIdx) => ({ ...item, originalIdx }))
@@ -150,6 +146,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     {item.equipped ? 'Remover' : 'Equipar'}
                   </button>
                 )}
+                {/* Master actions: Edit and Delete */}
                 {isActingAsMaster && (
                   <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-all">
                     <button
@@ -159,8 +156,17 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     >
                       <span className="text-xl">✎</span>
                     </button>
-                    <button onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} className="text-zinc-500 hover:text-red-500 text-2xl font-light px-2">×</button>
+                    <button onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} className="text-zinc-500 hover:text-red-500 text-2xl font-light px-2" title="Remover Item">×</button>
                   </div>
+                )}
+                {/* Player discard action (when not viewing others) */}
+                {!isActingAsMaster && !isViewingOthers && (
+                  <button 
+                    onClick={() => { playSound('random_button'); onDelete(item.originalIdx); }} 
+                    className="opacity-0 group-hover:opacity-100 bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1 rounded-lg text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Descartar
+                  </button>
                 )}
               </div>
             </div>

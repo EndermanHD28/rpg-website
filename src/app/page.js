@@ -382,28 +382,24 @@ export default function Home() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
-        if (p.eventType === 'UPDATE' && p.new.status === 'approved' && p.new.player_id === user?.id) {
-          // If our request was approved, sync our local character state immediately
-          // by merging the new data into our current baseline.
-          const updatedChar = { ...character, ...p.new.new_data, needs_celebration: true };
-          setCharacter(updatedChar);
-          if (!isEditing) setTempChar(updatedChar);
-        }
-
         // Keep current player's pendingRequest in sync without a full re-fetch
         const relevantPlayerId = p.new?.player_id || p.old?.player_id;
         if (relevantPlayerId === user?.id) {
-          if (p.eventType === 'DELETE' || (p.new && p.new.status !== 'pending')) {
+          if (p.eventType === 'DELETE') {
             setPendingRequest(null);
           } else if (p.new && p.new.status === 'pending') {
             setPendingRequest(p.new);
+          } else if (p.new && p.new.status !== 'pending') {
+            setPendingRequest(null);
           }
         }
 
         if (isMaster) {
           if (p.eventType === 'INSERT') setRequests(prev => [...prev, p.new]);
           else if (p.eventType === 'UPDATE') setRequests(prev => prev.map(r => r.id === p.new.id ? p.new : r).filter(r => r.status === 'pending'));
-          else if (p.eventType === 'DELETE') setRequests(prev => prev.filter(r => r.id !== p.old.id));
+          else if (p.eventType === 'DELETE') {
+            setRequests(prev => prev.filter(r => r.id !== p.old.id));
+          }
         }
       })
       .subscribe((status) => {
@@ -423,7 +419,24 @@ export default function Home() {
     } else if (pendingRequest) {
       // If we are editing and have a pending request, merge the request onto the current baseline
       // This ensures that all fields (stats, class, etc.) are correctly loaded
-      setTempChar({ ...character, ...pendingRequest.new_data });
+      
+      const requestedData = pendingRequest.new_data;
+      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+      const minStat = (character?.is_complex || isNPC) ? 1 : 3;
+
+      const totalSpentOnRequested = keys.reduce((acc, k) => {
+        const requestedVal = (requestedData[k] === "" || isNaN(requestedData[k])) ? minStat : Number(requestedData[k]);
+        const originalValInRequest = Number(pendingRequest.old_data[k]) || minStat;
+        return acc + (requestedVal - originalValInRequest);
+      }, 0);
+
+      const newStatPoints = character.stat_points_available - totalSpentOnRequested;
+
+      setTempChar({ 
+        ...character, 
+        ...requestedData,
+        stat_points_available: newStatPoints 
+      });
     }
   }, [isEditing, pendingRequest, character]); // Safe now that the fetch loop is gone
 
@@ -556,8 +569,12 @@ export default function Home() {
               setCharacter(prev => ({ ...prev, ...dataToSave, char_name: dataToSave.name || dataToSave.char_name }));
             }
 
-            if (viewingTarget && !isTargetNPC) {
-              await supabase.from('change_requests').update({ status: 'rejected' }).eq('player_id', viewingTarget).eq('status', 'pending');
+            // Master is viewing their own sheet, which has a pending request
+            if (isActingAsMaster && !viewingTarget && pendingRequest) {
+              await supabase.from('change_requests').delete().match({ id: pendingRequest.id });
+              setPendingRequest(null); // Clear local state immediately
+            } else if (viewingTarget && !isTargetNPC) {
+              await supabase.from('change_requests').delete().match({ player_id: viewingTarget, status: 'pending' });
             }
             if (!error) showToast("Ficha Sincronizada!");
           } else {
@@ -572,8 +589,6 @@ export default function Home() {
                 const { error: deleteError } = await supabase.from('change_requests').delete().in('id', existingReqs.map(r => r.id));
                 if (deleteError) console.error("Error deleting existing requests:", deleteError);
                 else console.log("Existing requests deleted successfully.");
-              } else {
-                console.log("No existing pending requests found.");
               }
             } catch (e) {
               console.error("Exception in clearing pending requests:", e);
@@ -614,8 +629,39 @@ export default function Home() {
                   className: "bg-blue-600 hover:bg-blue-700",
                   onClick: () => {
                     playSoundEffect('random_button');
-                    setTempChar({ ...character, ...pendingRequest.new_data });
-                    setIsEditing(true);
+                    
+                    const requestedData = pendingRequest.new_data;
+                    const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+                    const minStat = (character?.is_complex || isNPC) ? 1 : 3;
+
+                    // 1. Calculate points spent in the request relative to its original baseline
+                    const totalSpentOnRequested = keys.reduce((acc, k) => {
+                      const requestedVal = (requestedData[k] === "" || isNaN(requestedData[k])) ? minStat : Number(requestedData[k]);
+                      const originalValInRequest = Number(pendingRequest.old_data[k]) || minStat;
+                      return acc + (requestedVal - originalValInRequest);
+                    }, 0);
+
+                    // DEBUG LOGS
+                    console.log("--- DEBUG PS SYNC ---");
+                    console.log("Current character (baseline) PS:", character.stat_points_available);
+                    console.log("Request old_data (original baseline) PS:", pendingRequest.old_data.stat_points_available);
+                    console.log("Points spent in request:", totalSpentOnRequested);
+
+                    // 3. Subtract the spent points from the CURRENT character's available PS
+                    const newStatPoints = character.stat_points_available - totalSpentOnRequested;
+                    console.log("New calculated PS:", newStatPoints);
+
+                    const newTempChar = { 
+                      ...character, 
+                      ...requestedData,
+                      stat_points_available: newStatPoints
+                    };
+
+                      setTempChar(newTempChar);
+                      // Remove the manual setIsEditing(true) from here because 
+                      // it will be triggered by the button click anyway, 
+                      // and we want the useEffect to handle the initialization.
+                      setIsEditing(true);
 
                     closeModal();
                   }
@@ -625,7 +671,7 @@ export default function Home() {
                   className: "bg-red-600 hover:bg-red-700",
                   onClick: async () => {
                     playSoundEffect("error");
-                    await supabase.from("change_requests").delete().eq("id", pendingRequest.id);
+                    await supabase.from("change_requests").delete().match({ id: pendingRequest.id });
                     setPendingRequest(null);
                     showToast("Pedido de edição excluído.");
                     closeModal();
@@ -1168,52 +1214,6 @@ export default function Home() {
                       newList[idx].equipped = !newList[idx].equipped;
                     }
 
-                    if (isCombatActive && !isActingAsMaster) {
-                      setModal({
-                        isOpen: true,
-                        title: "Solicitar Troca",
-                        message: "O combate está ativo. Deseja pedir permissão ao Mestre para alterar este equipamento?",
-                        onConfirm: async () => {
-                          // Clear previous pending requests to avoid 409 Conflict
-                          try {
-                            console.log("Checking for existing pending requests for user (combat):", user.id);
-                            const { data: existingReqs, error: fetchError } = await supabase.from('change_requests').select('id').eq('player_id', user.id).eq('status', 'pending');
-                            if (fetchError) console.error("Error fetching existing requests (combat):", fetchError);
-                            
-                            if (existingReqs && existingReqs.length > 0) {
-                              console.log(`Found ${existingReqs.length} existing pending requests (combat). Deleting them...`);
-                              const { error: deleteError } = await supabase.from('change_requests').delete().in('id', existingReqs.map(r => r.id));
-                              if (deleteError) console.error("Error deleting existing requests (combat):", deleteError);
-                              else console.log("Existing requests deleted successfully (combat).");
-                            } else {
-                              console.log("No existing pending requests found (combat).");
-                            }
-                          } catch (e) {
-                            console.error("Exception in clearing pending requests (combat):", e);
-                          }
-
-                          console.log("Inserting new change request (combat)...");
-                          const { error } = await supabase.from('change_requests').insert({
-                            player_id: user.id,
-                            player_name: user?.user_metadata?.full_name,
-                            old_data: character,
-                            new_data: { ...character, inventory: newList },
-                            status: 'pending'
-                          });
-                          
-                          if (error) {
-                            console.error("Error inserting change request (combat):", error);
-                            showToast("Erro ao enviar pedido.");
-                          } else {
-                            console.log("Change request inserted successfully (combat).");
-                            showToast("Pedido de troca enviado!");
-                          }
-                          closeModal();
-                        }
-                      });
-                      return;
-                    }
-
                     // Normal Direct Update
                     setTempChar(prev => ({ ...prev, inventory: newList }));
                     if (!isEditing) {
@@ -1305,6 +1305,7 @@ export default function Home() {
               turn={turn}
               sharedImage={sharedImage}
               lootTables={lootTables}
+              showToast={showToast}
             />
           </div>
         )}

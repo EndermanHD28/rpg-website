@@ -10,7 +10,8 @@ import {
   calculateAcerto,
   calculateDesvio,
   calculateBloqueio,
-  calculateDerivedStats 
+  calculateDerivedStats,
+  calculateCurrentWeight
 } from '../../lib/rpg-math';
 import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
@@ -72,7 +73,7 @@ export default function CombatLog({
         if (/[^0-9+\-*/().\s|e]/.test(equation)) throw new Error("Invalid characters");
         newHP = Math.round(new Function(`return ${equation}`)());
       } catch (e) {
-        alert("Equação inválida!");
+        showToast("Equação inválida!");
         return;
       }
       if (isNaN(newHP)) return;
@@ -82,7 +83,7 @@ export default function CombatLog({
       await supabase.from(table).update({ current_hp: newHP }).eq('id', dbId);
       setEditingHP(null);
     } catch (err) {
-      alert("Erro ao atualizar HP: " + err.message);
+      showToast("Erro ao atualizar HP: " + err.message);
     }
   };
 
@@ -95,7 +96,7 @@ export default function CombatLog({
         if (/[^0-9+\-*/().\s|e]/.test(equation)) throw new Error("Invalid characters");
         newPosture = Math.round(new Function(`return ${equation}`)());
       } catch (e) {
-        alert("Equação inválida!");
+        showToast("Equação inválida!");
         return;
       }
       if (isNaN(newPosture)) return;
@@ -105,7 +106,7 @@ export default function CombatLog({
       await supabase.from(table).update({ current_posture: newPosture }).eq('id', dbId);
       setEditingPosture(null);
     } catch (err) {
-      alert("Erro ao atualizar Postura: " + err.message);
+      showToast("Erro ao atualizar Postura: " + err.message);
     }
   };
 
@@ -166,20 +167,18 @@ export default function CombatLog({
     // 1. Get current player character
     const playerChar = allPlayers?.find(p => p.id === user?.id);
     if (!playerChar) {
-      if (showToast) showToast("Personagem não encontrado.");
-      else alert("Personagem não encontrado.");
+      showToast("Personagem não encontrado.");
       return;
     }
 
     // Calculate current weight
     const currentInventory = playerChar.inventory || [];
-    const currentWeight = currentInventory.reduce((acc, item) => acc + (Number(item.carga) || 0), 0);
+    const currentWeight = calculateCurrentWeight(currentInventory);
     const itemWeight = Number(itemToPick.carga) || 1; // Default to 1 if not specified
     const maxWeight = calculateDerivedStats(playerChar).weight_limit || 0;
 
     if (currentWeight + itemWeight > maxWeight) {
-      if (showToast) showToast("Inventário Cheio! Você não tem Cargas suficientes.");
-      else alert("Inventário Cheio! Você não tem Cargas suficientes.");
+      showToast("Inventário Cheio! Você não tem Cargas suficientes.");
       return;
     }
 
@@ -195,8 +194,7 @@ export default function CombatLog({
     // 3. Update character in Supabase
     const { error: charError } = await supabase.from('characters').update({ inventory: newInventory }).eq('id', playerChar.id);
     if (charError) {
-      if (showToast) showToast("Erro ao atualizar inventário: " + charError.message);
-      else alert("Erro ao atualizar inventário: " + charError.message);
+      showToast("Erro ao atualizar inventário: " + charError.message);
       return;
     }
 
@@ -240,6 +238,26 @@ export default function CombatLog({
     await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
   };
 
+  const handleDeleteMessage = async (messageId) => {
+    if (!isMaster) return;
+    try {
+      await supabase.from('messages').delete().eq('id', messageId);
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      showToast("Erro ao deletar mensagem.");
+    }
+  };
+
+  const handlePinMessage = async (message) => {
+    if (!isMaster) return;
+    try {
+      await supabase.from('messages').update({ is_pinned: !message.is_pinned }).eq('id', message.id);
+    } catch (error) {
+      console.error("Error pinning message:", error);
+      showToast("Erro ao fixar mensagem.");
+    }
+  };
+
   const handleLootRoll = async (msgId) => {
     console.log('handleLootRoll called for msgId:', msgId);
     const msg = messages.find(m => m.id === msgId);
@@ -271,8 +289,7 @@ export default function CombatLog({
     // Fetch the loot table
     const { data: lootTable, error: tableError } = await supabase.from('loot_tables').select('*').eq('name', parts[1]).single();
     if (tableError || !lootTable) {
-      if (showToast) showToast("Erro ao buscar tabela de espólio.");
-      else alert("Erro ao buscar tabela de espólio.");
+      showToast("Erro ao buscar tabela de espólio.");
       return;
     }
 
@@ -346,11 +363,21 @@ export default function CombatLog({
     const groups = [];
     if (!msgs || msgs.length === 0) return groups;
 
-    msgs.forEach((m) => {
+    const sortedMsgs = [...msgs].sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return 1;
+      if (!a.is_pinned && b.is_pinned) return -1;
+      
+      const dateA = a.updated_at ? new Date(a.updated_at) : new Date(a.created_at);
+      const dateB = b.updated_at ? new Date(b.updated_at) : new Date(b.created_at);
+  
+      return dateA - dateB;
+    });
+
+    sortedMsgs.forEach((m) => {
       const lastGroup = groups[groups.length - 1];
       const mDate = new Date(m.created_at);
       
-      if (lastGroup && lastGroup.player_name === m.player_name) {
+      if (lastGroup && lastGroup.player_name === m.player_name && !m.is_pinned && !lastGroup.messages.some(msg => msg.is_pinned)) {
         const firstInGroupDate = new Date(lastGroup.messages[0].created_at);
         const diffMinutes = (mDate - firstInGroupDate) / (1000 * 60);
 
@@ -364,6 +391,7 @@ export default function CombatLog({
         id: m.id,
         player_name: m.player_name,
         created_at: m.created_at,
+        is_pinned: m.is_pinned,
         messages: [m]
       });
     });
@@ -645,16 +673,16 @@ export default function CombatLog({
         });
         if (msgError) {
           console.error("Message insert error:", msgError);
-          alert("Erro ao registrar imagem no chat: " + msgError.message);
+          showToast("Erro ao registrar imagem no chat: " + msgError.message);
         } else {
           console.log("Message inserted successfully");
         }
       };
       img.onerror = () => {
-        alert("Erro ao carregar a imagem após o upload.");
+        showToast("Erro ao carregar a imagem após o upload.");
       };
     } catch (err) {
-      alert("Erro ao enviar imagem: " + err.message);
+      showToast("Erro ao enviar imagem: " + err.message);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -925,12 +953,15 @@ export default function CombatLog({
             <div key={group.id || i} className="group animate-in fade-in slide-in-from-left-2 duration-300 flex flex-col gap-2">
               <div className="flex items-start gap-4">
                 <div className="shrink-0 mt-1">
-                  {avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10" alt="" /> : <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] opacity-40">{group.player_name === 'SISTEMA' ? '⚙️' : '👤'}</div>}
+                  {avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10" alt="" /> : <div className="w-11 h-11 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] opacity-40">{group.player_name === 'SISTEMA' ? '⚙️' : '👤'}</div>}
                 </div>
                 <div className="flex-1 flex flex-col gap-1">
                   <div className="flex items-baseline gap-2">
-                    <span className={`font-black italic uppercase text-[11px] tracking-tight shrink-0 ${group.player_name === 'SISTEMA' ? 'text-cyan-500' : 'text-red-600'}`}>{group.player_name}</span>
-                    <span className="text-[7px] font-black text-zinc-700 uppercase font-mono">{new Date(group.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span className={`font-black italic uppercase text-[13px] tracking-tight shrink-0 ${group.player_name === 'SISTEMA' ? 'text-cyan-500' : 'text-red-600'}`}>{group.player_name}</span>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase font-mono">
+                      {new Date(group.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {group.is_pinned && <span className="text-yellow-500 ml-2">(Fixada)</span>}
+                    </span>
                   </div>
                   <div className="flex flex-col gap-2 mt-1">
                     {group.messages.map((m, mi) => {
@@ -945,7 +976,25 @@ export default function CombatLog({
                         };
                         const style = styles[category] || styles.normal;
                         return (
-                          <div key={m.id || `${i}-${mi}`} className={`${style.bg} border ${style.border} rounded-2xl p-6 my-2 shadow-2xl relative overflow-hidden group/dice`}>
+                          <div key={m.id || `${i}-${mi}`} className={`${style.bg} border ${style.border} rounded-2xl p-6 my-2 shadow-2xl relative overflow-hidden group/dice relative group/message`}>
+                            {isMaster && (
+                              <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handlePinMessage(m)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"
+                                  title={m.is_pinned ? "Desafixar mensagem" : "Fixar mensagem"}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
+                                  title="Deletar mensagem"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              </div>
+                            )}
                             <div className="flex justify-between items-start gap-6">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-4">
@@ -1051,7 +1100,25 @@ export default function CombatLog({
                         }
 
                         return (
-                          <div key={m.id || `${i}-${mi}`} className={`bg-zinc-900 border ${allCollected ? 'border-white/5' : 'border-yellow-500/20'} rounded-2xl p-6 my-4 shadow-2xl relative overflow-hidden group/loot`}>
+                          <div key={m.id || `${i}-${mi}`} className={`bg-zinc-900 border ${allCollected ? 'border-white/5' : 'border-yellow-500/20'} rounded-2xl p-6 my-4 shadow-2xl relative overflow-hidden group/loot relative group/message`}>
+                            {isMaster && (
+                              <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handlePinMessage(m)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"
+                                  title={m.is_pinned ? "Desafixar mensagem" : "Fixar mensagem"}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
+                                  title="Deletar mensagem"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              </div>
+                            )}
                             <div className={`absolute top-0 right-0 w-32 h-32 ${allCollected ? 'bg-white/5' : 'bg-yellow-500/5'} blur-[50px] -z-10`} />
                             
                             <div className="flex items-center gap-4 mb-6">
@@ -1151,12 +1218,52 @@ export default function CombatLog({
                         const isImage = m.content.startsWith('IMAGE|');
                         const [, url, w, h] = m.content.split('|');
                         return (
-                          <div key={m.id || `${i}-${mi}`} className={`my-2 overflow-hidden rounded-xl border border-white/5 shadow-2xl bg-zinc-900/50 ${isImage ? 'max-w-md' : 'max-w-[200px]'}`} style={{ aspectRatio: w && h ? `${w}/${h}` : 'auto', width: isImage ? `min(${w || 400}px, 100%)` : '200px' }}>
+                          <div key={m.id || `${i}-${mi}`} className={`my-2 overflow-hidden rounded-xl border border-white/5 shadow-2xl bg-zinc-900/50 ${isImage ? 'max-w-md' : 'max-w-[200px]'} relative group/message`} style={{ aspectRatio: w && h ? `${w}/${h}` : 'auto', width: isImage ? `min(${w || 400}px, 100%)` : '200px' }}>
+                            {isMaster && (
+                              <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handlePinMessage(m)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"
+                                  title={m.is_pinned ? "Desafixar mensagem" : "Fixar mensagem"}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
+                                  title="Deletar mensagem"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              </div>
+                            )}
                             <img src={url} alt="" className="w-full h-full block object-cover" />
                           </div>
                         );
                       }
-                      return <p key={m.id || `${i}-${mi}`} className={`text-sm leading-relaxed font-medium break-words whitespace-pre-wrap ${group.player_name === 'SISTEMA' ? 'text-cyan-400 italic font-bold' : 'text-zinc-300'}`} dangerouslySetInnerHTML={{ __html: m.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white bg-white/10 px-1.5 py-0.5 rounded">$1</strong>').replace(/\n/g, '<br/>') }} />;
+                      return (
+                        <div key={m.id || `${i}-${mi}`} className="relative group/message">
+                          {isMaster && (
+                            <div className="absolute top-0 right-0 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handlePinMessage(m)}
+                                className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"
+                                title={m.is_pinned ? "Desafixar mensagem" : "Fixar mensagem"}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMessage(m.id)}
+                                className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
+                                title="Deletar mensagem"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                              </button>
+                            </div>
+                          )}
+                          <p className={`text-sm leading-relaxed font-medium break-words whitespace-pre-wrap ${group.player_name === 'SISTEMA' ? 'text-cyan-400 italic font-bold' : 'text-zinc-300'}`} dangerouslySetInnerHTML={{ __html: m.content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white bg-white/10 px-1.5 py-0.5 rounded">$1</strong>').replace(/\n/g, '<br/>') }} />
+                        </div>
+                      );
                     })}
                   </div>
                 </div>

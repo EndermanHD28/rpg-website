@@ -81,14 +81,14 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
       if (damageMult !== 1.0) finalTotal = Math.round(finalTotal * damageMult);
 
       // AUTOMATIC DAMAGE APPLICATION
-      const { life: maxLife } = calculateDerivedStats(targetPlayer);
-      const currentHP = targetPlayer.current_hp ?? maxLife;
-      const newHP = Math.max(0, currentHP - finalTotal);
+      // const { life: maxLife } = calculateDerivedStats(targetPlayer);
+      // const currentHP = targetPlayer.current_hp ?? maxLife;
+      // const newHP = Math.max(0, currentHP - finalTotal);
       
-      const table = targetPlayer.is_npc ? 'npcs' : 'characters';
-      const dbId = targetPlayer.is_npc ? targetPlayer.dbId : targetPlayer.id;
+      // const table = targetPlayer.is_npc ? 'npcs' : 'characters';
+      // const dbId = targetPlayer.is_npc ? targetPlayer.dbId : targetPlayer.id;
       
-      await supabase.from(table).update({ current_hp: newHP }).eq('id', dbId);
+      // await supabase.from(table).update({ current_hp: newHP }).eq('id', dbId);
     }
 
     const targetInfo = targetPlayer ? `|${targetPlayer.char_name}${effectNote}` : "";
@@ -141,61 +141,61 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
     await supabase.from('global').update({ current_turn: nextTurn }).eq('id', 1);
   };
 
-  if (!isSessionActive) {
+  if (!isSessionActive && !isActingAsMaster) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center bg-black p-12 text-center flex-1">
         <div className="relative"><div className="absolute inset-0 bg-red-600 blur-[100px] opacity-20"></div><span className="text-8xl mb-8 block relative z-10">💤</span></div>
         <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter mb-4">Nenhuma Sessão Ativa</h2>
         <p className="text-zinc-500 font-medium italic text-lg max-w-md mb-8">O mestre ainda não iniciou a sessão de hoje. Prepare seus dados e aguarde o chamado para o combate.</p>
-        {isActingAsMaster && (
-          <div className="p-6 bg-zinc-900/50 rounded-2xl border border-yellow-500/30 max-w-sm">
-            <p className="text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-4">Acesso de Mestre</p>
-            <p className="text-zinc-400 text-xs mb-6">Você está vendo esta mensagem porque a sessão está desligada para os jogadores.</p>
-            <button onClick={() => setActiveTab('master')} className="px-6 py-2 bg-yellow-500 text-black font-black text-[10px] uppercase rounded-full hover:scale-105 transition-all">Ir para Painel do Mestre</button>
-          </div>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="absolute inset-0 flex overflow-hidden bg-black">
-      {targetingRoll && <div className="fixed inset-0 z-[65] bg-black/20 backdrop-blur-sm animate-in fade-in duration-300 pointer-events-auto" />}
+    <div className="absolute inset-0 flex flex-col overflow-hidden bg-black">
+      {!isSessionActive && isActingAsMaster && (
+        <div className="text-center py-2 bg-yellow-600 text-black font-black text-xs uppercase tracking-wider shadow-lg z-10">
+          A Sessão não foi iniciada!
+        </div>
+      )}
+      <div className="flex flex-1 relative overflow-hidden">
+        {targetingRoll && <div className="fixed inset-0 z-[65] bg-black/20 backdrop-blur-sm animate-in fade-in duration-300 pointer-events-auto" />}
       
-      <CombatLog 
-        user={user}
-        allPlayers={allPlayers}
-        allNPCs={allNPCs}
-        messages={messages}
-        isSessionActive={isSessionActive}
-        isCombatActive={isCombatActive}
-        isMaster={isMaster}
-        isActingAsMaster={isActingAsMaster}
-        targetingRoll={targetingRoll}
-        setTargetingRoll={setTargetingRoll}
-        selectedCombatantId={selectedCombatantId}
-        setSelectedCombatantId={setSelectedCombatantId}
-        combatants={combatants}
-        finishDiceRoll={finishDiceRoll}
-        sharedImage={sharedImage}
-        lootTables={lootTables}
-        showToast={showToast}
-      />
+        <CombatLog 
+          user={user}
+          allPlayers={allPlayers}
+          allNPCs={allNPCs}
+          messages={messages}
+          isSessionActive={isSessionActive}
+          isCombatActive={isCombatActive}
+          isMaster={isMaster}
+          isActingAsMaster={isActingAsMaster}
+          targetingRoll={targetingRoll}
+          setTargetingRoll={setTargetingRoll}
+          selectedCombatantId={selectedCombatantId}
+          setSelectedCombatantId={setSelectedCombatantId}
+          combatants={combatants}
+          finishDiceRoll={finishDiceRoll}
+          sharedImage={sharedImage}
+          lootTables={lootTables}
+          showToast={showToast}
+        />
 
-      <CombatManager 
-        user={user}
-        allPlayers={allPlayers}
-        combatants={combatants}
-        isCombatActive={isCombatActive}
-        isActingAsMaster={isActingAsMaster}
-        turn={turn}
-        targetingRoll={targetingRoll}
-        setTargetingRoll={setTargetingRoll}
-        selectedCombatantId={selectedCombatantId}
-        setSelectedCombatantId={setSelectedCombatantId}
-        finishDiceRoll={finishDiceRoll}
-        handleNextTurn={handleNextTurn}
-      />
+        <CombatManager 
+          user={user}
+          allPlayers={allPlayers}
+          combatants={combatants}
+          isCombatActive={isCombatActive}
+          isActingAsMaster={isActingAsMaster}
+          turn={turn}
+          targetingRoll={targetingRoll}
+          setTargetingRoll={setTargetingRoll}
+          selectedCombatantId={selectedCombatantId}
+          setSelectedCombatantId={setSelectedCombatantId}
+          finishDiceRoll={finishDiceRoll}
+          handleNextTurn={handleNextTurn}
+        />
+      </div>
     </div>
   );
 }
