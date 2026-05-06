@@ -6,7 +6,7 @@ import CombatManager from './Combat/CombatManager';
 
 import { calculateDerivedStats } from '../lib/rpg-math';
 
-export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables, showToast }) {
+export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables, showToast, chatInput, setChatInput, quickDiceInputs, setQuickDiceInputs }) {
   const [selectedCombatantId, setSelectedCombatantId] = useState(null);
   const [targetingRoll, setTargetingRoll] = useState(null); // { input, diceResult, playerName, playerImage }
   const [displayCombatants, setDisplayCombatants] = useState([]);
@@ -92,7 +92,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
     }
 
     const targetInfo = targetPlayer ? `|${targetPlayer.char_name}${effectNote}` : "";
-    const finalPlayerName = (isActingAsMaster && selectedCombatantId) ? "" : playerName;
+    const finalPlayerName = playerName;
 
     await supabase.from('messages').insert({
       player_name: "SISTEMA",
@@ -179,6 +179,10 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
           sharedImage={sharedImage}
           lootTables={lootTables}
           showToast={showToast}
+          input={chatInput}
+          setInput={setChatInput}
+          quickDiceInputs={quickDiceInputs}
+          setQuickDiceInputs={setQuickDiceInputs}
         />
 
         <CombatManager 

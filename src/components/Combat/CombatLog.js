@@ -34,17 +34,15 @@ export default function CombatLog({
   finishDiceRoll,
   sharedImage,
   lootTables = [],
-  showToast
+  showToast,
+  input,
+  setInput,
+  quickDiceInputs,
+  setQuickDiceInputs
 }) {
-  const [input, setInput] = useState("");
+
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showDiceQuickMenu, setShowDiceQuickMenu] = useState(false);
-  const [quickDiceInputs, setQuickDiceInputs] = useState({
-    acerto: "",
-    desvio: "",
-    bloqueio: "",
-    dano: ""
-  });
   const [showLootSelector, setShowLootSelector] = useState(false);
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
@@ -754,7 +752,7 @@ export default function CombatLog({
                       setTargetingRoll(null);
                     }
                   }}
-                  className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600/40 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : ''} ${!isActingAsMaster && !targetingRoll ? 'pointer-events-none' : ''}`}
+                                      className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : 'hover:bg-zinc-900 hover:shadow-[0_0_20px_rgba(220,38,38,0.1)]'} ${!isActingAsMaster && !targetingRoll ? '' : ''}`}
                 >
                   <div className={`absolute top-0 right-0 w-24 h-24 ${isActingAsMaster || targetingRoll ? 'bg-red-600/5 group-hover:bg-red-600/10' : 'bg-red-600/[0.02]'} blur-[40px] -z-10 transition-colors`} />
                   
@@ -831,10 +829,13 @@ export default function CombatLog({
                     <div className="flex items-center justify-between">
                       <div className="flex flex-wrap gap-1">
                         {Array.isArray(enemy.effects) && enemy.effects.slice(0, 4).map((eff, idx) => (
-                          <div key={idx} className="flex items-center gap-1 bg-black/40 border border-red-900/30 pl-0.5 pr-1 py-0.5 rounded cursor-help" title={`${eff.name}: ${eff.description}`}>
-                            <span className="text-[10px]">{eff.emoji}</span>
-                            <span className="text-[7px] font-black uppercase tracking-tight text-red-500/80">{eff.name}</span>
-                          </div>
+                          <TooltipWrapper key={idx} text={`**${eff.name}**\n${eff.description}`}>
+                            <div className="flex items-center gap-1 bg-black/40 border border-red-900/30 pl-0.5 pr-1 py-0.5 rounded cursor-help hover:border-red-600/50 transition-colors">
+                              <span className="text-[10px]">{eff.emoji}</span>
+                              <span className="text-[8px] font-black uppercase tracking-tight text-red-500/80">{eff.name}</span>
+                              <span className="text-[10px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1 leading-none">{eff.duration ?? '-'}</span>
+                            </div>
+                          </TooltipWrapper>
                         ))}
                       </div>
                       <span className={`text-[7px] font-black text-zinc-600 uppercase tracking-widest italic ${isActingAsMaster || targetingRoll ? 'group-hover:text-red-500/50' : ''} transition-colors`}>Combatente</span>

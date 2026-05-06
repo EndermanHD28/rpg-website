@@ -1,6 +1,7 @@
 "use client";
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { TooltipWrapper } from '../UIElements';
 import { 
   calculateWeaponPAT, 
   calculateDisarmedPAT, 
@@ -191,26 +192,28 @@ export default function CombatManager({
 
                       <div className="flex flex-wrap gap-1">
                         {Array.isArray(p.effects) && p.effects.map((eff, idx) => (
-                          <div key={idx} className={`flex items-center gap-1 bg-zinc-950 border border-red-900/30 pl-0.5 pr-1.5 py-0.5 rounded relative ${targetingRoll ? '' : 'hover:border-red-600/50 cursor-help group/eff'}`} title={eff.description}>
-                            <div className="min-w-[1rem] h-4 px-0.5 flex items-center justify-center bg-red-600/10 rounded text-[10px]">{eff.emoji}</div>
-                            <span className="text-[9px] font-black uppercase tracking-wider text-red-500/80">{eff.name}</span>
-                            <span className="text-[11px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1">{eff.duration ?? '-'}</span>
-                            {isActingAsMaster && (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const newEffects = p.effects.filter((_, i) => i !== idx);
-                                  const { life: nML } = calculateDerivedStats({ ...p, effects: newEffects });
-                                  const update = { effects: newEffects };
-                                  if ((p.current_hp || nML) > nML) update.current_hp = nML;
-                                  await supabase.from(p.is_npc ? 'npcs' : 'characters').update(update).eq('id', p.is_npc ? p.dbId : p.id);
-                                }}
-                                className="absolute -top-1 -right-1 bg-red-900/80 text-white/70 rounded p-0.5 opacity-0 group-hover/eff:opacity-100 transition-opacity"
-                              >
-                                <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                              </button>
-                            )}
-                          </div>
+                          <TooltipWrapper key={idx} text={`**${eff.name}**\n${eff.description}`}>
+                            <div className={`flex items-center gap-1 bg-zinc-950 border border-red-900/30 pl-0.5 pr-1.5 py-0.5 rounded relative ${targetingRoll ? '' : 'hover:border-red-600/50 cursor-help group/eff'}`}>
+                              <div className="min-w-[1rem] h-4 px-0.5 flex items-center justify-center bg-red-600/10 rounded text-[10px]">{eff.emoji}</div>
+                              <span className="text-[9px] font-black uppercase tracking-wider text-red-500/80">{eff.name}</span>
+                              <span className="text-[11px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1">{eff.duration ?? '-'}</span>
+                              {isActingAsMaster && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const newEffects = p.effects.filter((_, i) => i !== idx);
+                                    const { life: nML } = calculateDerivedStats({ ...p, effects: newEffects });
+                                    const update = { effects: newEffects };
+                                    if ((p.current_hp || nML) > nML) update.current_hp = nML;
+                                    await supabase.from(p.is_npc ? 'npcs' : 'characters').update(update).eq('id', p.is_npc ? p.dbId : p.id);
+                                  }}
+                                  className="absolute -top-1 -right-1 bg-red-900/80 text-white/70 rounded p-0.5 opacity-0 group-hover/eff:opacity-100 transition-opacity"
+                                >
+                                  <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                </button>
+                              )}
+                            </div>
+                          </TooltipWrapper>
                         ))}
                       </div>
 

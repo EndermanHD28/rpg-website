@@ -37,8 +37,22 @@ export default function Home() {
   const [secretCodeInput, setSecretCodeInput] = useState("");
   const [fakeDiscordUsernameInput, setFakeDiscordUsernameInput] = useState("");
   const [showCodeLogin, setShowCodeLogin] = useState(false);
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
 
-  const SECRET_CODE = "SecretAccount"; // As requested, stored in a variable. For production, consider environment variables.
+  useEffect(() => {
+    const saved = localStorage.getItem('animations_enabled');
+    if (saved !== null) {
+      setAnimationsEnabled(saved === 'true');
+    }
+  }, []);
+
+  const toggleAnimations = () => {
+    const newState = !animationsEnabled;
+    setAnimationsEnabled(newState);
+    localStorage.setItem('animations_enabled', newState.toString());
+  };
+
+  const SECRET_CODE = "SecretAccount";
 
   // --- DATA STATE ---
   const [user, setUser] = useState(null);
@@ -60,6 +74,13 @@ export default function Home() {
   const [messages, setMessages] = useState([]);
   const [turn, setTurn] = useState(1);
   const [sharedImage, setSharedImage] = useState({ url: null, title: null, contrast: false });
+  const [chatInput, setChatInput] = useState("");
+  const [quickDiceInputs, setQuickDiceInputs] = useState({
+    acerto: "",
+    desvio: "",
+    bloqueio: "",
+    dano: ""
+  });
 
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
   const isActingAsMaster = isMaster && !previewAsPlayer;
@@ -934,8 +955,20 @@ export default function Home() {
       <section className="flex-1 min-h-screen bg-zinc-950 relative flex flex-col">
         {activeTab === 'home' && (
           <div className="h-full flex items-center relative overflow-hidden">
+            <div className="absolute top-8 left-8 z-50">
+              <button 
+                onClick={toggleAnimations}
+                className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all border ${
+                  animationsEnabled 
+                    ? 'bg-zinc-800/30 text-zinc-500 border-zinc-700/50 hover:text-zinc-300 hover:bg-zinc-800/50' 
+                    : 'bg-zinc-800/50 text-zinc-500 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                Animações: {animationsEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
             <div 
-              className="absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right moon-animated" 
+              className={`absolute inset-0 opacity-70 bg-[url('/red-moon.jpg')] bg-cover bg-right ${animationsEnabled ? 'moon-animated' : ''}`} 
               style={{ 
                 maskImage: 'linear-gradient(to left, #000 0%, transparent 80%)', 
                 WebkitMaskImage: 'linear-gradient(to left, #000 0%, transparent 100%)',
@@ -948,14 +981,16 @@ export default function Home() {
             {/* Overlay de Textura/Ruído (Opcional, precisa de um asset de noise) */}
             <div className="absolute inset-0 z-[7] opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
             {/* Fog Overlay */}
-            <div className="fog-container">
-              <div className="fog-layer" ref={fogRef}>
-                <div className="fog-img"></div>
-                <div className="fog-img mirrored"></div>
-                <div className="fog-img"></div>
-                <div className="fog-img mirrored"></div>
+            {animationsEnabled && (
+              <div className="fog-container">
+                <div className="fog-layer" ref={fogRef}>
+                  <div className="fog-img"></div>
+                  <div className="fog-img mirrored"></div>
+                  <div className="fog-img"></div>
+                  <div className="fog-img mirrored"></div>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Fade Overlay to protect sidebar area */}
             <div className="absolute inset-0 z-[5] bg-gradient-to-r from-black via-black/20 to-transparent w-1/2 pointer-events-none"></div>
@@ -1306,6 +1341,10 @@ export default function Home() {
               sharedImage={sharedImage}
               lootTables={lootTables}
               showToast={showToast}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              quickDiceInputs={quickDiceInputs}
+              setQuickDiceInputs={setQuickDiceInputs}
             />
           </div>
         )}
