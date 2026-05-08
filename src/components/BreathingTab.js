@@ -3,8 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Skill Tree Data for Tempestade
-// Positions are in a "cloud" (5 skills) and "rain" (4 skills) formation.
-// Positions: (x, y) coordinates.
 const BREATHING_TREES = {
   "Tempestade": {
     skills: [
@@ -43,7 +41,7 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       setPan({
-        x: rect.width / 2 - 500, // Center around the first skill roughly
+        x: rect.width / 2 - 500,
         y: rect.height / 2 - 300
       });
       setLoading(false);
@@ -80,9 +78,15 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
     setZoom(newZoom);
   };
 
+  const isUnlocked = (skill) => {
+    if (learnedSkills.includes(skill.id)) return true;
+    if (!skill.parent) return true;
+    return learnedSkills.includes(skill.parent);
+  };
+
   const canLearn = (skill) => {
     if (learnedSkills.includes(skill.id)) return false;
-    if (skill.parent && !learnedSkills.includes(skill.parent)) return false;
+    if (!isUnlocked(skill)) return false;
     
     // Check points
     const points = character?.breathing_points || 0;
@@ -96,13 +100,6 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
     }
 
     return true;
-  };
-
-  const isVisible = (skill) => {
-    if (learnedSkills.includes(skill.id)) return true;
-    if (!skill.parent) return true; // Root skills always visible
-    if (learnedSkills.includes(skill.parent)) return true;
-    return false;
   };
 
   const handleLearn = async (skill) => {
@@ -153,7 +150,6 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
         onMouseLeave={onMouseUp}
         onWheel={onWheel}
       >
-        {/* Galaxy/Starry Background Effect */}
         <div className="absolute inset-0 opacity-20 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
         
         <div 
@@ -170,18 +166,18 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
             {treeData.skills.map(skill => {
               if (!skill.parent) return null;
               const parent = treeData.skills.find(s => s.id === skill.parent);
-              if (!parent || !isVisible(skill)) return null;
+              if (!parent) return null;
 
-              const isUnlocked = learnedSkills.includes(skill.id);
+              const isLineUnlocked = learnedSkills.includes(skill.id);
 
               return (
                 <line 
                   key={`line-${skill.id}`}
                   x1={parent.pos.x + 40} y1={parent.pos.y + 40}
                   x2={skill.pos.x + 40} y2={skill.pos.y + 40}
-                  stroke={isUnlocked ? "#06b6d4" : "#1e293b"}
+                  stroke={isLineUnlocked ? "#06b6d4" : "#1e293b"}
                   strokeWidth="3"
-                  strokeDasharray={isUnlocked ? "0" : "5,5"}
+                  strokeDasharray={isLineUnlocked ? "0" : "5,5"}
                   className="transition-all duration-500"
                 />
               );
@@ -190,40 +186,72 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
 
           {/* Render Skills */}
           {treeData.skills.map(skill => {
-            if (!isVisible(skill)) return null;
-
             const isLearned = learnedSkills.includes(skill.id);
+            const unlocked = isUnlocked(skill);
             const available = canLearn(skill);
+            const iconPath = `/breathing_styles/icon_breathing_${breathingStyle.toLowerCase()}.png`;
 
             return (
               <div
                 key={skill.id}
-                onClick={() => !isLearned && handleLearn(skill)}
+                onClick={() => !isLearned && unlocked && handleLearn(skill)}
                 style={{ left: skill.pos.x, top: skill.pos.y }}
-                className={`absolute w-20 h-20 rounded-full flex items-center justify-center cursor-pointer transition-all duration-300 group
+                className={`absolute w-20 h-20 border-2 transition-all duration-300 group overflow-hidden
                   ${isLearned 
-                    ? 'bg-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.6)] border-2 border-cyan-200' 
-                    : (available ? 'bg-zinc-800 border-2 border-cyan-500/50 hover:scale-110 hover:border-cyan-400' : 'bg-zinc-900 border-2 border-zinc-800 grayscale')}
+                    ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)] z-20' 
+                    : (unlocked 
+                      ? 'border-cyan-900/50 hover:border-cyan-500 hover:scale-105 z-10' 
+                      : 'border-zinc-800 z-0')}
                 `}
               >
-                <div className="text-[8px] font-black uppercase text-center px-2 text-white drop-shadow-md">
-                  {skill.name}
+                {/* Background Image/Icon */}
+                <div className="absolute inset-0 bg-black">
+                    <img 
+                      src={iconPath} 
+                      alt={skill.name}
+                      className={`w-full h-full object-cover transition-all duration-300
+                        ${isLearned ? 'opacity-100 brightness-110' : (unlocked ? 'opacity-50 grayscale-[0.75] brightness-75' : 'opacity-20 grayscale brightness-50')}
+                      `}
+                    />
+                    
+                    {/* Locked Symbol */}
+                    {!unlocked && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                        <span className="text-zinc-500 text-2xl">🔒</span>
+                      </div>
+                    )}
                 </div>
 
+                {/* Name Label (Only if unlocked) */}
+                {unlocked && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/80 py-1 border-t border-white/5">
+                    <p className="text-[7px] font-black uppercase text-center text-white truncate px-1">
+                      {skill.name}
+                    </p>
+                  </div>
+                )}
+
                 {/* Galaxy Tooltip (Hover) */}
-                <div className="absolute top-full mt-4 left-1/2 -translate-x-1/2 w-48 p-4 bg-zinc-900/95 border border-cyan-500/30 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100] backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.8)]">
+                <div className="absolute top-full mt-4 left-1/2 -translate-x-1/2 w-52 p-4 bg-zinc-950/95 border border-cyan-500/30 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100] backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.9)]">
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-transparent rounded-2xl"></div>
                   <div className="relative">
                     <p className="text-cyan-400 font-black uppercase text-[10px] mb-1">{skill.name}</p>
-                    <p className="text-zinc-300 text-[9px] mb-2 leading-tight">{skill.description}</p>
-                    <div className="flex flex-col gap-1 border-t border-white/5 pt-2">
-                      <p className="text-[8px] font-bold text-zinc-500 uppercase">Custo: <span className="text-yellow-500">{skill.cost} Pontos</span></p>
-                      {skill.requirements && Object.entries(skill.requirements).map(([stat, val]) => (
-                        <p key={stat} className={`text-[8px] font-bold uppercase ${character[stat] >= val ? 'text-green-500' : 'text-red-500'}`}>
-                          {stat}: {val}
-                        </p>
-                      ))}
-                    </div>
+                    
+                    {unlocked ? (
+                      <>
+                        <p className="text-zinc-300 text-[9px] mb-2 leading-tight">{skill.description}</p>
+                        <div className="flex flex-col gap-1 border-t border-white/5 pt-2">
+                          <p className="text-[8px] font-bold text-zinc-500 uppercase">Custo: <span className="text-yellow-500">{skill.cost} Pontos</span></p>
+                          {skill.requirements && Object.entries(skill.requirements).map(([stat, val]) => (
+                            <p key={stat} className={`text-[8px] font-bold uppercase ${character[stat] >= val ? 'text-green-500' : 'text-red-500'}`}>
+                              {stat}: {val}
+                            </p>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-zinc-500 text-[8px] font-black uppercase italic">Habilidade Bloqueada</p>
+                    )}
                   </div>
                 </div>
               </div>

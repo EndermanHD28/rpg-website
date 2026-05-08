@@ -807,7 +807,7 @@ export default function Home() {
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-red-600 font-black italic">CARREGANDO...</div>;
 
-  if (showMaintenance) {
+  if (showMaintenance && user) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-30 bg-[url('/red-moon.jpg')] bg-cover bg-right grayscale"></div>
