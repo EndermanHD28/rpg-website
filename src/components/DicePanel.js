@@ -41,20 +41,23 @@ export default function DicePanel({
         <div className="space-y-2">
           <p className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-">Combate</p>
           <div className="space-y-3">
-            {equippedWeapons.length > 0 ? equippedWeapons.map((w, idx) => (
-              <PatStat
-                key={idx}
-                label={`Ataque (${w.name})`}
-                value={Math.round(calculateWeaponPAT(w, activeChar))}
-                sub={`${w.subtype}`}
-              />
-            )) : (
+            {equippedWeapons.length > 0 ? equippedWeapons.map((w, idx) => {
+              const stats = calculateWeaponPAT(w, activeChar);
+              return (
+                <PatStat
+                  key={idx}
+                  label={`Ataque (${w.name})`}
+                  value={stats}
+                  sub={`${w.subtype}`}
+                />
+              );
+            }) : (
               <DataRow label="Ataque (Arma)" value="Nenhuma Equipada" />
             )}
-            <PatStat label="Ataque (Desarmado)" value={Math.round(disarmedPat)} sub="Soco / Improviso" />
+            <PatStat label="Ataque (Desarmado)" value={calculateDisarmedPAT(activeChar)} sub="Soco / Improviso" />
 
             <CombatStat label="Acerto" value={acertoValue} sub="Base de Precisão / Agilidade" />
-            <CombatStat label="Desvio" value={desvioValue} sub="Base de Agilidade / Resistência" />
+            <CombatStat label="Desvio" value={desvioValue} sub="Base de Agilidade / Concentração" />
             <CombatStat label="Bloqueio" value={bloqueioValue} sub="Base de Resistência / Aptidão" />
           </div>
         </div>
@@ -94,15 +97,26 @@ const SecondaryStat = ({ label, value, sub }) => (
   </div>
 );
 
-const PatStat = ({ label, value, sub }) => (
-  <div className="flex justify-between items-center bg-red-500/5 p-3 rounded-xl border border-red-500/20">
-    <div className="flex flex-col">
-      <span className="text-[11px] font-black text-red-500 uppercase italic leading-none">{label}</span>
-      <span className="text-[10px] text-red-600/60 font-bold uppercase mt-1">{sub}</span>
+const PatStat = ({ label, value, sub }) => {
+  let displayValue = "";
+  if (typeof value === 'object') {
+    const d = Math.round(value.dice);
+    const p = Math.round(value.plus);
+    const tpt = value.tpt || 1;
+    displayValue = `${tpt}d${d}${p > 0 ? ` + ${p}` : ""}`;
+  } else {
+    displayValue = `1d${value}`;
+  }
+  return (
+    <div className="flex justify-between items-center bg-red-500/5 p-3 rounded-xl border border-red-500/20">
+      <div className="flex flex-col min-w-0 pr-2">
+        <span className="text-[11px] font-black text-red-500 uppercase italic leading-none truncate">{label}</span>
+        <span className="text-[10px] text-red-600/60 font-bold uppercase mt-1 truncate">{sub}</span>
+      </div>
+      <span className="text-[15px] font-mono font-black text-red-500 whitespace-nowrap shrink-0">{displayValue}</span>
     </div>
-    <span className="text-[15px] font-mono font-black text-red-500">1d{value}</span>
-  </div>
-);
+  );
+};
 
 const LootStat = ({ label, value, sub, isDiceNotation = false }) => (
   <div className="flex justify-between items-center bg-yellow-500/5 p-3 rounded-xl border border-yellow-500/20">

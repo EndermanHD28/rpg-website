@@ -36,6 +36,36 @@ export function TooltipProvider({ children }) {
     clearTimeout(timeoutRef.current);
     clearTimeout(loadingTimeoutRef.current);
 
+    // 70-character line wrap logic
+    const wrapText = (str, limit = 70) => {
+      if (!str) return '';
+      return str.split('\n').map(line => {
+        let wrapped = '';
+        let currentLine = '';
+        let visibleCharCount = 0;
+        
+        // Split by spaces but preserve them
+        const words = line.split(/(\s+)/);
+        
+        for (const word of words) {
+          // Remove formatting to count characters
+          const cleanWord = word.replace(/\*\*|\{|\}|\[|\]|<|>/g, '');
+          
+          if (visibleCharCount + cleanWord.length > limit && currentLine.trim() !== '') {
+            wrapped += currentLine.trimEnd() + '\n';
+            currentLine = word.trimStart();
+            visibleCharCount = cleanWord.trimStart().length;
+          } else {
+            currentLine += word;
+            visibleCharCount += cleanWord.length;
+          }
+        }
+        return wrapped + currentLine;
+      }).join('\n');
+    };
+
+    const formattedText = wrapText(text);
+
     loadingTimeoutRef.current = setTimeout(() => {
       setTooltip(prev => ({
         ...prev,
@@ -48,7 +78,7 @@ export function TooltipProvider({ children }) {
       setTooltip({
         visible: true,
         loading: false,
-        text,
+        text: formattedText,
         x: mousePos.current.x,
         y: mousePos.current.y
       });
@@ -224,6 +254,7 @@ export function Modal({ modal, closeModal }) {
     upgrade: 0,
     amount: 1,
     carga: 1,
+    tpt: 1,
     damage_multi: 1.0,
     damageType: 'Corte',
     description: '',
@@ -233,6 +264,7 @@ export function Modal({ modal, closeModal }) {
     aptitude: 1,
     agility: 1,
     precision: 1,
+    concentration: 0,
     armed_pat: '0',
     image_url: '',
     rank: '',
@@ -275,6 +307,7 @@ export function Modal({ modal, closeModal }) {
         upgrade: modal.initialData?.upgrade || 0,
         amount: modal.initialData?.amount || 1,
         carga: modal.initialData?.carga || 1,
+        tpt: modal.initialData?.tpt || 1,
         damage_multi: modal.initialData?.damage_multi !== undefined ? modal.initialData.damage_multi : 1.0,
         damageType: modal.initialData?.damageType || 'Corte',
         description: modal.initialData?.description || '',
@@ -288,6 +321,7 @@ export function Modal({ modal, closeModal }) {
         aptitude: modal.initialData?.aptitude !== undefined ? modal.initialData.aptitude : 1,
         agility: modal.initialData?.agility !== undefined ? modal.initialData.agility : 1,
         precision: modal.initialData?.precision !== undefined ? modal.initialData.precision : 1,
+        concentration: modal.initialData?.concentration !== undefined ? modal.initialData.concentration : 0,
         armed_pat: modal.initialData?.armed_pat !== undefined ? String(modal.initialData.armed_pat) : '0',
         image_url: modal.initialData?.image_url || '',
         rank: modal.initialData?.rank || (modal.npcFields && (modal.initialData?.category === 'Human' || !modal.initialData?.category) ? 'E - Recruta' : ''),
@@ -329,6 +363,7 @@ export function Modal({ modal, closeModal }) {
       tier: found.tier !== undefined ? (typeof found.tier === 'string' ? parseInt(found.tier.replace(/\D/g, '')) : found.tier) : 0,
       upgrade: found.upgrade || 0,
       carga: found.carga || 1,
+      tpt: found.tpt || 1,
       damage_multi: found.damage_multi !== undefined ? found.damage_multi : 1.0,
       damageType: found.damageType || 'Corte',
       description: found.description || '',
@@ -448,7 +483,8 @@ export function Modal({ modal, closeModal }) {
                         { label: 'RES', key: 'resistance' },
                         { label: 'APT', key: 'aptitude' },
                         { label: 'AGI', key: 'agility' },
-                        { label: 'PRE', key: 'precision' }
+                        { label: 'PRE', key: 'precision' },
+                        { label: 'CON', key: 'concentration' }
                       ].map(s => (
                         <div key={s.key} className="space-y-1 text-center">
                           <span className="text-[7px] text-zinc-500 font-bold uppercase">{s.label}</span>
@@ -648,12 +684,18 @@ export function Modal({ modal, closeModal }) {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-4 gap-2">
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Upgrade</span>
                             <input
                               disabled={modal.forcedCustom && !modal.isInventoryEdit}
                               type="number" value={localData.upgrade} onChange={(e) => setLocalData({ ...localData, upgrade: parseInt(e.target.value) || 0 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30" />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[8px] font-black text-zinc-500 uppercase">TPT</span>
+                            <input
+                              disabled={!modal.forcedCustom && !isCustom}
+                              type="number" value={localData.tpt} onChange={(e) => setLocalData({ ...localData, tpt: parseInt(e.target.value) || 1 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30" />
                           </div>
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">Mult. Dano</span>
@@ -807,6 +849,7 @@ export function Modal({ modal, closeModal }) {
                       aptitude: Number(localData.aptitude) || 1,
                       agility: Number(localData.agility) || 1,
                       precision: Number(localData.precision) || 1,
+                      concentration: Number(localData.concentration) || 0,
                       armed_pat: localData.armed_pat || '0',
                       image_url: localData.image_url || null,
                       rank: localData.rank || null,

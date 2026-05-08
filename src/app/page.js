@@ -19,10 +19,13 @@ import { useSound } from '../hooks/useSound';
 import MusicPlayer from '../components/MusicPlayer';
 import NotificationSystem from '../components/NotificationSystem';
 import ItemsListGeneratorModal from '../components/ItemsListGeneratorModal';
+import ReportsTab from '../components/ReportsTab';
+import InvestigationTab from '../components/InvestigationTab';
+import BreathingTab from '../components/BreathingTab';
 
 export default function Home() {
   // --- UI STATE ---
-  const { playSound, volume, changeVolume } = useSound();
+  const { playSound, volume, changeVolume, setUserInteracted } = useSound();
   const [activeTab, setActiveTab] = useState('home');
   const [lootTables, setLootTables] = useState([]);
   const [isLootModalOpen, setIsLootModalOpen] = useState(false);
@@ -62,6 +65,12 @@ export default function Home() {
   const [allNPCs, setAllNPCs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [pendingRequest, setPendingRequest] = useState(null);
+  const pendingRequestRef = useRef(null);
+
+  useEffect(() => {
+    pendingRequestRef.current = pendingRequest;
+  }, [pendingRequest]);
+
   const [viewingTarget, setViewingTarget] = useState(null);
 
   // --- PERMISSIONS ---
@@ -82,12 +91,23 @@ export default function Home() {
     dano: ""
   });
 
+  const [now, setNow] = useState(Date.now());
+  const [globalLockUntil, setGlobalLockUntil] = useState(0);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [allowedDiscordUsernames, setAllowedDiscordUsernames] = useState([]);
+  const [blockedTabs, setBlockedTabs] = useState([]);
+
   const isMaster = user?.user_metadata?.sub === MASTER_DISCORD_ID;
   const isActingAsMaster = isMaster && !previewAsPlayer;
+  
+  // Maintenance check
+  const currentDiscordUsername = user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
+  const isUserAllowed = isMaster || (allowedDiscordUsernames || []).includes(currentDiscordUsername);
+  const showMaintenance = isMaintenanceMode && !isUserAllowed;
   const isViewingOthers = viewingTarget && viewingTarget !== user?.id;
   const activeChar = (isEditing && !isViewingOnly) ? tempChar : character;
   const isNPC = activeChar && allNPCs.some(n => n.id === activeChar.id);
-  const activeRequest = requests.find(r => r.player_id === (viewingTarget || user?.id)) || (viewingTarget === null && pendingRequest ? pendingRequest : null);
+  const activeRequest = (requests || []).find(r => r.player_id === (viewingTarget || user?.id) && r.status === 'pending') || (viewingTarget === null && pendingRequest ? pendingRequest : null);
 
   // --- MATH HELPERS ---
   const derivedStats = calculateDerivedStats(activeChar) || {};
@@ -107,37 +127,52 @@ export default function Home() {
 
   const getPerc = (val) => presence > 0 ? ((Number(val) / presence) * 100).toFixed(1) : "0.0";
 
-  const [now, setNow] = useState(Date.now());
-  const [globalLockUntil, setGlobalLockUntil] = useState(0);
-
   const playSoundEffect = useCallback((soundName) => {
     playSound(soundName);
   }, [playSound]);
 
   useEffect(() => {
     if (character?.needs_celebration) {
+      console.log("CELEBRATION TRIGGERED for character:", character.id);
       playSoundEffect('celebration');
       setShowCelebration(true);
+      showToast("Ficha Aprovada!");
       
       // Update character immediately in state to clear the flag
       // This prevents the sound from re-playing on re-renders (like tab changes)
       setCharacter(prev => ({ ...prev, needs_celebration: false }));
 
       // Also update in DB so it doesn't trigger again on next reload
-      supabase.from('characters')
-        .update({ needs_celebration: false })
-        .eq('id', character.id)
-        .then();
+      // CRITICAL: We wait for the DB to confirm the update before considering it "handled"
+      // to avoid race conditions where a refresh might see the old 'true' value.
+      const clearCelebration = async () => {
+        console.log("CLEARING needs_celebration in DB...");
+        const { error } = await supabase.from('characters')
+          .update({ needs_celebration: false })
+          .eq('id', character.id);
+        
+        if (error) {
+          console.error("Failed to clear celebration flag in DB:", error);
+        } else {
+          console.log("Celebration flag cleared in DB successfully.");
+        }
+      };
+      
+      clearCelebration();
 
       setTimeout(() => {
         setShowCelebration(false);
       }, 5000);
     }
-  }, [character?.needs_celebration, character?.id, playSound]);
+  }, [character?.needs_celebration, character?.id, playSoundEffect]);
 
   // Fog persistent animation logic
   const FOG_DURATION = 34000; // Updated to 34s
   const fogRef = useRef(null);
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'home' && fogRef.current) {
@@ -215,6 +250,11 @@ export default function Home() {
         if (char) {
           setCharacter(char);
           if (!isEditing) setTempChar(char);
+          
+          // KICK OUT LOGIC: If viewing 'breathing' tab but style is removed
+          if (activeTab === 'breathing' && !char.breathing_style) {
+            setActiveTab('sheet');
+          }
         } else {
           // Double check DB to avoid race conditions with auth event vs fetch
           const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
@@ -233,6 +273,7 @@ export default function Home() {
               aptitude: 3,
               agility: 3,
               precision: 3,
+              concentration: 3,
               intelligence: 3,
               luck: 3,
               charisma: 3,
@@ -268,6 +309,9 @@ export default function Home() {
       console.log("INITIAL GLOBAL FETCH (FULL):", { globalData, globalError });
       setIsSessionActive(!!globalData?.is_session_active);
       setIsCombatActive(!!globalData?.is_combat_active);
+      setIsMaintenanceMode(!!globalData?.is_maintenance_active);
+      setAllowedDiscordUsernames(globalData?.allowed_discord_usernames || []);
+      setBlockedTabs(globalData?.blocked_tabs || []);
       if (globalData?.current_turn !== undefined) setTurn(globalData.current_turn);
       setSharedImage({
         url: globalData?.image_url || globalData?.imag_url || null,
@@ -323,6 +367,13 @@ export default function Home() {
             // Always update the 'character' state to reflect the latest from DB
             setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
 
+            // KICK OUT LOGIC: Real-time update
+            if (activeTab === 'breathing' && !p.new.breathing_style) {
+              setActiveTab('sheet');
+              showToast("Você não possui mais um estilo de respiração.");
+              playSoundEffect('error');
+            }
+
             // Update 'tempChar' only if we are NOT in editing mode AND there is NO pending request
             // This ensures tempChar holds the latest approved character data when not actively editing or proposing changes.
             if (!isEditing && !pendingRequest) {
@@ -368,6 +419,29 @@ export default function Home() {
           setIsCombatActive(p.new.is_combat_active);
         }
 
+        // Handle Maintenance Mode
+        if (p.new.is_maintenance_active !== undefined) {
+          setIsMaintenanceMode(p.new.is_maintenance_active);
+        }
+
+        // Handle Allowed Usernames
+        if (p.new.allowed_discord_usernames !== undefined) {
+          setAllowedDiscordUsernames(p.new.allowed_discord_usernames || []);
+        }
+
+        // Handle Blocked Tabs
+        if (p.new.blocked_tabs !== undefined) {
+          const newBlocked = p.new.blocked_tabs || [];
+          setBlockedTabs(newBlocked);
+          
+          // KICK OUT LOGIC: If current tab just got blocked
+          if (!isMaster && newBlocked.includes(activeTabRef.current)) {
+            setActiveTab('home');
+            showToast("Esta página foi bloqueada pelo Mestre.");
+            playSoundEffect('error');
+          }
+        }
+
         // Handle Turn
         if (p.new.current_turn !== undefined) {
           setTurn(p.new.current_turn);
@@ -403,21 +477,36 @@ export default function Home() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'change_requests' }, (p) => {
-        // Keep current player's pendingRequest in sync without a full re-fetch
+        console.log("REALTIME CHANGE REQUEST EVENT (RAW):", p.eventType, p);
+        
+        // Handle current player's pendingRequest
         const relevantPlayerId = p.new?.player_id || p.old?.player_id;
-        if (relevantPlayerId === user?.id) {
-          if (p.eventType === 'DELETE') {
-            setPendingRequest(null);
-          } else if (p.new && p.new.status === 'pending') {
-            setPendingRequest(p.new);
-          } else if (p.new && p.new.status !== 'pending') {
-            setPendingRequest(null);
-          }
+        if (relevantPlayerId === (user?.id || '')) {
+            if (p.eventType === 'DELETE') {
+                console.log("MATCHED USER DELETE - current pendingRequestRef:", pendingRequestRef.current);
+                setPendingRequest(null);
+            } else if (p.new && p.new.status === 'pending') {
+                setPendingRequest(p.new);
+            } else if (p.new && p.new.status !== 'pending') {
+                setPendingRequest(null);
+            }
         }
 
+        // Functional update for setRequests to handle Master view
         if (isMaster) {
+          console.log("UPDATING MASTER requests LIST");
           if (p.eventType === 'INSERT') setRequests(prev => [...prev, p.new]);
-          else if (p.eventType === 'UPDATE') setRequests(prev => prev.map(r => r.id === p.new.id ? p.new : r).filter(r => r.status === 'pending'));
+          else if (p.eventType === 'UPDATE') {
+            setRequests(prev => {
+              const existingIndex = prev.findIndex(r => r.id === p.new.id);
+              if (p.new.status === 'pending') {
+                return existingIndex > -1 
+                  ? prev.map((r, i) => i === existingIndex ? p.new : r)
+                  : [...prev, p.new].filter(r => r.status === 'pending');
+              }
+              return prev.filter(r => r.id !== p.new.id);
+            });
+          }
           else if (p.eventType === 'DELETE') {
             setRequests(prev => prev.filter(r => r.id !== p.old.id));
           }
@@ -431,7 +520,7 @@ export default function Home() {
       authListener.unsubscribe();
       supabase.removeChannel(mainChannel);
     };
-  }, [viewingTarget, user?.id, isMaster]);
+  }, [viewingTarget, user?.id, isMaster, pendingRequest]);
 
   useEffect(() => {
     // This useEffect manages tempChar synchronization
@@ -442,7 +531,7 @@ export default function Home() {
       // This ensures that all fields (stats, class, etc.) are correctly loaded
       
       const requestedData = pendingRequest.new_data;
-      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'concentration', 'intelligence', 'luck', 'charisma'];
       const minStat = (character?.is_complex || isNPC) ? 1 : 3;
 
       const totalSpentOnRequested = keys.reduce((acc, k) => {
@@ -497,7 +586,7 @@ export default function Home() {
     setIsViewingOnly(false);
     if (isEditing) {
       const sanitized = { ...tempChar };
-      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+      const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'concentration', 'intelligence', 'luck', 'charisma'];
 
       // VALIDATION 1: Check for stats lower than 3 (or 1 for complex NPCs) or empty
       const minStat = (sanitized?.is_complex || isNPC) ? 1 : 3;
@@ -545,6 +634,7 @@ export default function Home() {
                 aptitude: Number(sanitized.aptitude) || 1,
                 agility: Number(sanitized.agility) || 1,
                 precision: Number(sanitized.precision) || 1,
+                concentration: Number(sanitized.concentration) || 0,
                 armed_pat: sanitized.armed_pat || '0',
                 image_url: sanitized.image_url || null,
                 rank: sanitized.rank || null,
@@ -563,6 +653,7 @@ export default function Home() {
                 class: sanitized.type === 'Complex' ? sanitized.class : null,
                 anomalies: sanitized.type === 'Complex' ? (Array.isArray(sanitized.anomalies) ? sanitized.anomalies : []) : [],
                 skills: sanitized.type === 'Complex' ? (Array.isArray(sanitized.skills) ? sanitized.skills : []) : [],
+                ammunition: sanitized.ammunition || {},
                 stat_points_available: sanitized.type === 'Complex' ? Number(sanitized.stat_points_available) : 0,
                 inventory: sanitized.type === 'Complex' ? (Array.isArray(sanitized.inventory) ? sanitized.inventory : []) : []
               };
@@ -652,7 +743,7 @@ export default function Home() {
                     playSoundEffect('random_button');
                     
                     const requestedData = pendingRequest.new_data;
-                    const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+                    const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'concentration', 'intelligence', 'luck', 'charisma'];
                     const minStat = (character?.is_complex || isNPC) ? 1 : 3;
 
                     // 1. Calculate points spent in the request relative to its original baseline
@@ -715,6 +806,33 @@ export default function Home() {
   };
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-red-600 font-black italic">CARREGANDO...</div>;
+
+  if (showMaintenance) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 opacity-30 bg-[url('/red-moon.jpg')] bg-cover bg-right grayscale"></div>
+        <div className="relative z-10 text-center space-y-6 p-8">
+          <h1 className="text-6xl font-black text-red-600 italic tracking-tighter uppercase leading-none">MANUTENÇÃO</h1>
+          <div className="space-y-2">
+            <p className="text-white font-bold text-xl uppercase tracking-widest">O Corvo está descansando.</p>
+            <p className="text-zinc-500 text-sm font-medium italic">O site voltará em breve. Por favor, aguarde o aviso do Mestre no Discord.</p>
+          </div>
+          <div className="pt-8">
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                localStorage.removeItem('fake_discord_user');
+                window.location.reload();
+              }}
+              className="text-[10px] text-zinc-500 hover:text-white transition-all uppercase font-black cursor-pointer underline tracking-widest"
+            >
+              Sair da Conta
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) return (
     <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
@@ -804,7 +922,7 @@ export default function Home() {
   );
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-stretch">
+    <main className="min-h-screen bg-black text-white flex items-stretch" onClick={setUserInteracted}>
 
       {/* SIDEBAR */}
       <nav className="w-64 h-screen sticky top-0 bg-zinc-950 border-r border-zinc-900 flex flex-col justify-between shrink-0 z-[100]">
@@ -819,8 +937,65 @@ export default function Home() {
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Principal</p>
               <div className="flex flex-col gap-1">
-                <NavButton active={activeTab === 'home'} label="Início" onClick={() => { playSoundEffect('tab_change'); setActiveTab('home'); }} />
-                <NavButton active={activeTab === 'sheet' && !viewingTarget} label="Ficha" onClick={() => {
+                <NavButton 
+                  active={activeTab === 'home'} 
+                  label="Início" 
+                  onClick={() => { playSoundEffect('tab_change'); setActiveTab('home'); }} 
+                />
+                <NavButton 
+                  active={activeTab === 'combat'} 
+                  label="Sessão" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('combat')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('combat')}
+                  onClick={() => { 
+                    if (!isActingAsMaster && blockedTabs.includes('combat')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('combat'); 
+                  }} 
+                />
+                <NavButton 
+                  active={activeTab === 'reports'} 
+                  label="Relatórios" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('reports')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('reports')}
+                  onClick={() => { 
+                    if (!isActingAsMaster && blockedTabs.includes('reports')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('reports'); 
+                  }} 
+                />
+                <NavButton 
+                  active={activeTab === 'investigation'} 
+                  label="Investigação" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('investigation')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('investigation')}
+                  onClick={() => { 
+                    if (!isActingAsMaster && blockedTabs.includes('investigation')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('investigation'); 
+                  }} 
+                />
+              </div>
+            </div>
+
+            <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent mx-4" />
+            {/* CATEGORIA INDIVIDUAL */}
+            <div>
+              <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Individual</p>
+              <div className="flex flex-col gap-1">
+                <NavButton active={activeTab === 'sheet' && !viewingTarget} label="Minha Ficha" onClick={() => {
                   playSoundEffect('tab_change');
                   const myChar = allPlayers.find(p => p.id === user?.id);
                   if (myChar) {
@@ -830,7 +1005,25 @@ export default function Home() {
                   setViewingTarget(null);
                   setActiveTab('sheet');
                 }} />
-                <NavButton active={activeTab === 'combat'} label="Sessão" onClick={() => { playSoundEffect('tab_change'); setActiveTab('combat'); }} />
+                
+                {/* Respiração Tab - Only visible if player has a breathing style */}
+                {(viewingTarget === null || viewingTarget === user?.id) && character?.breathing_style && (
+                  <NavButton 
+                    active={activeTab === 'breathing'} 
+                    label="Respiração" 
+                    disabled={!isActingAsMaster && blockedTabs.includes('breathing')}
+                    isBlocked={!isActingAsMaster && blockedTabs.includes('breathing')}
+                    onClick={() => {
+                      if (!isActingAsMaster && blockedTabs.includes('breathing')) {
+                        playSoundEffect('error');
+                        showToast("Esta página está bloqueada pelo Mestre.");
+                        return;
+                      }
+                      playSoundEffect('tab_change');
+                      setActiveTab('breathing');
+                    }} 
+                  />
+                )}
               </div>
             </div>
 
@@ -840,34 +1033,52 @@ export default function Home() {
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Fichas</p>
               <div className="flex flex-col gap-1">
-                {allPlayers
-                  .filter(p => p.id !== user?.id && p.discord_username !== ".enderu")
-                  .map(p => {
-                    const isApproved = !!p.approved_once;
-                    const canView = isActingAsMaster || isApproved;
+                    {allPlayers
+                      .filter(p => {
+                        const isMe = p.id === user?.id;
+                        if (isMe) return false;
+                        if (p.discord_username === ".enderu") return false;
 
-                    return (
-                      <NavButton
-                        key={p.id}
-                        active={activeTab === 'sheet' && viewingTarget === p.id}
-                        label={p.char_name || p.discord_username}
-                        disabled={!canView}
-                        isUnapproved={!isApproved && !isActingAsMaster}
-                        onClick={() => {
-                          if (!canView) {
-                            playSoundEffect('error');
-                            showToast("Ficha ainda não aprovada pelo mestre.");
-                            return;
-                          }
-                          playSoundEffect('tab_change');
-                          setCharacter(p);
-                          if (!isEditing) setTempChar(p);
-                          setViewingTarget(p.id);
-                          setActiveTab('sheet');
-                        }}
-                      />
-                    );
-                  })}
+                        const isApproved = !!p.approved_once;
+                        const charNameLower = (p.char_name || "").toLowerCase().trim();
+                        const isNovoRecruta = charNameLower === "novo recruta";
+
+                        // Master sees everything
+                        if (isActingAsMaster) return true;
+
+                        // Rules for other players:
+                        // 1. If it's "Novo Recruta" and NOT approved, hide it entirely
+                        if (isNovoRecruta && !isApproved) return false;
+
+                        // 2. Otherwise, return true so it can be shown (NavButton handles disabled state)
+                        return true;
+                      })
+                      .map(p => {
+                        const isApproved = !!p.approved_once;
+                        const canView = isActingAsMaster || isApproved;
+
+                        return (
+                          <NavButton
+                            key={p.id}
+                            active={activeTab === 'sheet' && viewingTarget === p.id}
+                            label={p.char_name || p.discord_username}
+                            disabled={!canView}
+                            isUnapproved={!isApproved && !isActingAsMaster}
+                            onClick={() => {
+                              if (!canView) {
+                                playSoundEffect('error');
+                                showToast("Ficha ainda não aprovada pelo mestre.");
+                                return;
+                              }
+                              playSoundEffect('tab_change');
+                              setCharacter(p);
+                              if (!isEditing) setTempChar(p);
+                              setViewingTarget(p.id);
+                              setActiveTab('sheet');
+                            }}
+                          />
+                        );
+                      })}
 
                 {/* Complex NPCs in Sidebar */}
                 {allNPCs
@@ -889,7 +1100,21 @@ export default function Home() {
                     />
                   ))}
 
-                <NavButton active={activeTab === 'npcs'} label="NPCs" onClick={() => { playSound('tab_change'); setActiveTab('npcs'); }} />
+                <NavButton 
+                  active={activeTab === 'npcs'} 
+                  label="NPCs" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('npcs')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('npcs')}
+                  onClick={() => { 
+                    if (!isActingAsMaster && blockedTabs.includes('npcs')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSound('tab_change'); 
+                    setActiveTab('npcs'); 
+                  }} 
+                />
               </div>
             </div>
 
@@ -902,8 +1127,36 @@ export default function Home() {
                   <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
                   <div className="flex flex-col gap-1">
                   <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSoundEffect('tab_change'); setActiveTab('master'); }} />
-                  <NavButton active={activeTab === 'items'} label="Itens" onClick={() => { playSoundEffect('tab_change'); setActiveTab('items'); }} />
-                  <NavButton active={activeTab['loot']} label="Loot" onClick={() => { playSoundEffect('tab_change'); setActiveTab('loot'); }} />
+                  <NavButton 
+                    active={activeTab === 'items'} 
+                    label="Itens" 
+                    disabled={!isActingAsMaster && blockedTabs.includes('items')}
+                    isBlocked={!isActingAsMaster && blockedTabs.includes('items')}
+                    onClick={() => { 
+                      if (!isActingAsMaster && blockedTabs.includes('items')) {
+                        playSoundEffect('error');
+                        showToast("Esta página está bloqueada pelo Mestre.");
+                        return;
+                      }
+                      playSoundEffect('tab_change'); 
+                      setActiveTab('items'); 
+                    }} 
+                  />
+                  <NavButton 
+                    active={activeTab === 'loot'} 
+                    label="Loot" 
+                    disabled={!isActingAsMaster && blockedTabs.includes('loot')}
+                    isBlocked={!isActingAsMaster && blockedTabs.includes('loot')}
+                    onClick={() => { 
+                      if (!isActingAsMaster && blockedTabs.includes('loot')) {
+                        playSoundEffect('error');
+                        showToast("Esta página está bloqueada pelo Mestre.");
+                        return;
+                      }
+                      playSoundEffect('tab_change'); 
+                      setActiveTab('loot'); 
+                    }} 
+                  />
                   </div>
                 </div>
               </>
@@ -1059,6 +1312,28 @@ export default function Home() {
           </button>
                       </>
                     )}
+
+                    {isActingAsMaster && !isEditing && !activeRequest && viewingTarget && (
+                      <button
+                        onClick={async () => {
+                          playSoundEffect('random_button');
+                          const newStatus = !character.approved_once;
+                          const { error } = await supabase.from('characters')
+                            .update({ approved_once: newStatus })
+                            .eq('id', viewingTarget);
+                          
+                          if (!error) {
+                            showToast(newStatus ? "Ficha Aprovada!" : "Ficha Desaprovada!");
+                            setCharacter(prev => ({ ...prev, approved_once: newStatus }));
+                          } else {
+                            showToast("Erro ao atualizar aprovação.");
+                          }
+                        }}
+                        className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${character?.approved_once ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}
+                      >
+                        {character?.approved_once ? "Desaprovar" : "Aprovar"}
+                      </button>
+                    )}
                   </div>
 
                   {/* CHARACTER NAME (NOW EDITABLE) */}
@@ -1103,6 +1378,8 @@ export default function Home() {
                   isActingAsMaster={isActingAsMaster}
                   isViewingOthers={isViewingOthers}
                   rarityConfig={RARITY_CONFIG}
+                  setTempChar={setTempChar}
+                  isEditing={isEditing}
                   onMove={(idx, dir) => {
                     const targetIdx = idx + dir;
                     if (targetIdx < 0 || targetIdx >= (activeChar.inventory?.length || 0)) return;
@@ -1311,6 +1588,7 @@ export default function Home() {
                     <StatLine label="Aptidão" statKey="aptitude" val={activeChar?.aptitude} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
                     <StatLine label="Agilidade" statKey="agility" val={activeChar?.agility} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
                     <StatLine label="Precisão" statKey="precision" val={activeChar?.precision} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
+                    <StatLine label="Concentração" statKey="concentration" val={activeChar?.concentration} isEditing={isEditing} handleStatChange={handleStatChange} getPerc={getPerc} activeChar={activeChar} />
                   </ul>
                   <div className="mt-8 border-t border-zinc-800 pt-6 uppercase italic text-[9px] text-cyan-500 font-black mb-4 tracking-widest">Especialidades</div>
                   <ul className="space-y-2">
@@ -1349,10 +1627,45 @@ export default function Home() {
           </div>
         )}
 
+        {activeTab === 'reports' && (
+          <div className="flex-1 relative overflow-y-auto custom-scrollbar">
+            <ReportsTab 
+              user={user} 
+              isMaster={isActingAsMaster} 
+              showToast={showToast} 
+              playSound={playSoundEffect}
+            />
+          </div>
+        )}
+
+        {activeTab === 'investigation' && (
+          <div className="flex-1 relative">
+            <InvestigationTab 
+              user={user}
+              isMaster={isActingAsMaster}
+              showToast={showToast}
+              playSound={playSoundEffect}
+            />
+          </div>
+        )}
+
+        {activeTab === 'breathing' && (
+          <div className="flex-1 relative">
+            <BreathingTab 
+              user={user}
+              character={character}
+              isMaster={isActingAsMaster}
+              showToast={showToast}
+              playSound={playSoundEffect}
+            />
+          </div>
+        )}
+
         {activeTab === 'master' && isMaster && (
           <div className="p-12">
             <MasterPanel
               requests={requests}
+              setRequests={setRequests}
               allPlayers={allPlayers}
               showToast={showToast}
               setModal={setModal}
@@ -1739,7 +2052,7 @@ export default function Home() {
 }
 
 // HELPERS (OUTSIDE Home to prevent focus loss)
-const NavButton = ({ label, active, onClick, disabled, isUnapproved, isNPC }) => (
+const NavButton = ({ label, active, onClick, disabled, isUnapproved, isNPC, isBlocked }) => (
   <button
     onClick={onClick}
     className={`text-left px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all relative overflow-hidden
@@ -1750,8 +2063,9 @@ const NavButton = ({ label, active, onClick, disabled, isUnapproved, isNPC }) =>
     <div className="flex items-center gap-2">
       {isNPC && <span className="text-[8px] bg-black/20 px-1.5 py-0.5 rounded border border-white/5 text-zinc-400">NPC</span>}
       <span className="truncate">{label}</span>
+      {isBlocked && <span className="ml-auto">🔒</span>}
     </div>
-    {isUnapproved && <span className="text-[8px] opacity-50 block mt-0.5">(PENDENTE)</span>}
+    {isUnapproved && <span className="text-[8px] opacity-50 block mt-0.5">(NÃO APROVADO)</span>}
     {isNPC && active && <div className="absolute inset-y-0 right-0 w-1 bg-red-600" />}
   </button>
 );

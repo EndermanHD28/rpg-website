@@ -19,6 +19,7 @@ export const LINHAGEM_DESCRIPTIONS = {
   "Kazan": "Imunidade à **qualquer temperatura**",
   "Akiko": "Treinamentos garantem +15% **Pontos de Status** extras",
   "Tomioka": "+15% **Precisão** se a Respiração for {Fluxo}",
+  "Concentração": "+10% **Resistência**",
   
   // Raros
   "Shinomiya": "+100% **Inteligência** ao produzir Inibidores.\nCaso contrário: +15% **Agilidade**",
@@ -187,10 +188,11 @@ export const RESPIRACOES_DATA = {
   "Sol": { keywords: ["Incandescente"] },
   "Flor": { keywords: ["Natural"] },
   "Serpente": { keywords: ["Fluxo"] },
-  "Amor": { keywords: ["Brutal"] }
+  "Amor": { keywords: ["Brutal"] },
+  "Tempestade": { keywords: ["Natural", "Energia"] },
 };
 
-export const RESPIRACOES = ["Nenhuma", "Água", "Chama", "Trovão", "Fera", "Inseto", "Sol", "Lua", "Névoa"];
+export const RESPIRACOES = ["Nenhuma", "Água", "Chama", "Trovão", "Fera", "Inseto", "Sol", "Lua", "Névoa", "Tempestade", "Vento", "Pedra", "Serpente", "Amor", "Som", "Flor"];
 export const CORES = ["Nenhuma", "Vermelha", "Azul", "Amarela", "Verde", "Cinza", "Preta", "Rosa", "Índigo", "Roxa"];
 export const ANOMALIAS_LIST = [
   "Super Audição", "Super Olfato", "Olho Superior", "Visão Térmica", "Densidade Óssea", "Despertar",
@@ -233,12 +235,21 @@ export const RARITY_CONFIG = {
 
 export const WEAPON_CATEGORIES = ["Arma de Fogo", "Arma Branca"];
 export const WEAPON_SUBTYPES = {
-  "Arma de Fogo": ["Sniper", "Pistola", "Revólver", "Escopeta / Metralhadora", "Submetralhadora"],
+  "Arma de Fogo": ["Rifle", "Pistola", "Revólver", "Escopeta", "Metralhadora", "Submetralhadora"],
   "Arma Branca": ["Lâmina Curta", "Arma de Impacto Leve", "Espada Leve", "Machado/Porrete Leve", "Espada/Machado Pesado", "Martelo Pesado", "Soco / Improviso"]
 };
 export const HANDS_OPTIONS = ["Uma Mão", "Duas Mãos"];
 export const TIERS = [0, 1, 2, 3, 4];
 export const DAMAGE_TYPES = ["Corte", "Impacto"];
+
+export const AMMUNITION_TYPES = [
+  { id: "ammo_rifle", name: "Munição de Rifle", weight: 0.05, description: "Munição de alta precisão e longo alcance para rifles." },
+  { id: "ammo_pistola", name: "Munição de Pistola", weight: 0.015, description: "Munição padrão para pistolas semi-automáticas." },
+  { id: "ammo_revolver", name: "Munição de Revólver", weight: 0.03, description: "Munição de alto calibre para revólveres." },
+  { id: "ammo_escopeta", name: "Munição de Escopeta", weight: 0.03, description: "Cartuchos de fragmentação para espingardas e escopetas." },
+  { id: "ammo_metralhadora", name: "Munição de Metralhadora", weight: 0.0075, description: "Munição em cinturão para armas automáticas pesadas." },
+  { id: "ammo_submetralhadora", name: "Munição de Submetralhadora", weight: 0.005, description: "Munição compacta para submetralhadora de alta cadência." }
+];
 
 export const formatHeight = (val) => {
   const digits = val.replace(/\D/g, '');

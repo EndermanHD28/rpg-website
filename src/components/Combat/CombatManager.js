@@ -239,42 +239,53 @@ export default function CombatManager({
                         </div>
                         <div className="flex flex-col gap-2">
                           {(() => {
-                            if (!p.is_npc || p.type === 'Complex') {
-                              const equippedWeapons = p.inventory?.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
-                              const wPAT1 = equippedWeapons.length > 0 ? Math.round(calculateWeaponPAT(equippedWeapons[0], p)) : null;
-                              const wPAT2 = equippedWeapons.length > 1 ? Math.round(calculateWeaponPAT(equippedWeapons[1], p)) : null;
-                              const dPAT = Math.round(calculateDisarmedPAT(p));
-                              
-                              const acertoValue = calculateAcerto(p);
-                              const desvioValue = calculateDesvio(p);
-                              const bloqueioValue = calculateBloqueio(p);
+                                if (!p.is_npc || p.type === 'Complex') {
+                                  const equippedWeapons = p.inventory?.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+                                  const wStats1 = equippedWeapons.length > 0 ? calculateWeaponPAT(equippedWeapons[0], p) : null;
+                                  const wStats2 = equippedWeapons.length > 1 ? calculateWeaponPAT(equippedWeapons[1], p) : null;
+                                  const dStats = calculateDisarmedPAT(p);
+                                  
+                                  const acertoValue = calculateAcerto(p);
+                                  const desvioValue = calculateDesvio(p);
+                                  const bloqueioValue = calculateBloqueio(p);
 
-                              return (
-                                <div className="flex flex-col gap-2">
-                                  <div className={`grid ${wPAT2 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-                                    <DiceBadge label={wPAT1 ? equippedWeapons[0].name : "Ataque Armado"} val={wPAT1 ? `1d${wPAT1}` : "---"} category="combat" />
-                                    {wPAT2 && <DiceBadge label={equippedWeapons[1].name} val={`1d${wPAT2}`} category="combat" />}
-                                    <DiceBadge label="Desarmado" val={`1d${dPAT}`} category="combat" />
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    <DiceBadge label="Acerto" val={`1d${acertoValue}`} category="purple" />
-                                    <DiceBadge label="Desvio" val={`1d${desvioValue}`} category="purple" />
-                                    <DiceBadge label="Bloqueio" val={`1d${bloqueioValue}`} category="purple" />
-                                  </div>
-                                </div>
-                              );
-                            } else {
-                              // Simple NPC Ally/Neutral
-                              const wPAT = Math.round(calculateWeaponPAT(null, p));
-                              const dPAT = Math.round(calculateDisarmedPAT(p));
-                              const desvioValue = calculateDesvio(p);
-                              return (
-                                <div className="grid grid-cols-2 gap-2">
-                                  <DiceBadge label="Ataque" val={`1d${wPAT || dPAT}`} category="combat" />
-                                  <DiceBadge label="Desvio" val={`1d${desvioValue}`} category="secondary" />
-                                </div>
-                              );
-                            }
+                                  const formatWeaponBadge = (stats) => {
+                                    if (!stats) return "---";
+                                    const d = Math.round(stats.dice);
+                                    const pVal = Math.round(stats.plus);
+                                    const tpt = stats.tpt || 1;
+                                    return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
+                                  };
+
+                                  return (
+                                    <div className="flex flex-col gap-2">
+                                      <div className={`grid ${wStats2 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+                                        <DiceBadge label={wStats1 ? equippedWeapons[0].name : "Ataque Armado"} val={formatWeaponBadge(wStats1)} category="combat" />
+                                        {wStats2 && <DiceBadge label={equippedWeapons[1].name} val={formatWeaponBadge(wStats2)} category="combat" />}
+                                        <DiceBadge label="Desarmado" val={formatWeaponBadge(dStats)} category="combat" />
+                                      </div>
+                                      <div className="grid grid-cols-3 gap-2">
+                                        <DiceBadge label="Acerto" val={`1d${acertoValue}`} category="purple" />
+                                        <DiceBadge label="Desvio" val={`1d${desvioValue}`} category="purple" />
+                                        <DiceBadge label="Bloqueio" val={`1d${bloqueioValue}`} category="purple" />
+                                      </div>
+                                    </div>
+                                  );
+                                } else {
+                                  // Simple NPC Ally/Neutral
+                                  const wStats = calculateWeaponPAT(null, p);
+                                  const dPAT = Math.round(calculateDisarmedPAT(p));
+                                  const desvioValue = calculateDesvio(p);
+                                  
+                                  const wValue = typeof wStats === 'object' ? wStats.dice : wStats;
+
+                                  return (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <DiceBadge label="Ataque" val={`1d${Math.round(wValue || dPAT)}`} category="combat" />
+                                      <DiceBadge label="Desvio" val={`1d${desvioValue}`} category="secondary" />
+                                    </div>
+                                  );
+                                }
                           })()}
                         </div>
                       </div>

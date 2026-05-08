@@ -4,9 +4,120 @@ import { useState } from 'react'; // THIS WAS MISSING
 import { supabase } from '../lib/supabase';
 import { useSound } from '../hooks/useSound';
 
-export default function MasterPanel({ requests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, isSessionActive, setActiveTab }) {
+export default function MasterPanel({ requests, setRequests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, isSessionActive, setActiveTab }) {
   const { playSound } = useSound();
   const [hpStage, setHpStage] = useState({});
+  const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
+  const [allowedUsers, setAllowedUsers] = useState("");
+  const [blockedTabs, setBlockedTabs] = useState([]);
+
+  const LOCKABLE_TABS = [
+    { id: 'combat', label: 'Sessão' },
+    { id: 'reports', label: 'Relatórios' },
+    { id: 'investigation', label: 'Investigação' },
+    { id: 'breathing', label: 'Respiração' },
+    { id: 'npcs', label: 'NPCs' },
+  ];
+
+  // Fetch maintenance and blocked tabs status
+  useState(() => {
+    supabase.from('global').select('is_maintenance_active, allowed_discord_usernames, blocked_tabs').eq('id', 1).single()
+      .then(({ data }) => {
+        if (data) {
+          setIsMaintenanceActive(!!data.is_maintenance_active);
+          setAllowedUsers(Array.isArray(data.allowed_discord_usernames) ? data.allowed_discord_usernames.join(", ") : "");
+          setBlockedTabs(Array.isArray(data.blocked_tabs) ? data.blocked_tabs : []);
+        }
+      });
+  }, []);
+
+  const toggleTabLock = async (tabId) => {
+    playSound('random_button');
+    const isCurrentlyBlocked = blockedTabs.includes(tabId);
+    const newBlockedTabs = isCurrentlyBlocked 
+      ? blockedTabs.filter(id => id !== tabId)
+      : [...blockedTabs, tabId];
+    
+    const { data: existing } = await supabase.from('global').select('id').eq('id', 1).maybeSingle();
+    
+    let updateOp;
+    if (!existing) {
+      updateOp = supabase.from('global').insert({ id: 1, blocked_tabs: newBlockedTabs });
+    } else {
+      updateOp = supabase.from('global').update({ blocked_tabs: newBlockedTabs }).eq('id', 1);
+    }
+
+    const { error } = await updateOp;
+    if (!error) {
+      setBlockedTabs(newBlockedTabs);
+      showToast(isCurrentlyBlocked ? `Aba "${tabId}" desbloqueada.` : `Aba "${tabId}" bloqueada.`);
+    } else {
+      showToast("Erro ao atualizar bloqueio de abas.");
+    }
+  };
+
+  const toggleMaintenance = async () => {
+    playSound('random_button');
+    const newState = !isMaintenanceActive;
+    const usernamesArray = allowedUsers.split(',').map(s => s.trim()).filter(s => s !== "");
+    
+    // Explicitly check for id=1 record first to ensure it exists
+    const { data: existing } = await supabase.from('global').select('id').eq('id', 1).maybeSingle();
+    
+    let updateOp;
+    if (!existing) {
+      updateOp = supabase.from('global').insert({
+        id: 1,
+        is_maintenance_active: newState,
+        allowed_discord_usernames: usernamesArray
+      });
+    } else {
+      updateOp = supabase.from('global')
+        .update({ 
+          is_maintenance_active: newState,
+          allowed_discord_usernames: usernamesArray
+        })
+        .eq('id', 1);
+    }
+
+    const { error } = await updateOp;
+
+    if (!error) {
+      setIsMaintenanceActive(newState);
+      showToast(newState ? "⚠️ MANUTENÇÃO ATIVADA!" : "✅ SITE ONLINE!");
+    } else {
+      console.error("Maintenance toggle error:", error);
+      showToast(`Erro ao atualizar manutenção: ${error.message}`);
+    }
+  };
+
+  const updateAllowedUsers = async () => {
+    playSound('random_button');
+    const usernamesArray = allowedUsers.split(',').map(s => s.trim()).filter(s => s !== "");
+    
+    const { data: existing } = await supabase.from('global').select('id').eq('id', 1).maybeSingle();
+    
+    let updateOp;
+    if (!existing) {
+      updateOp = supabase.from('global').insert({
+        id: 1,
+        allowed_discord_usernames: usernamesArray
+      });
+    } else {
+      updateOp = supabase.from('global')
+        .update({ allowed_discord_usernames: usernamesArray })
+        .eq('id', 1);
+    }
+
+    const { error } = await updateOp;
+
+    if (!error) {
+      showToast("Lista de usuários atualizada!");
+    } else {
+      console.error("Update allowed users error:", error);
+      showToast(`Erro ao atualizar lista: ${error.message}`);
+    }
+  };
 
   const toggleCombatant = async (p) => {
     playSound('random_button');
@@ -83,11 +194,14 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
         console.log("Original new_data:", req.new_data);
         console.log("Modified new_data for update:", tempData);
         const { error: charError } = await supabase.from("characters")
-          .update({ ...tempData, needs_celebration: true, approved_once: true })
+          .update({ ...tempData, needs_celebration: true })
           .eq('id', req.player_id);
 
         if (!charError) {
           await supabase.from('change_requests').delete().match({ id: req.id });
+          if (typeof setRequests === 'function') {
+            setRequests(prev => prev.filter(r => r.id !== req.id));
+          }
           playSound('celebration');
           showToast("Mudanças Aplicadas!");
         } else {
@@ -207,6 +321,60 @@ export default function MasterPanel({ requests, allPlayers, onVisualize, showToa
                 IR PARA O CHAT
               </button>
             )}
+          </div>
+        </div>
+
+        {/* MAINTENANCE MANAGER */}
+        <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-zinc-800 shadow-2xl flex flex-col h-full">
+          <h3 className="font-black text-yellow-600 uppercase text-[10px] mb-2 tracking-[0.2em] italic">Manutenção</h3>
+          <p className="text-zinc-500 text-[10px] mb-6 font-bold uppercase">Restrinja o acesso ao site para manutenção.</p>
+          
+          <div className="flex-1 space-y-4">
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest ml-2">Usuários Permitidos (Discord)</label>
+              <textarea
+                value={allowedUsers}
+                onChange={(e) => setAllowedUsers(e.target.value)}
+                placeholder="username1, username2..."
+                className="w-full bg-black/40 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-yellow-500/50 h-24 resize-none font-mono"
+              />
+              <p className="text-[8px] text-zinc-600 italic px-2">Separe os nomes por vírgula. O mestre sempre tem acesso.</p>
+            </div>
+
+            <button
+              onClick={updateAllowedUsers}
+              className="w-full py-3 rounded-xl font-black uppercase tracking-widest text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-all"
+            >
+              SALVAR LISTA
+            </button>
+
+            {/* TAB LOCKER */}
+            <div className="mt-8 pt-8 border-t border-white/5 space-y-4">
+              <h4 className="text-[9px] font-black text-zinc-600 uppercase tracking-widest ml-2">Bloqueio de Abas</h4>
+              <div className="grid grid-cols-2 gap-2">
+                {LOCKABLE_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => toggleTabLock(tab.id)}
+                    className={`flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all text-[9px] font-black uppercase ${blockedTabs.includes(tab.id) 
+                      ? 'bg-red-600/10 border-red-600/50 text-red-500' 
+                      : 'bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    <span>{tab.label}</span>
+                    <span>{blockedTabs.includes(tab.id) ? '🔒' : '🔓'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-white/5">
+            <button
+              onClick={toggleMaintenance}
+              className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shadow-2xl ${isMaintenanceActive ? 'bg-red-600 text-white border-red-500 hover:bg-red-500' : 'bg-yellow-600 text-black border-yellow-500 hover:bg-yellow-500'}`}
+            >
+              {isMaintenanceActive ? "DESATIVAR MANUTENÇÃO" : "ATIVAR MANUTENÇÃO"}
+            </button>
           </div>
         </div>
 

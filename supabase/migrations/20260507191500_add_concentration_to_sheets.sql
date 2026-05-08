@@ -1,0 +1,2 @@
+ALTER TABLE public.characters ADD COLUMN IF NOT EXISTS concentration INTEGER DEFAULT 3;
+ALTER TABLE public.npcs ADD COLUMN IF NOT EXISTS concentration INTEGER DEFAULT 0;

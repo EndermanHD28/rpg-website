@@ -480,7 +480,7 @@
     "rarity": "Raro",
     "value": 135,
     "category": "Arma de Fogo",
-    "subtype": "Escopeta / Metralhadora",
+    "subtype": "Escopeta",
     "hands": "Duas Mãos",
     "damageType": "Impacto",
     "type": "Equipamento",
@@ -499,7 +499,7 @@
     "rarity": "Épico",
     "value": 915,
     "category": "Arma de Fogo",
-    "subtype": "Escopeta / Metralhadora",
+    "subtype": "Escopeta",
     "hands": "Duas Mãos",
     "damageType": "Impacto",
     "type": "Equipamento",
@@ -1308,7 +1308,8 @@
     "item_id": "weapon.beretta92s",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.98
+    "damage_multi": 0.98,
+    "tpt": 2
   },
   {
     "id": "5039ca82-e6dc-488d-9065-867d03167db2",
@@ -1327,7 +1328,8 @@
     "item_id": "weapon.beretta_cheetah",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.88
+    "damage_multi": 0.88,
+    "tpt": 2
   },
   {
     "id": "ccb0528f-d503-4e4c-815f-2d7e12c037d9",
@@ -1346,7 +1348,8 @@
     "item_id": "weapon.glock42",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.91
+    "damage_multi": 0.91,
+    "tpt": 2
   },
   {
     "id": "bdffd73b-5062-46e2-bdc0-b3e011264706",
@@ -1365,7 +1368,8 @@
     "item_id": "weapon.sig_p320",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.15
+    "damage_multi": 1.15,
+    "tpt": 2
   },
   {
     "id": "c4ef2157-d44e-496a-bce2-c656cdbb4c3b",

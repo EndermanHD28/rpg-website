@@ -65,6 +65,7 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
         aptitude: 1,
         agility: 1,
         precision: 1,
+        concentration: 0,
         armed_pat: '0',
         image_url: '',
         rank: activeCategory === 'Human' ? 'E - Recruta' : null,
@@ -120,12 +121,17 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
     const a = Number(npc.aptitude) || 0;
     const ag = Number(npc.agility) || 0;
     const p = Number(npc.precision) || 0;
+    const c = Number(npc.concentration) || 0;
+
+    const stats = calculateDisarmedPAT(npc);
+    const dDice = Math.floor(stats.dice);
+    const dPlus = Math.floor(stats.plus);
 
     return {
-      life: s + (r * 7),
-      presence: s + r + a + ag + p,
-      posture: 2 * (r * 1.2) + (a * 3.4),
-      disarmed_pat: `1d${Math.floor(calculateDisarmedPAT(npc))}`,
+      life: s + (r * 7) + (c * 3),
+      presence: s + r + a + ag + p + c,
+      posture: 2 * (r * 1.2) + (a * 3.4) + (c * 2),
+      disarmed_pat: `1d${dDice}${dPlus > 0 ? ` + ${dPlus}` : ''}`,
       acerto: `1d${calculateAcerto(npc)}`,
       desvio: `1d${calculateDesvio(npc)}`,
       bloqueio: `1d${calculateBloqueio(npc)}`
@@ -223,6 +229,7 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                         aptitude: Number(npc.aptitude) || 1,
                         agility: Number(npc.agility) || 1,
                         precision: Number(npc.precision) || 1,
+                        concentration: Number(npc.concentration) || 0,
                         armed_pat: npc.armed_pat || '0',
                         image_url: npc.image_url || null,
                         rank: npc.rank || (npc.category === 'Human' ? 'E - Recruta' : null),
@@ -334,13 +341,14 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                   <div className="flex justify-between items-center text-[10px] font-bold uppercase text-zinc-500 border-b border-white/5 pb-1">
                     <span>Atributos</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-1">
+                  <div className="grid grid-cols-6 gap-1">
                     {[
                       { label: 'FOR', val: npc.strength },
                       { label: 'RES', val: npc.resistance },
                       { label: 'APT', val: npc.aptitude },
                       { label: 'AGI', val: npc.agility },
-                      { label: 'PRE', val: npc.precision }
+                      { label: 'PRE', val: npc.precision },
+                      { label: 'CON', val: npc.concentration }
                     ].map(s => (
                       <div key={s.label} className="text-center">
                         <p className="text-[7px] text-zinc-600 font-black">{s.label}</p>
@@ -350,12 +358,12 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <div className="flex-1 bg-black/40 p-2 rounded-xl border border-white/5 flex justify-between items-center px-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex-1 bg-black/40 p-2 rounded-xl border border-white/5 flex flex-col items-center justify-center min-h-[50px]">
                     <span className="text-[8px] font-black text-zinc-500 uppercase">Ataque (Desarmado)</span>
                     <span className="text-xs font-bold text-yellow-500">{stats.disarmed_pat}</span>
                   </div>
-                  <div className="flex-1 bg-black/40 p-2 rounded-xl border border-white/5 flex justify-between items-center px-4">
+                  <div className="flex-1 bg-black/40 p-2 rounded-xl border border-white/5 flex flex-col items-center justify-center min-h-[50px]">
                     <span className="text-[8px] font-black text-zinc-500 uppercase">Ataque (Armado)</span>
                     <span className="text-xs font-bold text-orange-500">{npc.armed_pat ? (npc.armed_pat.toString().startsWith('1d') ? npc.armed_pat : `1d${npc.armed_pat}`) : '0'}</span>
                   </div>
@@ -453,28 +461,29 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
 
                       <div className="space-y-4">
                         <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] border-b border-white/5 pb-2">Atributos Primários</p>
-                        <div className="grid grid-cols-5 gap-3">
-                          {[
-                            { label: 'FOR', val: expandedNPC.strength, color: 'text-red-500' },
-                            { label: 'RES', val: expandedNPC.resistance, color: 'text-orange-500' },
-                            { label: 'APT', val: expandedNPC.aptitude, color: 'text-blue-500' },
-                            { label: 'AGI', val: expandedNPC.agility, color: 'text-green-500' },
-                            { label: 'PRE', val: expandedNPC.precision, color: 'text-yellow-500' }
-                          ].map(s => (
-                            <div key={s.label} className="bg-black/20 p-3 rounded-2xl border border-white/5 text-center">
-                              <p className="text-[8px] text-zinc-600 font-black mb-1">{s.label}</p>
-                              <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {[
+                          { label: 'FOR', val: expandedNPC.strength, color: 'text-red-500' },
+                          { label: 'RES', val: expandedNPC.resistance, color: 'text-orange-500' },
+                          { label: 'APT', val: expandedNPC.aptitude, color: 'text-blue-500' },
+                          { label: 'AGI', val: expandedNPC.agility, color: 'text-green-500' },
+                          { label: 'PRE', val: expandedNPC.precision, color: 'text-yellow-500' },
+                          { label: 'CON', val: expandedNPC.concentration, color: 'text-cyan-500' }
+                        ].map(s => (
+                          <div key={s.label} className="bg-black/20 p-3 rounded-2xl border border-white/5 text-center">
+                            <p className="text-[8px] text-zinc-600 font-black mb-1">{s.label}</p>
+                            <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
+                          </div>
+                        ))}
+                      </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-black/40 p-5 rounded-3xl border border-white/5 flex flex-col items-center gap-1">
+                      <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1 bg-black/40 p-5 rounded-3xl border border-white/5 flex flex-col items-center gap-1">
                           <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Dano Desarmado</span>
                           <span className="text-2xl font-black text-yellow-500">{stats.disarmed_pat}</span>
                         </div>
-                        <div className="bg-black/40 p-5 rounded-3xl border border-white/5 flex flex-col items-center gap-1">
+                        <div className="flex-1 bg-black/40 p-5 rounded-3xl border border-white/5 flex flex-col items-center gap-1">
                           <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Dano Armado</span>
                           <span className="text-2xl font-black text-orange-500">{expandedNPC.armed_pat ? (expandedNPC.armed_pat.toString().startsWith('1d') ? expandedNPC.armed_pat : `1d${expandedNPC.armed_pat}`) : '0'}</span>
                         </div>

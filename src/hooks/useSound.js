@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 
 const SOUNDS = {
   celebration: '/sound_effects/celebration.mp3',
@@ -12,6 +13,26 @@ const SOUNDS = {
 
 export const useSound = () => {
   const [volume, setVolume] = useState(1);
+  const [userInteracted, setUserInteractedState] = useState(false);
+  const audioContextRef = useRef(null);
+
+  // Create an AudioContext on first user interaction
+  const ensureAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      // Resume context if it's suspended (common in some browsers)
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+    }
+  }, []);
+
+  const setUserInteracted = useCallback(() => {
+    if (!userInteracted) {
+      setUserInteractedState(true);
+      ensureAudioContext();
+    }
+  }, [userInteracted, ensureAudioContext]);
 
   useEffect(() => {
     const savedVolume = localStorage.getItem('rpg_volume');
@@ -40,7 +61,8 @@ export const useSound = () => {
 
   const playSound = useCallback((soundName) => {
     const soundPath = SOUNDS[soundName];
-    if (soundPath) {
+    if (soundPath && userInteracted) { // Only play if user has interacted
+      ensureAudioContext(); // Ensure AudioContext is ready
       const audio = new Audio(soundPath);
       const currentVol = parseFloat(localStorage.getItem('rpg_volume') ?? "1");
       audio.volume = 0.4 * currentVol; // Base volume is 40%, adjusted by master slider
@@ -56,9 +78,11 @@ export const useSound = () => {
         // No-op to avoid breaking, but Standard Audio() is already fairly isolated.
       }
       
-      audio.play().catch(err => console.error("Error playing sound:", err));
+      audio.play().catch(err => console.error("Error playing sound (user not interacted or other error):", err));
+    } else if (soundPath && !userInteracted) {
+      console.warn("Sound playback prevented: User has not interacted with the page yet. Please click anywhere to enable audio.");
     }
-  }, []);
+  }, [userInteracted, ensureAudioContext]); // Add userInteracted and ensureAudioContext to dependencies
 
-  return { playSound, volume, changeVolume };
+  return { playSound, volume, changeVolume, setUserInteracted };
 };

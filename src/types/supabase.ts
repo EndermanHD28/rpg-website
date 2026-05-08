@@ -53,6 +53,7 @@ export type Database = {
           bloodline: string | null
           breathing_lvl: number | null
           breathing_style: string | null
+          approved_once: boolean | null
           char_name: string | null
           charisma: number | null
           class: string | null

@@ -1,4 +1,4 @@
-import { LINHAGENS_DATA, RESPIRACOES_DATA } from '../constants/gameData';
+import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES } from '../constants/gameData';
 
 const GLOBAL_PAT_MULTIPLIER = 0.6;
 
@@ -60,11 +60,17 @@ export function calculateStatWithBuffs(char, statName, baseValue) {
 }
 
 export function calculateDisarmedPAT(char) {
-  if (!char) return 0;
+  if (!char) return { dice: 0, plus: 0, tpt: 1 };
   const strength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
   const resistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
-  // Soco / Improviso Formula: (1.0 * Força + 0.35 * Resistência) * 4
-  return ((1.0 * strength + 0.35 * resistance) * 4 * GLOBAL_PAT_MULTIPLIER).toFixed(1);
+  // Soco / Improviso Formula: (1.0 * Força + 0.45 * Resistência) * 4
+  const dice = (1.0 * strength + 0.45 * resistance) * 4 * GLOBAL_PAT_MULTIPLIER;
+  const plus = (0.3 * strength + 0.15 * resistance) * 4 * GLOBAL_PAT_MULTIPLIER;
+  return {
+    dice: parseFloat(dice.toFixed(1)),
+    plus: parseFloat(plus.toFixed(1)),
+    tpt: 1
+  };
 }
 
 export function calculateAcerto(char) {
@@ -90,10 +96,12 @@ export function calculateDesvio(char) {
   const sAgility = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
   const sResistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
   const sAptitude = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
+  const sConcentration = calculateStatWithBuffs(char, 'concentration', Number(char.concentration) || 0).total;
 
-  return Math.round(11 + Math.pow(
+  return Math.round(8 + Math.pow(
     (
       (sAgility * 1.2) +
+      (sConcentration * 0.7) +
       (sResistance * 0.2) +
       (sAptitude * 0.3)
     ) * 3,
@@ -171,17 +179,17 @@ export function calculateDerivedStats(char) {
   const charismaWithBuffs = calculateStatWithBuffs(char, 'charisma', Number(char.charisma) || 0).total;
   const luckWithBuffs = calculateStatWithBuffs(char, 'luck', Number(char.luck) || 0).total;
 
-  const rawPresence = (Number(char.strength) || 0) + (Number(char.resistance) || 0) + (Number(char.aptitude) || 0) + (Number(char.agility) || 0) + (Number(char.precision) || 0);
+  const rawPresence = (Number(char.strength) || 0) + (Number(char.resistance) || 0) + (Number(char.aptitude) || 0) + (Number(char.agility) || 0) + (Number(char.precision) || 0) + (Number(char.concentration) || 0);
   const presence = rawPresence * 2; // Matching the sheet's calculation for percentage base
   
   // Posture: Complex formula matches CombatManager and is used in the sheet
   const isComplex = !char.is_npc || char.type === 'Complex';
   const posture = isComplex 
-    ? Math.floor((2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4)) * 2.5)
+    ? Math.floor((2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4) + (Number(char.concentration || 0) * 2)) * 2.5)
     : Math.floor(((strengthWithBuffs + resistanceWithBuffs * 7) / 2) * 2.5);
   
   // Life: Strength + (Resistance * 7)
-  let life = strengthWithBuffs + (resistanceWithBuffs * 7);
+  let life = strengthWithBuffs + (resistanceWithBuffs * 7) + (Number(char.concentration || 0) * 3);
 
   // Apply Max Life Modifiers from effects
   const effects = Array.isArray(char.effects) ? char.effects : [];
@@ -204,6 +212,7 @@ export function calculateDerivedStats(char) {
     aptitudePerc: calcPerc(aptitudeWithBuffs),
     agilityPerc: calcPerc(agilityWithBuffs),
     precisionPerc: calcPerc(precisionWithBuffs),
+    concentrationPerc: calcPerc(Number(char.concentration) || 0),
     intelligencePerc: calcPerc(intelligenceWithBuffs),
     charismaPerc: calcPerc(charismaWithBuffs),
     luckPerc: calcPerc(luckWithBuffs)
@@ -219,16 +228,33 @@ export function calculateDerivedStats(char) {
   return stats;
 }
 
-export function calculateCurrentWeight(inventory) {
-  if (!inventory) return 0;
-  return inventory.reduce((acc, item) => {
-    if (item.isBackpack && item.equipped) return acc;
-    return acc + (Number(item.amount) || 1) * (Number(item.carga) || 1);
-  }, 0);
+export function calculateCurrentWeight(inventory, ammunition = {}) {
+  let itemWeight = 0;
+  if (inventory) {
+    itemWeight = inventory.reduce((acc, item) => {
+      if (item.isBackpack && item.equipped) return acc;
+      return acc + (Number(item.amount) || 1) * (Number(item.carga) || 1);
+    }, 0);
+  }
+
+  let ammoWeight = 0;
+  if (ammunition) {
+    AMMUNITION_TYPES.forEach(type => {
+      const qty = Number(ammunition[type.id]) || 0;
+      ammoWeight += qty * (type.weight || 0);
+    });
+  }
+
+  return {
+    total: Math.floor(itemWeight + ammoWeight),
+    precise: parseFloat((itemWeight + ammoWeight).toFixed(4)),
+    items: itemWeight,
+    ammo: parseFloat(ammoWeight.toFixed(4))
+  };
 }
 
 export function calculateWeaponPAT(weapon, char) {
-  if (!weapon || !char) return 0;
+  if (!weapon || !char) return { dice: 0, plus: 0, tpt: 1 };
   
   const effects = Array.isArray(char.effects) ? char.effects : [];
   
@@ -236,6 +262,7 @@ export function calculateWeaponPAT(weapon, char) {
   let precision = calculateStatWithBuffs(char, 'precision', Number(char.precision) || 0).total;
   let agility = calculateStatWithBuffs(char, 'agility', Number(char.agility) || 0).total;
   let resistance = calculateStatWithBuffs(char, 'resistance', Number(char.resistance) || 0).total;
+  let concentration = calculateStatWithBuffs(char, 'concentration', Number(char.concentration) || 0).total;
 
   // Apply Stat Modifiers from effects
   effects.forEach(eff => {
@@ -243,29 +270,80 @@ export function calculateWeaponPAT(weapon, char) {
     if (eff.modifiers?.strength) strength *= eff.modifiers.strength;
     if (eff.modifiers?.agility) agility *= eff.modifiers.agility;
     if (eff.modifiers?.resistance) resistance *= eff.modifiers.resistance;
+    // Concentration modifiers? (Optional, let's keep it consistent)
+    if (eff.modifiers?.concentration) concentration *= eff.modifiers.concentration;
   });
-  let base = 0;
+  let baseDice = 0;
+  let basePlus = 0;
+
   // EASY TO MODIFY FORMULAS
   const formulas = {
     // 🔫 Armas de Fogo
-    'Sniper': (s, p, a, r) => (0.6 * s) + (2.4 * p),
-    'Pistola': (s, p, a, r) => (0.7 * s) + (1.4 * p),
-    'Revólver': (s, p, a, r) => (0.85 * s) + (1.3 * p),
-    'Escopeta / Metralhadora': (s, p, a, r) => (1.2 * s) + (1.2 * p),
-    'Submetralhadora': (s, p, a, r) => (0.5 * s) + (1.1 * p) + (0.8 * a),
+    'Rifle': (s, p, a, r, c) => ({
+      dice: (0.4 * s) + (1.6 * p) + (1.9 * c),
+      plus: (0.1 * s) + (0.6 * p) + (0.3 * c)
+    }),
+    'Pistola': (s, p, a, r, c) => ({
+      dice: (0.16 * s) + (0.36 * p) + (0.16 * c),
+      plus: (0.2 * s) + (0.3 * p) + (0.4 * c)
+    }),
+    'Revólver': (s, p, a, r, c) => ({
+      dice: (0.2 * s) + (0.33 * p) + (0.21 * c),
+      plus: (0.3 * s) + (0.4 * p) + (0.5 * c)
+    }),
+    'Escopeta': (s, p, a, r, c) => ({
+      dice: (1.0 * s) + (1.0 * p) + (0.4 * c),
+      plus: (0.4 * s) + (0.4 * p) + (0.2 * c)
+    }),
+    'Metralhadora': (s, p, a, r, c) => ({
+      dice: (0.05 * s) + (0.07 * p) + (0.02 * a) + (0.04 * c),
+      plus: (0.2 * s) + (0.3 * p) + (0.3 * a) + (0.2 * c)
+    }),
+    'Submetralhadora': (s, p, a, r, c) => ({
+      dice: (0.01 * s) + (0.03 * p) + (0.02 * a) + (0.01 * c),
+      plus: (0.1 * s) + (0.3 * p) + (0.2 * a) + (0.2 * c)
+    }),
     // ⚔️ Armas Brancas e Impacto
-    'Arma de Impacto Leve': (s, p, a, r) => (1.15 * s) + (0.35 * r),
-    'Lâmina Curta': (s, p, a, r) => (0.4 * s) + (1.2 * p) + (1.0 * a),
-    'Espada Leve': (s, p, a, r) => (1.2 * s) + (1.2 * p),
-    'Machado/Porrete Leve': (s, p, a, r) => (1.5 * s) + (0.7 * p),
-    'Espada/Machado Pesado': (s, p, a, r) => (2.2 * s) + (0.4 * r),
-    'Martelo Pesado': (s, p, a, r) => (2.0 * s) + (1.0 * r),
-    'Soco / Improviso': (s, p, a, r) => (1.0 * s) + (0.45 * r)
+    'Arma de Impacto Leve': (s, p, a, r, c) => ({
+      dice: (1.1 * s) + (0.3 * r) + (0.1 * c),
+      plus: (0.35 * s) + (0.1 * r) + (0.05 * c)
+    }),
+    'Lâmina Curta': (s, p, a, r, c) => ({
+      dice: (0.3 * s) + (0.71 * p) + (0.9 * a) + (0.1 * c),
+      plus: (0.1 * s) + (0.35 * p) + (0.25 * a) + (0.1 * c)
+    }),
+    'Espada Leve': (s, p, a, r, c) => ({
+      dice: (1.1 * s) + (1.1 * p) + (0.8 * a)+ (0.2 * c),
+      plus: (0.35 * s) + (0.35 * p) + (0.4 * a)+ (0.1 * c)
+    }),
+    'Machado/Porrete Leve': (s, p, a, r, c) => ({
+      dice: (1.4 * s) + (0.6 * p) + (0.65 * r) + (0.2 * c),
+      plus: (0.45 * s) + (0.15 * p) + (0.3 * r) + (0.1 * c)
+    }),
+    'Espada/Machado Pesado': (s, p, a, r, c) => ({
+      dice: (1.7 * s) + (1.1 * r) + (1.15 * a) + (0.1 * c),
+      plus: (0.65 * s) + (0.1 * r) + (0.4 * a) + (0.05 * c)
+    }),
+    'Martelo Pesado': (s, p, a, r, c) => ({
+      dice: (1.9 * s) + (1.45 * r) + (1.15 * a) + (0.2 * c),
+      plus: (0.55 * s) + (0.25 * r) + (0.6 * a) + (0.1 * c)
+    }),
+    'Soco / Improviso': (s, p, a, r, c) => ({
+      dice: (1.2 * s) + (0.51 * r) + (0.25 * c),
+      plus: (0.25 * s) + (0.12 * r) + (0.8 * c)
+    })
   };
+  
   const formula = formulas[weapon.subtype];
-  base = formula ? formula(strength, precision, agility, resistance) : (1.0 * strength);
+  const results = formula ? formula(strength, precision, agility, resistance, concentration) : { dice: (1.0 * strength), plus: (0.3 * strength) };
+  
+  baseDice = results.dice;
+  basePlus = results.plus;
+
   // Multiply by 4 as per instruction: ((Atributos) * 4)
-  base = base * 4;
+  baseDice = baseDice * 4;
+  basePlus = basePlus * 4;
+
   // TIER MULTIPLIERS: 0(0.8x), 1(1.0x), 2(1.2x), 3(1.5x), 4(2.0x)
   const tierMults = { 0: 0.8, 1: 1.0, 2: 1.2, 3: 1.5, 4: 2.0 };
   const tierValue = typeof weapon.tier === 'string' ? parseInt(weapon.tier.replace(/\D/g, '')) : weapon.tier;
@@ -282,7 +360,22 @@ export function calculateWeaponPAT(weapon, char) {
   // BLOODLINE MULTIPLIER (Placeholder for now, can be expanded if gameData provides it)
   const bloodlineMult = 1.0;
   const customDamageMulti = typeof weapon.damage_multi === 'number' ? weapon.damage_multi : 1.0;
-  return (base * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER).toFixed(1);
+  
+  const finalDice = (baseDice * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER);
+  const finalPlus = (basePlus * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER);
+  
+  return {
+    dice: parseFloat(finalDice.toFixed(1)),
+    plus: parseFloat(finalPlus.toFixed(1)),
+    baseDice: baseDice * GLOBAL_PAT_MULTIPLIER,
+    basePlus: basePlus * GLOBAL_PAT_MULTIPLIER,
+    rawDice: finalDice,
+    rawPlus: finalPlus,
+    tpt: Number(weapon.tpt) || 1,
+    tierMult,
+    upgradeMult,
+    damageMulti: customDamageMulti
+  };
 }
 
 export function rollDice(expression, charContext = null) {
@@ -318,6 +411,9 @@ export function rollDice(expression, charContext = null) {
   }
 
   // 2. Identify all dice notations (e.g., 1d20, 3d35, 1d(15+5))
+  // Handle multiple dice rolls if tpt > 1 (e.g., 3d25)
+  // The system now supports tpt in the notation directly from UI
+  
   // Handle d(expr) pattern
   const nestedDiceRegex = /(\d+)d\(([^)]+)\)/g;
   processedExpression = processedExpression.replace(nestedDiceRegex, (match, count, innerExpr) => {
@@ -419,7 +515,7 @@ export function rollDice(expression, charContext = null) {
       rolls[0].results[0] = 1;
       rolls[0].sum = 1;
     }
-  } else if (rolls.length === 1 && rolls[0].results.length === 1) {
+  } else if (rolls.length === 1 && rolls[0].results.length === 1 && diceType !== 'dano') {
     const rollValue = rolls[0].results[0];
     const sides = parseInt(rolls[0].notation.split('d')[1]);
     

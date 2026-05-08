@@ -7,7 +7,7 @@ export default function Celebration({ active }) {
     if (active) {
       const duration = 3 * 1000;
       const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
       const randomInRange = (min, max) => Math.random() * (max - min) + min;
 
