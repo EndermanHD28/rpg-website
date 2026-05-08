@@ -234,8 +234,12 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
               <div className="flex items-center gap-5">
                 {/* Movement Controls (Visible on Hover) */}
                 <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pr-4 border-r border-white/5 text-zinc-600">
-                  <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, -1); }} className="hover:text-yellow-500 text-[10px]">▲</button>
-                  <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, 1); }} className="hover:text-yellow-500 text-[10px]">▼</button>
+                  {(!isViewingOthers || isActingAsMaster) && (
+                    <>
+                      <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, -1); }} className="hover:text-yellow-500 text-[10px]">▲</button>
+                      <button onClick={() => { playSound('random_button'); onMove(item.originalIdx, 1); }} className="hover:text-yellow-500 text-[10px]">▼</button>
+                    </>
+                  )}
                 </div>
 
                 <div>

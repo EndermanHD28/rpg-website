@@ -65,6 +65,23 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     const { videoId, listId } = getUrlParams(url);
     let interval = null;
 
+    if (!videoId && !listId) {
+      console.log("No Video ID or List ID found. Cleaning up player.");
+      if (ytPlayer.current) {
+        try {
+          if (ytPlayer.current.stopVideo) ytPlayer.current.stopVideo();
+          if (ytPlayer.current.destroy) ytPlayer.current.destroy();
+          ytPlayer.current = null;
+        } catch (e) {
+          console.error("Error cleaning up player on empty URL:", e);
+        }
+      }
+      // Also clear the DOM element to be sure
+      const playerEl = document.getElementById('youtube-player-raw');
+      if (playerEl) playerEl.innerHTML = '';
+      return;
+    }
+
     const initializePlayer = () => {
       // Don't re-initialize if the element is missing
       const playerElement = document.getElementById('youtube-player-raw');
@@ -301,6 +318,15 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
             fetchSongTitle(data.music_url);
           } else {
             setSongTitle('');
+            console.log("Music URL is null. Stopping playback.");
+            if (ytPlayer.current) {
+              try {
+                if (ytPlayer.current.stopVideo) ytPlayer.current.stopVideo();
+                if (ytPlayer.current.pauseVideo) ytPlayer.current.pauseVideo();
+              } catch (e) {
+                console.error("Error stopping video on sync:", e);
+              }
+            }
           }
         }
         
@@ -598,6 +624,18 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     let targetUrl = inputValue.trim();
     if (targetUrl === "") {
       targetUrl = null;
+    }
+
+    // If stopping, ensure we stop the player locally immediately
+    if (targetUrl === null && ytPlayer.current) {
+      try {
+        if (ytPlayer.current.stopVideo) ytPlayer.current.stopVideo();
+        if (ytPlayer.current.pauseVideo) ytPlayer.current.pauseVideo();
+        setUrl(null);
+        setPlaying(false);
+      } catch (e) {
+        console.error("Error stopping video locally:", e);
+      }
     }
 
     const { error } = await supabase
