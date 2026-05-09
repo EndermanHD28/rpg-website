@@ -390,6 +390,12 @@ export function Modal({ modal, closeModal }) {
           {modal.title}
         </h3>
 
+        {modal.message && <p className="text-sm text-gray-300 mb-6">{modal.message}</p>}
+        
+        {modal.customFields && (
+          <div className="mb-6">{modal.customFields}</div>
+        )}
+
         {modal.fields ? (
           <div className="space-y-4 mb-6 mt-4">
             {modal.npcFields ? (

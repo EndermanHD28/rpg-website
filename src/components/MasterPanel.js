@@ -16,6 +16,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
     { id: 'reports', label: 'Relatórios' },
     { id: 'investigation', label: 'Investigação' },
     { id: 'breathing', label: 'Respiração' },
+    { id: 'traders', label: 'Comerciantes'},
     { id: 'npcs', label: 'NPCs' },
   ];
 

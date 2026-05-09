@@ -22,6 +22,7 @@ import ItemsListGeneratorModal from '../components/ItemsListGeneratorModal';
 import ReportsTab from '../components/ReportsTab';
 import InvestigationTab from '../components/InvestigationTab';
 import BreathingTab from '../components/BreathingTab';
+import TradersTab from '../components/TradersTab';
 
 export default function Home() {
   // --- UI STATE ---
@@ -77,6 +78,8 @@ export default function Home() {
   const [isEditing, setIsEditing] = useState(false);
   const [previewAsPlayer, setPreviewAsPlayer] = useState(false);
   const [itemLibrary, setItemLibrary] = useState([]);
+  const [allTraders, setAllTraders] = useState([]);
+  const [tradeRequests, setTradeRequests] = useState([]);
 
   const [isCombatActive, setIsCombatActive] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
@@ -1182,6 +1185,21 @@ export default function Home() {
                       setActiveTab('loot'); 
                     }} 
                   />
+                  <NavButton 
+                    active={activeTab === 'traders'} 
+                    label="Comerciantes" 
+                    disabled={!isActingAsMaster && blockedTabs.includes('traders')}
+                    isBlocked={!isActingAsMaster && blockedTabs.includes('traders')}
+                    onClick={() => { 
+                      if (!isActingAsMaster && blockedTabs.includes('traders')) {
+                        playSoundEffect('error');
+                        showToast("Esta página está bloqueada pelo Mestre.");
+                        return;
+                      }
+                      playSoundEffect('tab_change'); 
+                      setActiveTab('traders'); 
+                    }} 
+                  />
                   </div>
                 </div>
               </>
@@ -1410,39 +1428,6 @@ export default function Home() {
                     <StatBox label="POSTURA" value={posture.toFixed(0)} color="border-green-500" textColor="text-green-500" />
                   </div>
 
-                    {/* FOCUS BAR (Skill 0) */}
-                    {maxFocus > 0 && (
-                      <div className="mt-8 pt-8 border-t border-zinc-800">
-                        <div className="flex justify-between items-end mb-2">
-                          <div className="flex flex-col">
-                            <span className="text-cyan-500 font-black italic text-[11px] uppercase tracking-widest flex items-center gap-2">
-                              Foco de Respiração
-                              {isEditing && (
-                                <input
-                                  type="number"
-                                  value={tempChar.current_focus ?? 0}
-                                  onChange={(e) => setTempChar({ ...tempChar, current_focus: parseInt(e.target.value) || 0 })}
-                                  className="w-16 bg-black border border-cyan-500/30 rounded px-2 py-0.5 text-xs text-white font-mono outline-none"
-                                />
-                              )}
-                            </span>
-                            <span className="text-zinc-600 text-[8px] font-bold uppercase mt-0.5">Influência no Dano: +{Math.floor(currentFocus / 5)}%</span>
-                          </div>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-2xl font-black italic text-cyan-400 leading-none">{currentFocus}</span>
-                            <span className="text-[10px] font-black text-cyan-900 uppercase">/ {maxFocus}</span>
-                          </div>
-                        </div>
-                        <div className="h-3 bg-black/60 rounded-full border border-white/5 overflow-hidden shadow-inner relative group">
-                          <div 
-                            className="h-full bg-gradient-to-r from-cyan-700 via-cyan-500 to-cyan-300 transition-all duration-1000 ease-out relative shadow-[0_0_15px_rgba(6,182,212,0.4)]"
-                            style={{ width: `${Math.min(100, (currentFocus / maxFocus) * 100)}%` }}
-                          >
-                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                 </div>
                 <Inventory
                   inventory={activeChar?.inventory || []}
@@ -1732,6 +1717,18 @@ export default function Home() {
               onReturn={() => {
                 setActiveTab('sheet');
               }}
+            />
+          </div>
+        )}
+
+        {activeTab === 'traders' && isActingAsMaster && (
+          <div className="p-12">
+            <TradersTab
+              isActingAsMaster={isActingAsMaster}
+              showToast={showToast}
+              setModal={setModal}
+              closeModal={closeModal}
+              playerCharacter={character}
             />
           </div>
         )}

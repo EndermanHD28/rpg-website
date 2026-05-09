@@ -48,6 +48,7 @@ export default function CombatLog({
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
   const [lootRollInputs, setLootRollInputs] = useState({});
+  const [pendingOffers, setPendingOffers] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [suggestionData, setSuggestionData] = useState(null);
@@ -63,7 +64,132 @@ export default function CombatLog({
   const [hpInput, setHpInput] = useState("");
   const [postureInput, setPostureInput] = useState("");
 
-  const [breathingRollInputs, setBreathingRollInputs] = useState({});
+  const [showTraderSelector, setShowTraderSelector] = useState(false);
+  const [showTradeRequests, setShowTradeRequests] = useState(false);
+  const [traders, setTraders] = useState([]);
+  const [tradeRequests, setTradeRequests] = useState([]);
+
+  const [itemsDB, setItemsDB] = useState([]);
+
+  useEffect(() => {
+    fetchTraders();
+    fetchItemsDB();
+    if (isMaster) fetchTradeRequests();
+
+    const tradersChannel = supabase.channel('combatlog_traders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'traders' }, () => fetchTraders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_requests' }, () => {
+        if (isMaster) fetchTradeRequests();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tradersChannel);
+    };
+  }, [isMaster]);
+
+  const fetchTraders = async () => {
+    const { data } = await supabase.from('traders').select('*').order('name');
+    if (data) setTraders(data);
+  };
+
+  const fetchTradeRequests = async () => {
+    const { data } = await supabase.from('trade_requests')
+      .select('*, characters(char_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (data) setTradeRequests(data);
+  };
+
+  const fetchItemsDB = async () => {
+    const { data } = await supabase.from('items').select('*');
+    if (data) setItemsDB(data);
+  };
+
+  const toggleTraderSelector = () => {
+    setShowTraderSelector(!showTraderSelector);
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
+    setShowBreathingMenu(false);
+    setShowLootSelector(false);
+    setShowTradeRequests(false);
+  };
+
+  const toggleTradeRequests = () => {
+    setShowTradeRequests(!showTradeRequests);
+    setShowTraderSelector(false);
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
+    setShowBreathingMenu(false);
+    setShowLootSelector(false);
+  };
+
+  const sendTrader = async (trader) => {
+    const masterChar = allPlayers.find(p => p.rank === 'Mestre');
+    const avatar = masterChar?.image_url || "";
+    const username = masterChar?.discord_username || ".enderu";
+    
+    const content = `TRADER_INTERACTION|${trader.id}|${trader.name}|${username}|${avatar}`;
+    
+    await supabase.from('messages').insert({
+      player_name: "SISTEMA",
+      content,
+      is_system: true
+    });
+    
+    setShowTraderSelector(false);
+  };
+
+  const handleAcceptTradeRequest = async (request) => {
+    console.log('Accepting trade request:', request);
+    if (!request.player_id || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(request.player_id)) {
+      console.error("Invalid player_id in trade request:", request.player_id);
+      showToast("ERRO: ID de jogador inválido no pedido de troca.");
+      return;
+    }
+    const { data: charData, error: fetchError } = await supabase.from('characters').select('inventory, dollars').eq('id', request.player_id).single();
+    if (fetchError || !charData) {
+      console.error("Error fetching character:", fetchError);
+      showToast("ERRO: Personagem não encontrado.");
+      return;
+    }
+
+    let newInventory = charData.inventory || [];
+    // We need a robust way to find the item. The client-side generated ID might not be reliable.
+    // Let's try to find it by a more stable property, like item_id, and then remove one instance.
+    const itemIndex = newInventory.findIndex(i => i.item_id === request.item.item_id);
+    if (itemIndex !== -1) {
+      newInventory.splice(itemIndex, 1);
+    } else {
+      // As a fallback, try to find by name, but this is less reliable
+      const fallbackIndex = newInventory.findIndex(i => i.name === request.item.name);
+      if (fallbackIndex !== -1) {
+        newInventory.splice(fallbackIndex, 1);
+      } else {
+        showToast("AVISO: Item da troca não encontrado no inventário do jogador.");
+        // We might still proceed to give money, depending on game rules.
+        // For now, we'll continue.
+      }
+    }
+
+    const newDollars = (charData.dollars || 0) + request.value;
+
+    const { error } = await supabase.from('characters').update({ inventory: newInventory, dollars: newDollars }).eq('id', request.player_id);
+    
+    if (error) {
+      console.error("Error updating character after trade:", error);
+      showToast(`Erro ao aprovar a venda: ${error.message}`);
+      return;
+    }
+      
+    await supabase.from('trade_requests').update({ status: 'approved' }).eq('id', request.id);
+    showToast("Venda aprovada!");
+  };
+
+  const handleRejectTradeRequest = async (request) => {
+    await supabase.from('trade_requests').update({ status: 'declined' }).eq('id', request.id);
+    showToast("Venda rejeitada.");
+  };
 
   const handleHPSubmit = async (player, isShiftPressed = false) => {
     try {
@@ -116,6 +242,10 @@ export default function CombatLog({
   const isAtBottomRef = useRef(true);
   const fileInputRef = useRef(null);
 
+  const [sellPrices, setSellPrices] = useState({});
+  const [traderActiveTab, setTraderActiveTab] = useState({});
+  const [breathingRollInputs, setBreathingRollInputs] = useState({});
+
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
@@ -131,6 +261,32 @@ export default function CombatLog({
       });
     }
   }, [messages]);
+
+  useEffect(() => {
+    const handleTradeUpdates = (payload) => {
+      const { old: oldReq, new: newReq } = payload;
+      if (payload.eventType === 'UPDATE' && oldReq.status === 'pending') {
+        if (newReq.player_id === user?.id) {
+            if (newReq.status === 'declined') {
+                showToast(`Sua oferta de venda para ${newReq.item.name} foi recusada.`);
+                setPendingOffers(prev => prev.filter(id => id !== newReq.item.id));
+            } else if (newReq.status === 'approved') {
+                showToast(`Sua oferta de venda para ${newReq.item.name} foi aprovada!`);
+                setPendingOffers(prev => prev.filter(id => id !== newReq.item.id));
+            }
+        }
+      }
+    };
+
+    const subscription = supabase
+      .channel('trade_requests_updates')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trade_requests' }, handleTradeUpdates)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user?.id, showToast]);
 
   useEffect(() => {
     if (sharedImage?.url) {
@@ -237,6 +393,102 @@ export default function CombatLog({
     const newContent = parts.join('|');
     
     await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
+  };
+
+  const handleBuyFromTrader = async (traderId, itemToBuy) => {
+    if (!user) return;
+    const playerChar = allPlayers.find(p => p.id === user.id);
+    if (!playerChar) return;
+
+
+
+    if ((playerChar.dollars || 0) < itemToBuy.price) {
+      return showToast("Dinheiro insuficiente!");
+    }
+
+    // Weight check
+    const currentWeight = calculateCurrentWeight(playerChar.inventory || []);
+    const fullItemData = itemsDB.find(i => i.id === itemToBuy.item_id || i.item_id === itemToBuy.item_id);
+    if (!fullItemData) return showToast("Item não encontrado no DB");
+    
+    const itemWeight = Number(fullItemData.carga) || 1;
+    const maxWeight = calculateDerivedStats(playerChar).weight_limit || 0;
+
+    if (currentWeight + itemWeight > maxWeight) {
+      return showToast("Inventário Cheio! Você não tem Cargas suficientes.");
+    }
+
+    // Process Purchase
+    // 1. Deduct money & add item
+    const newInventory = [...(playerChar.inventory || []), { ...fullItemData, id: Date.now() + Math.random(), equipped: false }];
+    const newDollars = (playerChar.dollars || 0) - itemToBuy.price;
+    const { error: updateError } = await supabase.from('characters').update({ inventory: newInventory, dollars: newDollars }).eq('id', playerChar.id);
+
+    if (updateError) {
+      showToast("Erro ao atualizar personagem: " + updateError.message);
+      return;
+    }
+
+    // 2. Reduce trader stock
+    const { data: traderData, error: traderError } = await supabase.from('traders').select('items').eq('id', traderId).single();
+
+    if (traderError) {
+        showToast("Erro ao buscar comerciante: " + traderError.message);
+        // Optionally, revert the character update here
+        return;
+    }
+
+    if (traderData) {
+      let newTraderItems = [...traderData.items];
+      const tItemIdx = newTraderItems.findIndex(i => i.item_id === itemToBuy.item_id);
+      if (tItemIdx >= 0) {
+        newTraderItems[tItemIdx].qty -= 1;
+        if (newTraderItems[tItemIdx].qty <= 0) {
+          newTraderItems.splice(tItemIdx, 1);
+        }
+        const { error: traderUpdateError } = await supabase.from('traders').update({ items: newTraderItems }).eq('id', traderId);
+        if (traderUpdateError) {
+            showToast("Erro ao atualizar o estoque do comerciante: " + traderUpdateError.message);
+            // Optionally, revert the character update here
+            return;
+        }
+      }
+    }
+
+    showToast(`Comprado: ${fullItemData.name}`);
+  };
+
+  const handleSellToTrader = async (traderId, invItem, price) => {
+    if (!user) return;
+    const playerChar = allPlayers.find(p => p.id === user.id);
+
+    if (!playerChar) {
+        showToast("ERRO: Personagem do jogador não encontrado.");
+        return;
+    }
+
+    if (!price || isNaN(price) || price <= 0) {
+      return showToast("Defina um preço válido.");
+    }
+
+    setPendingOffers(prev => [...prev, invItem.id]);
+
+    const { error } = await supabase.from('trade_requests').insert({
+      player_id: playerChar.id,
+      trader_id: traderId,
+      item: invItem,
+      value: Number(price),
+      type: 'sell',
+      status: 'pending'
+    });
+
+    if (error) {
+      console.error("Error creating trade request:", error);
+      showToast(`Erro ao criar oferta: ${error.message}`);
+      setPendingOffers(prev => prev.filter(id => String(id) !== String(invItem.id))); // Re-enable button on error
+    } else {
+      showToast("Oferta enviada ao Mestre!");
+    }
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -525,7 +777,7 @@ export default function CombatLog({
     return groups;
   };
 
-  const filteredMessages = messages.filter(m => !m.is_system || isMaster || m.content.startsWith('DICE_ROLL|') || m.content.startsWith('LOOT_INTERACTION|'));
+  const filteredMessages = messages.filter(m => !m.is_system || isMaster || m.content.startsWith('DICE_ROLL|') || m.content.startsWith('LOOT_INTERACTION|') || m.content.startsWith('BREATHING_MOVE|') || m.content.startsWith('TRADER_INTERACTION|'));
   const groupedMessages = groupMessages(filteredMessages);
 
   const handleInputChange = (e) => {
@@ -726,6 +978,8 @@ export default function CombatLog({
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
     setShowLootSelector(false);
+    setShowTraderSelector(false);
+    setShowTradeRequests(false);
   };
 
   const toggleDiceQuickMenu = () => {
@@ -733,6 +987,8 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowBreathingMenu(false);
     setShowLootSelector(false);
+    setShowTraderSelector(false);
+    setShowTradeRequests(false);
   };
 
   const toggleBreathingMenu = () => {
@@ -740,6 +996,8 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowLootSelector(false);
+    setShowTraderSelector(false);
+    setShowTradeRequests(false);
   };
 
   const toggleLootSelector = () => {
@@ -747,6 +1005,8 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
+    setShowTraderSelector(false);
+    setShowTradeRequests(false);
   };
 
   const handleImageUpload = async (e) => {
@@ -1413,6 +1673,149 @@ export default function CombatLog({
                           </div>
                         );
                       }
+                      if (m.content.startsWith('TRADER_INTERACTION|')) {
+                        const parts = m.content.split('|');
+                        const traderId = parts[1];
+                        const traderName = parts[2] || "Comerciante";
+                        const masterName = parts[3] || "";
+                        const masterAvatar = parts[4] || "";
+                        
+                        const trader = traders.find(t => t.id === traderId);
+                        // console.log('Trader Object in Chat:', trader);
+                        const npc = trader ? allNPCs.find(n => n.id === trader.npc_id) : null;
+                        const avatarToUse = npc?.image_url || masterAvatar;
+                        const activeTab = traderActiveTab[m.id] || 'comprar';
+                        const playerChar = allPlayers.find(p => p.id === user?.id);
+
+                        return (
+                          <div key={m.id || `${i}-${mi}`} className={`bg-zinc-900 border border-green-500/20 rounded-2xl p-6 my-4 shadow-2xl relative overflow-hidden group/trader group/message`}>
+                            {isMaster && (
+                              <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                <button onClick={() => handlePinMessage(m)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></button>
+                                <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                              </div>
+                            )}
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 blur-[50px] -z-10" />
+                            
+                            <div className="flex items-center gap-4 mb-6">
+                              <div className="w-12 h-12 shrink-0 bg-green-500/10 border border-green-500/30 rounded-xl flex items-center justify-center shadow-xl overflow-hidden">
+                                {avatarToUse ? <img src={avatarToUse} className="w-full h-full object-cover" alt="" /> : <span className="text-2xl">🏪</span>}
+                              </div>
+                              <div>
+                                <h4 className="text-white font-black italic uppercase text-sm tracking-tighter">
+                                  {traderName}
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-green-500">Negociação Aberta</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 border-b border-white/10 pb-2 mb-4">
+                              {['comprar', 'trade', 'vender'].map(tab => (
+                                <button
+                                  key={tab}
+                                  onClick={() => setTraderActiveTab(prev => ({...prev, [m.id]: tab}))}
+                                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${activeTab === tab ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'text-zinc-500 hover:text-white'}`}
+                                >
+                                  {tab}
+                                </button>
+                              ))}
+                            </div>
+
+                            {activeTab === 'comprar' && (
+                              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                                {!trader || !trader.items || trader.items.length === 0 ? (
+                                  <p className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-500 py-4">Estoque Vazio</p>
+                                ) : (
+                                  trader.items.map((ti, idx) => {
+                                    const fullItem = itemsDB.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
+                                    /*if (!fullItem) {
+                                      console.log('Item not found in itemsDB:', ti);
+                                      return null;
+                                    }*/
+                                    return (
+                                      <div key={idx} className="flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl hover:border-green-500/30 transition-all">
+                                        <div className="flex justify-between items-start">
+                                          <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-zinc-200">{fullItem.name} <span className="text-[12px] ml-1 text-green-500">x{ti.qty}</span></span>
+                                            <span className="text-[11px] font-black text-zinc-500 uppercase tracking-tighter">Base: {fullItem.value}$</span>
+                                          </div>
+                                          <div className="flex flex-col items-end">
+                                            <span className="text-[10px] font-black text-green-500 uppercase">${ti.price}</span>
+                                            {!isMaster && (
+                                              <button 
+                                                onClick={() => handleBuyFromTrader(trader.id, ti)}
+                                                className="mt-1 px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-500 rounded text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-all"
+                                              >
+                                                Comprar
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
+
+                            {activeTab === 'trade' && (
+                              <div className="py-8 text-center border border-dashed border-white/10 rounded-xl bg-black/20">
+                                <span className="text-xl opacity-50 mb-2 block">⚖️</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Em Desenvolvimento</p>
+                              </div>
+                            )}
+
+                            {activeTab === 'vender' && (
+                              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                                {isMaster ? (
+                                  <p className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-500 py-4">Jogadores usam esta aba</p>
+                                ) : (
+                                  !playerChar?.inventory || playerChar.inventory.length === 0 ? (
+                                    <p className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-500 py-4">Seu inventário está vazio</p>
+                                  ) : (
+                                    playerChar.inventory.map((invItem, idx) => {
+                                      const isPending = pendingOffers.includes(invItem.id);
+                                      return (
+                                        <div key={idx} className="flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl hover:border-yellow-500/30 transition-all">
+                                          <div className="flex justify-between items-center">
+                                            <div className="flex flex-col">
+                                              <span className="text-xs font-bold text-zinc-200">{invItem.name}</span>
+                                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter">Base: {invItem.value}$</span>
+                                            </div>
+                                            <div className="flex gap-2 items-center">
+                                              <input
+                                                type="number"
+                                                placeholder="Preço..."
+                                                value={sellPrices[`${m.id}-${invItem.id}`] || ''}
+                                                onChange={(e) => setSellPrices(prev => ({ ...prev, [`${m.id}-${invItem.id}`]: e.target.value }))}
+                                                disabled={isPending}
+                                                className="w-16 bg-black/60 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-yellow-500 disabled:opacity-50"
+                                              />
+                                              <button
+                                                onClick={() => handleSellToTrader(traderId, invItem, sellPrices[`${m.id}-${invItem.id}`])}
+                                                disabled={isPending}
+                                                className={`px-3 py-1 rounded text-[9px] font-black uppercase transition-all ${
+                                                  isPending
+                                                    ? 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed'
+                                                    : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                                                }`}
+                                              >
+                                                {isPending ? 'Pendente' : 'Ofertar'}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
                       if (m.content.startsWith('IMAGE|') || m.content.startsWith('GIF|')) {
                         const isImage = m.content.startsWith('IMAGE|');
                         const [, url, w, h] = m.content.split('|');
@@ -1568,6 +1971,79 @@ export default function CombatLog({
         <div className="relative flex gap-4 items-center">
           <div className="relative flex-1">
             {showGifPicker && <GifPicker onSelect={sendGif} onClose={() => setShowGifPicker(false)} />}
+            {showTraderSelector && (
+              <div className="absolute bottom-full right-0 mb-4 w-80 bg-zinc-900 border border-green-500/30 rounded-[20px] shadow-2xl z-50 backdrop-blur-md overflow-hidden flex flex-col p-4 animate-in slide-in-from-bottom-2 duration-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[10px] font-black text-green-500 uppercase tracking-widest">Enviar Comerciante</h3>
+                  <button onClick={() => setShowTraderSelector(false)} className="text-zinc-500 hover:text-white text-xl">×</button>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
+                  {traders.length === 0 ? (
+                    <p className="text-[10px] text-zinc-500 text-center py-4 uppercase font-black tracking-widest">Nenhum comerciante</p>
+                  ) : (
+                    traders.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => sendTrader(t)}
+                        className="w-full text-left p-3 rounded-xl bg-white/[0.02] hover:bg-green-500/10 border border-white/5 hover:border-green-500/30 transition-all group flex items-center gap-3"
+                      >
+                        <span className="text-xl">🏪</span>
+                        <div>
+                          <p className="text-[10px] font-black text-zinc-300 group-hover:text-green-500">{t.name}</p>
+                          <p className="text-[8px] text-zinc-600 uppercase font-bold">{t.items?.length || 0} itens à venda</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+            {showTradeRequests && isMaster && (
+              <div className="absolute bottom-full right-0 mb-4 w-96 bg-zinc-900 border border-yellow-500/30 rounded-[20px] shadow-2xl z-50 backdrop-blur-md overflow-hidden flex flex-col p-4 animate-in slide-in-from-bottom-2 duration-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Ofertas de Venda ({tradeRequests.length})</h3>
+                  <button onClick={() => setShowTradeRequests(false)} className="text-zinc-500 hover:text-white text-xl">×</button>
+                </div>
+                <div className="max-h-80 overflow-y-auto space-y-2 custom-scrollbar">
+                  {tradeRequests.length === 0 ? (
+                    <p className="text-[10px] text-zinc-500 text-center py-4 uppercase font-black tracking-widest">Nenhuma oferta pendente</p>
+                  ) : (
+                    tradeRequests.map(req => {
+                      const traderName = traders.find(t => t.id === req.trader_id)?.name || "Comerciante";
+                      return (
+                        <div key={req.id} className="p-3 bg-black/40 border border-white/5 rounded-xl flex flex-col gap-2">
+                          <div className="flex justify-between items-start">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-black text-zinc-300 uppercase">{req.characters?.char_name}</span>
+                              <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">Para: {traderName}</span>
+                            </div>
+                            <span className="text-[12px] font-black text-yellow-500">${req.value}</span>
+                          </div>
+                          <div className="p-2 bg-zinc-800/50 rounded flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-zinc-300">{req.item.name}</span>
+                            <span className="text-[8px] text-zinc-500">Base: ${req.item.value}</span>
+                          </div>
+                          <div className="flex gap-2 mt-1">
+                            <button 
+                              onClick={() => handleAcceptTradeRequest(req)}
+                              className="flex-1 py-1.5 bg-green-500/10 border border-green-500/30 text-green-500 rounded text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-all"
+                            >
+                              Aceitar
+                            </button>
+                            <button 
+                              onClick={() => handleRejectTradeRequest(req)}
+                              className="flex-1 py-1.5 bg-red-500/10 border border-red-500/30 text-red-500 rounded text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all"
+                            >
+                              Recusar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
             {showLootSelector && (
               <div className="absolute bottom-full right-0 mb-4 w-80 bg-zinc-900 border border-white/10 rounded-[20px] shadow-2xl z-50 backdrop-blur-md overflow-hidden flex flex-col p-4 animate-in slide-in-from-bottom-2 duration-200">
                 <div className="flex justify-between items-center mb-4">
@@ -1778,9 +2254,20 @@ export default function CombatLog({
                 );
               })()}
               {isActingAsMaster && (
-                <button type="button" onClick={toggleLootSelector} className={`p-2 transition-all ${showLootSelector ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Espólio">
-                  <span className="text-xl">📦</span>
-                </button>
+                <>
+                  <button type="button" onClick={toggleTraderSelector} className={`p-2 transition-all ${showTraderSelector ? 'text-green-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Comerciante">
+                    <span className="text-xl">🏪</span>
+                  </button>
+                  <button type="button" onClick={toggleTradeRequests} className={`p-2 transition-all relative ${showTradeRequests ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Ofertas de Venda">
+                    <span className="text-xl">💰</span>
+                    {tradeRequests.length > 0 && (
+                      <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-zinc-900 animate-pulse" />
+                    )}
+                  </button>
+                  <button type="button" onClick={toggleLootSelector} className={`p-2 transition-all ${showLootSelector ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Espólio">
+                    <span className="text-xl">📦</span>
+                  </button>
+                </>
               )}
               <button type="button" onClick={toggleDiceQuickMenu} className={`p-2 transition-all ${showDiceQuickMenu ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Rolagem Rápida">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-5a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 14h.01"/><path d="M18 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/></svg>

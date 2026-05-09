@@ -111,8 +111,6 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
             const currentEffects = Array.isArray(targetChar.effects) ? targetChar.effects : [];
             let effectToAdd = null;
             
-            if (skillId === 'skill_1a') effectToAdd = { ...EFFECTS['eletrification'], key: 'eletrification', duration: 2 };
-            if (skillId === 'skill_3a') effectToAdd = { ...EFFECTS['advanced-eletrification'], key: 'advanced-eletrification', duration: 2 };
             
             if (effectToAdd) {
               const newEffects = [...currentEffects, effectToAdd];
