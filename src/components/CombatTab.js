@@ -144,7 +144,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         // Tempestade skill_0 says: "Inicie cada combate com 25 de Foco."
         let initialFocus = 0;
         if (p.breathing_style === 'Tempestade') {
-          initialFocus = 25;
+          initialFocus = 35;
         }
 
         if (initialFocus > 0) {
