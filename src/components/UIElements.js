@@ -239,6 +239,7 @@ export function Modal({ modal, closeModal }) {
   const [isCustom, setIsCustom] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('Item');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [localData, setLocalData] = useState({
     item_id: '',
     name: '',
@@ -289,6 +290,7 @@ export function Modal({ modal, closeModal }) {
   // Reset internal state when modal opens
   useEffect(() => {
     if (modal.isOpen) {
+      setIsSubmitting(false);
       setIsCustom(modal.forcedCustom || false);
       setSearchTerm('');
       setActiveTab('Item');
@@ -645,7 +647,7 @@ export function Modal({ modal, closeModal }) {
                       <select 
                         disabled={!modal.forcedCustom && !isCustom}
                         value={localData.category} 
-                        onChange={(e) => setLocalData({ ...localData, category: e.target.value, subtype: '' })}
+                        onChange={(e) => setLocalData({ ...localData, category: e.target.value, subtype: '', tpt: e.target.value === 'Arma de Fogo' ? (localData.tpt || 1) : 1 })}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-[10px] outline-none font-black uppercase disabled:opacity-20"
                       >
                         <option value="">Categoria Arma...</option>
@@ -694,7 +696,7 @@ export function Modal({ modal, closeModal }) {
                           <div className="space-y-1">
                             <span className="text-[8px] font-black text-zinc-500 uppercase">TPT</span>
                             <input
-                              disabled={!modal.forcedCustom && !isCustom}
+                              disabled={(!modal.forcedCustom && !isCustom) || localData.category !== 'Arma de Fogo'}
                               type="number" value={localData.tpt} onChange={(e) => setLocalData({ ...localData, tpt: parseInt(e.target.value) || 1 })} className="w-full bg-slate-800 border border-white/10 rounded px-2 py-1.5 text-[9px] outline-none text-white disabled:opacity-30" />
                           </div>
                           <div className="space-y-1">
@@ -835,7 +837,10 @@ export function Modal({ modal, closeModal }) {
                 Cancelar
               </button>
               <button
+                disabled={isSubmitting}
                 onClick={() => {
+                  if (isSubmitting) return;
+                  setIsSubmitting(true);
                   if (modal.fields) {
                     if (modal.npcFields) {
                       // Filter only NPC fields to avoid Supabase errors with unknown columns
@@ -886,12 +891,12 @@ export function Modal({ modal, closeModal }) {
                     modal.onConfirm(modal.inputValue);
                   }
                 }}
-                className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer ${modal.type === 'danger'
+                className={`flex-1 px-6 py-3 rounded-full font-black text-[10px] uppercase shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${modal.type === 'danger'
                   ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/20'
                   : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
                   }`}
               >
-                Confirmar
+                {isSubmitting ? 'Confirmando...' : 'Confirmar'}
               </button>
             </>
           )}

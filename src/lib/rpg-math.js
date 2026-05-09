@@ -82,12 +82,12 @@ export function calculateAcerto(char) {
 
   return Math.round(10 + Math.pow(
     (
-      (sPrecision * 0.5) +
+      (sPrecision * 0.7) +
       sAgility +
-      (sAptitude * 0.25) +
-      (sStrength * 0.15)
+      (sAptitude * 0.35) +
+      (sStrength * 0.35)
     ) * 3,
-    0.82
+    0.72
   ));
 }
 
@@ -100,12 +100,12 @@ export function calculateDesvio(char) {
 
   return Math.round(8 + Math.pow(
     (
-      (sAgility * 1.2) +
-      (sConcentration * 0.7) +
+      (sAgility * 0.95) +
+      (sConcentration * 0.55) +
       (sResistance * 0.2) +
       (sAptitude * 0.3)
-    ) * 3,
-    0.82
+    ) * 2,
+    0.72
   ));
 }
 
@@ -128,27 +128,42 @@ export function calculateBloqueio(char) {
 
 export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
   const p = parseFloat(perc) || 0;
-  let power = 0.45;
-  if (p < 8.5) {
-    power = 0.5;
-  } else if (p > 20) {
-    power = 0.4;
-  } else if (p > 11.5) {
-    power = 0.55;
-  }
   
-  // Base sum to reach 20 when perc is 11.11... (which happens when all 9 stats are 3)
-  // Input: p = 11.1111...
-  // Requirement: result = 20
-  // Formula: X + Math.pow(p, power) = 20
-  // With p=11.11 and power=0.45: Math.pow(11.11, 0.45) ≈ 2.97
-  // So X ≈ 20 - 2.97 ≈ 17.03
-  // Since user said it "currently starts at 13 but should start at 20", 
-  // and we want it to result in 1d20 base (which is 20 in this context of flat values).
-  let baseValue = Math.round(17.03 + Math.pow(p, power));
+  // Define tiers similar to "Imposto de Renda" (Progressive Taxation)
+  // Each tier has a limit and a power (exponent)
+  const tiers = [
+    { limit: 8.5, power: 0.5 },
+    { limit: 11.5, power: 0.45 },
+    { limit: 20, power: 0.55 },
+    { limit: Infinity, power: 0.4 }
+  ];
+
+  let accumulatedValue = 0;
+  let remainingP = p;
+  let lastLimit = 0;
+
+  for (const tier of tiers) {
+    const range = tier.limit - lastLimit;
+    const amountInTier = Math.min(remainingP, range);
+    
+    if (amountInTier > 0) {
+      accumulatedValue += Math.pow(amountInTier, tier.power);
+      remainingP -= amountInTier;
+      lastLimit = tier.limit;
+    }
+    
+    if (remainingP <= 0) break;
+  }
+
+  // Base constant adjusted to keep the starting point around 20 for typical early-game stats
+  // With p=11.11, the sum was 20. Let's see what we get now:
+  // Tier 1 (8.5): Math.pow(8.5, 0.5) ≈ 2.915
+  // Tier 2 (11.11 - 8.5 = 2.61): Math.pow(2.61, 0.45) ≈ 1.543
+  // Total ≈ 4.458
+  // 20 - 4.458 ≈ 15.542
+  let baseValue = Math.round(15.54 + accumulatedValue);
 
   // Special Case: Convencimento buff from Lireou
-  // If this is called for Convencimento (Carisma), we check for the bloodline.
   if (char && isCharisma) {
     const lineageName = char.bloodline || char.lineage;
     if (lineageName === 'Lireou') {
@@ -184,12 +199,24 @@ export function calculateDerivedStats(char) {
   
   // Posture: Complex formula matches CombatManager and is used in the sheet
   const isComplex = !char.is_npc || char.type === 'Complex';
-  const posture = isComplex 
-    ? Math.floor((2 * (resistanceWithBuffs * 1.2) + (aptitudeWithBuffs * 3.4) + (Number(char.concentration || 0) * 2)) * 2.5)
-    : Math.floor(((strengthWithBuffs + resistanceWithBuffs * 7) / 2) * 2.5);
+  const posture = Math.floor((resistanceWithBuffs * 2.3) + (aptitudeWithBuffs * 4.2) + (Number(char.concentration || 0) * 2));
   
   // Life: Strength + (Resistance * 7)
-  let life = strengthWithBuffs + (resistanceWithBuffs * 7) + (Number(char.concentration || 0) * 3);
+  let life = strengthWithBuffs * 1.5 + (resistanceWithBuffs * 8.5);
+
+  // Focus: Based on Breathing Style Skill 0
+  let maxFocus = 0;
+  const learnedSkills = Array.isArray(char.breathing_skills) ? char.breathing_skills : [];
+  const bLvl = Number(char.breathing_lvl) || 0;
+
+  if (learnedSkills.includes('skill_0')) {
+    if (char.breathing_style === 'Tempestade') {
+      maxFocus = 75 + (Math.max(0, bLvl - 1) * 5);
+    } else {
+      // Default fallback if focus unlocked but style logic missing
+      maxFocus = 100;
+    }
+  }
 
   // Apply Max Life Modifiers from effects
   const effects = Array.isArray(char.effects) ? char.effects : [];
@@ -215,7 +242,9 @@ export function calculateDerivedStats(char) {
     concentrationPerc: calcPerc(Number(char.concentration) || 0),
     intelligencePerc: calcPerc(intelligenceWithBuffs),
     charismaPerc: calcPerc(charismaWithBuffs),
-    luckPerc: calcPerc(luckWithBuffs)
+    luckPerc: calcPerc(luckWithBuffs),
+    maxFocus,
+    currentFocus: Number(char.current_focus) || 0
   };
 
   if (char.inventory) {
@@ -488,6 +517,38 @@ export function rollDice(expression, charContext = null) {
     }
     // Final rounding if modified
     if (total % 1 !== 0) total = parseFloat(total.toFixed(1));
+  }
+
+  // Apply Focus Buff to Damage
+  if (diceType === 'dano') {
+    const focusBuff = 1 + (Math.floor((charContext.current_focus || 0) / 5) / 100);
+    total *= focusBuff;
+    
+    // Skill 2a: Furacão Elétrico (+25% + 3% per Lvl after 1)
+    const effects = Array.isArray(charContext.effects) ? charContext.effects : [];
+    const has2a = Array.isArray(charContext.breathing_skills) && charContext.breathing_skills.includes('skill_2a');
+    const isElectrified = effects.some(e => e.name === 'Eletrificação' || e.name === 'Eletrificação Avançada');
+    if (has2a && isElectrified) {
+        const bLvl = charContext.breathing_lvl || 1;
+        const extraDmg = 0.25 + (Math.max(0, bLvl - 1) * 0.03);
+        total *= (1 + extraDmg);
+    }
+  }
+
+  // Handle Focus Skills Slash Commands
+  // Format: /focus-skill-ID (e.g., /focus-skill-skill_1a)
+  const focusSkillMatch = expression.match(/\/focus-skill-([a-zA-Z0-9_]+)/i);
+  if (focusSkillMatch && charContext) {
+    const skillId = focusSkillMatch[1];
+    const { BREATHING_TREES } = require('../constants/gameData');
+    const tree = BREATHING_TREES[charContext.breathing_style];
+    const skill = tree?.skills.find(s => s.id === skillId);
+
+    if (skill && skill.effect) {
+      // Focus cost check is handled in CombatLog/UI usually, 
+      // but here we can add notes to the dice result
+      // The prompt says "immediately attack", so this might be called on top of a PAT roll
+    }
   }
 
   // Critical / Negative Critical logic

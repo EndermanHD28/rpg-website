@@ -115,6 +115,8 @@ export default function Home() {
     presence = 0,
     life = 0,
     posture = 0,
+    maxFocus = 0,
+    currentFocus = 0,
     luckPerc = 0,
     charismaPerc = 0,
     intelligencePerc = 0,
@@ -1006,10 +1008,10 @@ export default function Home() {
                   setActiveTab('sheet');
                 }} />
                 
-                {/* Respiração Tab - Only visible if player has a breathing style */}
-                {(viewingTarget === null || viewingTarget === user?.id) && character?.breathing_style && (
+                {/* Respiração Tab - Always visible if player has a breathing style */}
+                {allPlayers.find(p => p.id === user?.id)?.breathing_style && (
                   <NavButton 
-                    active={activeTab === 'breathing'} 
+                    active={activeTab === 'breathing' && (viewingTarget === null || viewingTarget === user?.id)} 
                     label="Respiração" 
                     disabled={!isActingAsMaster && blockedTabs.includes('breathing')}
                     isBlocked={!isActingAsMaster && blockedTabs.includes('breathing')}
@@ -1020,15 +1022,27 @@ export default function Home() {
                         return;
                       }
                       playSoundEffect('tab_change');
+                      
+                      // CRITICAL: Force refresh of character data for current user
+                      const myChar = allPlayers.find(p => p.id === user?.id);
+                      if (myChar) {
+                        setCharacter(myChar);
+                        if (!isEditing) setTempChar(myChar);
+                      }
+                      
+                      setViewingTarget(null);
                       setActiveTab('breathing');
                     }} 
                   />
+                )}
+                {/* Highlight Breathing Tab when Master is viewing someone else's tree */}
+                {isActingAsMaster && viewingTarget && viewingTarget !== user?.id && activeTab === 'breathing' && (
+                  null
                 )}
               </div>
             </div>
 
             <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent mx-4" />
-
             {/* CATEGORIA FICHAS */}
             <div>
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Fichas</p>
@@ -1058,25 +1072,36 @@ export default function Home() {
                         const canView = isActingAsMaster || isApproved;
 
                         return (
-                          <NavButton
-                            key={p.id}
-                            active={activeTab === 'sheet' && viewingTarget === p.id}
-                            label={p.char_name || p.discord_username}
-                            disabled={!canView}
-                            isUnapproved={!isApproved && !isActingAsMaster}
-                            onClick={() => {
-                              if (!canView) {
-                                playSoundEffect('error');
-                                showToast("Ficha ainda não aprovada pelo mestre.");
-                                return;
-                              }
-                              playSoundEffect('tab_change');
-                              setCharacter(p);
-                              if (!isEditing) setTempChar(p);
-                              setViewingTarget(p.id);
-                              setActiveTab('sheet');
-                            }}
-                          />
+                          <div key={p.id} className="flex flex-col gap-1">
+                            <NavButton
+                              active={activeTab === 'sheet' && viewingTarget === p.id}
+                              label={p.char_name || p.discord_username}
+                              disabled={!canView}
+                              isUnapproved={!isApproved && !isActingAsMaster}
+                              onClick={() => {
+                                if (!canView) {
+                                  playSoundEffect('error');
+                                  showToast("Ficha ainda não aprovada pelo mestre.");
+                                  return;
+                                }
+                                playSoundEffect('tab_change');
+                                setCharacter(p);
+                                if (!isEditing) setTempChar(p);
+                                setViewingTarget(p.id);
+                                setActiveTab('sheet');
+                              }}
+                            />
+                            {/* Dynamic Breathing Tab for this player */}
+                            {isActingAsMaster && viewingTarget === p.id && activeTab === 'breathing' && (
+                              <div className="ml-4 border-l-2 border-cyan-600/30 pl-2">
+                                <NavButton
+                                  active={true}
+                                  label={`(Resp.) ${p.char_name || p.discord_username}`}
+                                  onClick={() => {}}
+                                />
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
 
@@ -1274,13 +1299,6 @@ export default function Home() {
                 setActiveTab('sheet');
               }} className="mt-8 px-8 py-3 bg-white text-black font-black uppercase text-xs rounded-full hover:bg-red-600 hover:text-white transition-all">Ver minha Ficha</button>
             </div>
-            {isActingAsMaster && isNPC && (
-              <div className="absolute top-8 left-8 z-20">
-                <div className="bg-red-600/20 border border-red-500/50 px-4 py-1 rounded-full">
-                  <span className="text-[10px] font-black text-red-500 uppercase italic tracking-widest">Editor de NPC</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -1313,26 +1331,40 @@ export default function Home() {
                       </>
                     )}
 
-                    {isActingAsMaster && !isEditing && !activeRequest && viewingTarget && (
-                      <button
-                        onClick={async () => {
-                          playSoundEffect('random_button');
-                          const newStatus = !character.approved_once;
-                          const { error } = await supabase.from('characters')
-                            .update({ approved_once: newStatus })
-                            .eq('id', viewingTarget);
-                          
-                          if (!error) {
-                            showToast(newStatus ? "Ficha Aprovada!" : "Ficha Desaprovada!");
-                            setCharacter(prev => ({ ...prev, approved_once: newStatus }));
-                          } else {
-                            showToast("Erro ao atualizar aprovação.");
-                          }
-                        }}
-                        className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${character?.approved_once ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}
-                      >
-                        {character?.approved_once ? "Desaprovar" : "Aprovar"}
-                      </button>
+                    {isActingAsMaster && !isEditing && !activeRequest && viewingTarget && !isNPC && (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={async () => {
+                            playSoundEffect('random_button');
+                            const newStatus = !character.approved_once;
+                            const { error } = await supabase.from('characters')
+                              .update({ approved_once: newStatus })
+                              .eq('id', viewingTarget);
+                            
+                            if (!error) {
+                              showToast(newStatus ? "Ficha Aprovada!" : "Ficha Desaprovada!");
+                              setCharacter(prev => ({ ...prev, approved_once: newStatus }));
+                            } else {
+                              showToast("Erro ao atualizar aprovação.");
+                            }
+                          }}
+                          className={`w-44 text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl ${character?.approved_once ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}
+                        >
+                          {character?.approved_once ? "Desaprovar" : "Aprovar"}
+                        </button>
+
+                        {character?.breathing_style && (
+                          <button
+                            onClick={() => {
+                              playSoundEffect('tab_change');
+                              setActiveTab('breathing');
+                            }}
+                            className="w-44 bg-cyan-600 text-white text-[10px] font-black px-6 py-2 rounded-full uppercase transition-all hover:scale-105 shadow-xl border-b-4 border-cyan-800"
+                          >
+                            Editar Resp.
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -1352,7 +1384,13 @@ export default function Home() {
                       </h2>
                     )}
                     <p className="text-zinc-500 text-[10px] font-bold uppercase mt-1 italic leading-none">
-                      ID: {isViewingOthers ? (character?.npc_id || character?.discord_username) : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}
+                      {isActingAsMaster ? (
+                        <>ID: {isViewingOthers ? (character?.npc_id || character?.discord_username) : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}</>
+                      ) : (
+                        !isNPC && (
+                          <>Discord: {isViewingOthers ? (character?.npc_id || character?.discord_username) : user?.user_metadata?.full_name || user?.user_metadata?.preferred_username}</>
+                        )
+                      )}
                     </p>
                   </div>
 
@@ -1371,6 +1409,40 @@ export default function Home() {
                     <StatBox label="PRESENÇA" value={presence} color="border-blue-500" textColor="text-blue-500" />
                     <StatBox label="POSTURA" value={posture.toFixed(0)} color="border-green-500" textColor="text-green-500" />
                   </div>
+
+                    {/* FOCUS BAR (Skill 0) */}
+                    {maxFocus > 0 && (
+                      <div className="mt-8 pt-8 border-t border-zinc-800">
+                        <div className="flex justify-between items-end mb-2">
+                          <div className="flex flex-col">
+                            <span className="text-cyan-500 font-black italic text-[11px] uppercase tracking-widest flex items-center gap-2">
+                              Foco de Respiração
+                              {isEditing && (
+                                <input
+                                  type="number"
+                                  value={tempChar.current_focus ?? 0}
+                                  onChange={(e) => setTempChar({ ...tempChar, current_focus: parseInt(e.target.value) || 0 })}
+                                  className="w-16 bg-black border border-cyan-500/30 rounded px-2 py-0.5 text-xs text-white font-mono outline-none"
+                                />
+                              )}
+                            </span>
+                            <span className="text-zinc-600 text-[8px] font-bold uppercase mt-0.5">Influência no Dano: +{Math.floor(currentFocus / 5)}%</span>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-black italic text-cyan-400 leading-none">{currentFocus}</span>
+                            <span className="text-[10px] font-black text-cyan-900 uppercase">/ {maxFocus}</span>
+                          </div>
+                        </div>
+                        <div className="h-3 bg-black/60 rounded-full border border-white/5 overflow-hidden shadow-inner relative group">
+                          <div 
+                            className="h-full bg-gradient-to-r from-cyan-700 via-cyan-500 to-cyan-300 transition-all duration-1000 ease-out relative shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                            style={{ width: `${Math.min(100, (currentFocus / maxFocus) * 100)}%` }}
+                          >
+                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                 </div>
                 <Inventory
                   inventory={activeChar?.inventory || []}
@@ -1657,6 +1729,9 @@ export default function Home() {
               isMaster={isActingAsMaster}
               showToast={showToast}
               playSound={playSoundEffect}
+              onReturn={() => {
+                setActiveTab('sheet');
+              }}
             />
           </div>
         )}
@@ -1727,6 +1802,7 @@ export default function Home() {
                           category: d.category,
                           subtype: d.subtype,
                           hands: d.hands,
+                          tpt: d.tpt || 1,
                           damage_multi: d.damage_multi,
                           damageType: d.damageType,
                           description: d.description
@@ -1775,6 +1851,7 @@ export default function Home() {
                             category: itemData.category || 'Utilitário',
                             subtype: itemData.subtype || null,
                             hands: itemData.hands || 'Uma Mão',
+                            tpt: itemData.tpt || 1,
                             damage_multi: itemData.damage_multi !== undefined ? itemData.damage_multi : 1.0,
                             damageType: itemData.damageType || null,
                             description: itemData.description || null,
@@ -1839,6 +1916,7 @@ export default function Home() {
                                     category: d.category,
                                     subtype: d.subtype,
                                     hands: d.hands,
+                                    tpt: d.tpt || 1,
                                     damage_multi: d.damage_multi,
                                     damageType: d.damageType,
                                     description: d.description

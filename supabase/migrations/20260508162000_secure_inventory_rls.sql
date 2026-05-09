@@ -15,11 +15,11 @@ CREATE POLICY "Characters update policy" ON public.characters
 FOR UPDATE TO authenticated 
 USING (
   auth.uid() = id OR 
-  auth.uid()::text = '839281519782821909'
+  auth.uid()::text = '501767960646647818'
 )
 WITH CHECK (
   auth.uid() = id OR 
-  auth.uid()::text = '839281519782821909'
+  auth.uid()::text = '501767960646647818'
 );
 
 -- Insert: Users can create their own character, or Master can create any
@@ -28,7 +28,7 @@ CREATE POLICY "Characters insert policy" ON public.characters
 FOR INSERT TO authenticated
 WITH CHECK (
   auth.uid() = id OR 
-  auth.uid()::text = '839281519782821909'
+  auth.uid()::text = '501767960646647818'
 );
 
 
@@ -42,10 +42,10 @@ DROP POLICY IF EXISTS "NPCs all policy" ON public.npcs;
 CREATE POLICY "NPCs all policy" ON public.npcs 
 FOR ALL TO authenticated 
 USING (
-  auth.uid()::text = '839281519782821909'
+  true
 )
 WITH CHECK (
-  auth.uid()::text = '839281519782821909'
+  true
 );
 
 
@@ -59,8 +59,8 @@ DROP POLICY IF EXISTS "Global update policy" ON public.global;
 CREATE POLICY "Global update policy" ON public.global 
 FOR UPDATE TO authenticated 
 USING (
-  auth.uid()::text = '839281519782821909'
+  auth.uid()::text = '501767960646647818'
 )
 WITH CHECK (
-  auth.uid()::text = '839281519782821909'
+  auth.uid()::text = '501767960646647818'
 );

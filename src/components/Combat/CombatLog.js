@@ -43,6 +43,7 @@ export default function CombatLog({
 
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showDiceQuickMenu, setShowDiceQuickMenu] = useState(false);
+  const [showBreathingMenu, setShowBreathingMenu] = useState(false);
   const [showLootSelector, setShowLootSelector] = useState(false);
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
@@ -61,6 +62,8 @@ export default function CombatLog({
   const [editingPosture, setEditingPosture] = useState(null);
   const [hpInput, setHpInput] = useState("");
   const [postureInput, setPostureInput] = useState("");
+
+  const [breathingRollInputs, setBreathingRollInputs] = useState({});
 
   const handleHPSubmit = async (player, isShiftPressed = false) => {
     try {
@@ -357,6 +360,131 @@ export default function CombatLog({
     setShowLootSelector(false);
   };
 
+  const handleBreathingRoll = async (msgId) => {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return;
+
+    const parts = msg.content.split('|');
+    // BREATHING_MOVE|skillId|skillName|cost|diceExpr|effectDesc|rollResult|rollerName|targetId
+    const skillId = parts[1];
+    const diceExpr = parts[4];
+    const userDice = breathingRollInputs[msgId] || diceExpr;
+    
+    const rollerChar = allPlayers?.find(p => p.id === user?.id);
+    if (!rollerChar) return;
+
+    // Perform the roll
+    const result = rollDice(userDice, rollerChar);
+    if (!result) return;
+
+    // Update message content with result
+    const newParts = [...parts];
+    newParts[6] = result.total.toString();
+    newParts[7] = rollerChar.char_name;
+    
+    const newContent = newParts.join('|');
+    await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
+
+    // --- BREATHING SKILL POST-ROLL EFFECTS ---
+    if (skillId === 'skill_2b' && result.total >= 12) {
+        const { maxFocus } = calculateDerivedStats(rollerChar);
+        
+        // Electrification Effect
+        const electrification = {
+            name: "Eletrificação",
+            emoji: "⚡",
+            description: "Focus ao máximo e buffs de Tempestade.",
+            duration: 3,
+            modifiers: { damage: 1.25, damageTaken: 0.85 }
+        };
+
+        const currentEffects = Array.isArray(rollerChar.effects) ? rollerChar.effects : [];
+        const newEffects = [...currentEffects.filter(e => e.name !== "Eletrificação"), electrification];
+
+        await supabase.from('characters').update({
+            current_focus: maxFocus,
+            effects: newEffects
+        }).eq('id', rollerChar.id);
+
+        showToast("Despertar Corrosivo Ativado!");
+    }
+  };
+
+  const handleFocusDiceRoll = async (rollerChar, diceExpr) => {
+    const result = rollDice(diceExpr, rollerChar);
+    if (!result) return;
+
+    const { maxFocus } = calculateDerivedStats(rollerChar);
+    const currentFocusNow = rollerChar.current_focus || 0;
+    const finalFocus = Math.min(maxFocus, (currentFocusNow + result.total));
+    
+    const table = rollerChar.is_npc ? 'npcs' : 'characters';
+    const dbId = rollerChar.is_npc ? rollerChar.dbId : rollerChar.id;
+    await supabase.from(table).update({ current_focus: finalFocus }).eq('id', dbId);
+    
+    await finishDiceRoll(result, diceExpr, rollerChar.char_name, rollerChar.image_url);
+    showToast(`Ganhou ${result.total} de Foco!`);
+    setShowDiceQuickMenu(false);
+  };
+
+  const sendBreathingMove = async (skill) => {
+    let rollerChar = allPlayers?.find(p => p.id === user?.id);
+    
+    if (isActingAsMaster && selectedCombatantId) {
+        const selected = combatants.find(p => p.id === selectedCombatantId);
+        if (selected) rollerChar = selected;
+    }
+
+    if (!rollerChar) return;
+
+    const cost = parseInt(skill.effect.match(/(\d+)\s*de\s*Foco/i)?.[1] || 0);
+    if ((rollerChar.current_focus || 0) < cost) {
+      showToast("Foco insuficiente!");
+      return;
+    }
+
+    // Dice Expression
+    let diceExpr = "1d20";
+    const bLvl = rollerChar?.breathing_lvl || 0;
+    const bLvlBonus = Math.max(0, bLvl - 1);
+
+    if (skill.id === 'skill_2b') diceExpr = "1d20";
+    else if (skill.id === 'skill_1a') diceExpr = `1d${calculateAcerto(rollerChar) + (bLvlBonus * 2)}`;
+    else if (skill.id === 'skill_3a') diceExpr = `1d${calculateAcerto(rollerChar) + 8 + (bLvlBonus * 3)}`;
+    else if (skill.id === 'skill_2c') diceExpr = `1d${calculateAcerto(rollerChar)}`;
+
+    const needsTarget = ['skill_1a', 'skill_2c', 'skill_3a', 'skill_2d'].includes(skill.id);
+    
+    if (needsTarget) {
+      const diceResult = rollDice(diceExpr, rollerChar);
+      setTargetingRoll({ 
+        input: diceExpr, 
+        diceResult, 
+        playerName: rollerChar.char_name || rollerChar.name, 
+        playerImage: rollerChar.image_url,
+        isBreathingMove: true,
+        skillId: skill.id,
+        skillName: skill.name,
+        focusCost: cost,
+        effectDesc: skill.effect
+      });
+    } else {
+        // NON-TARGETED ACTIVATABLES (e.g. 2b)
+        // Deduct Focus immediately
+        const newFocus = rollerChar.current_focus - cost;
+        const table = rollerChar.is_npc ? 'npcs' : 'characters';
+        const dbId = rollerChar.is_npc ? rollerChar.dbId : rollerChar.id;
+        await supabase.from(table).update({ current_focus: newFocus }).eq('id', dbId);
+
+        // Send layout card
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `BREATHING_MOVE|${skill.id}|${skill.name}|${cost}|${diceExpr}|${skill.effect}|0|${rollerChar.char_name || rollerChar.name}|none`,
+          is_system: true
+        });
+    }
+  };
+
   const groupMessages = (msgs) => {
     const groups = [];
     if (!msgs || msgs.length === 0) return groups;
@@ -596,12 +724,21 @@ export default function CombatLog({
   const toggleGifPicker = () => {
     setShowGifPicker(!showGifPicker);
     setShowDiceQuickMenu(false);
+    setShowBreathingMenu(false);
     setShowLootSelector(false);
   };
 
   const toggleDiceQuickMenu = () => {
     setShowDiceQuickMenu(!showDiceQuickMenu);
     setShowGifPicker(false);
+    setShowBreathingMenu(false);
+    setShowLootSelector(false);
+  };
+
+  const toggleBreathingMenu = () => {
+    setShowBreathingMenu(!showBreathingMenu);
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
     setShowLootSelector(false);
   };
 
@@ -609,6 +746,7 @@ export default function CombatLog({
     setShowLootSelector(!showLootSelector);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
+    setShowBreathingMenu(false);
   };
 
   const handleImageUpload = async (e) => {
@@ -956,23 +1094,83 @@ export default function CombatLog({
                 <div className="shrink-0 mt-1">
                   {avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10" alt="" /> : <div className="w-11 h-11 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] opacity-40">{group.player_name === 'SISTEMA' ? '⚙️' : '👤'}</div>}
                 </div>
-                <div className="flex-1 flex flex-col gap-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className={`font-black italic uppercase text-[13px] tracking-tight shrink-0 ${group.player_name === 'SISTEMA' ? 'text-cyan-500' : 'text-red-600'}`}>{group.player_name}</span>
-                    <span className="text-[10px] font-black text-zinc-500 uppercase font-mono">
-                      {new Date(group.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      {group.is_pinned && <span className="text-yellow-500 ml-2">(Fixada)</span>}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-1">
-                    {group.messages.map((m, mi) => {
-                      if (m.content.startsWith('DICE_ROLL|')) {
+                  <div className="flex-1 flex flex-col gap-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className={`font-black italic uppercase text-[13px] tracking-tight shrink-0 ${group.player_name === 'SISTEMA' ? 'text-cyan-500' : 'text-red-600'}`}>{group.player_name}</span>
+                      <span className="text-[10px] font-black text-zinc-500 uppercase font-mono">
+                        {new Date(group.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        {group.is_pinned && <span className="text-yellow-500 ml-2">(Fixada)</span>}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-2 mt-1">
+                      {group.messages.map((m, mi) => {
+                        if (m.content.startsWith('BREATHING_MOVE|')) {
+                          const [, skillId, skillName, cost, diceExpr, effectDesc, rollResult, rollerName, targetId] = m.content.split('|');
+                          return (
+                            <div key={m.id || `${i}-${mi}`} className="bg-cyan-950/20 border border-cyan-500/30 rounded-2xl p-6 my-2 shadow-[0_0_30px_rgba(6,182,212,0.1)] relative overflow-hidden group/breathing group/message">
+                              {isMaster && (
+                                <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                  <button onClick={() => handlePinMessage(m)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></button>
+                                  <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                                </div>
+                              )}
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-[50px] -z-10" />
+                              
+                              <div className="flex items-center gap-4 mb-4">
+                                <div className="w-12 h-12 shrink-0 bg-cyan-500/20 border border-cyan-500/40 rounded-xl flex items-center justify-center shadow-xl overflow-hidden">
+                                  <img src={`/breathing_styles/icon_breathing_${sender?.breathing_style?.toLowerCase() || 'tempestade'}.png`} alt="" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                  <div className="bg-cyan-500 text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] mb-1 skew-x-[-12deg] w-fit">HABILIDADE_DE_RESPIRAÇÃO</div>
+                                  <h4 className="text-cyan-400 font-black italic uppercase text-lg tracking-tighter leading-none">{skillName}</h4>
+                                </div>
+                                <div className="ml-auto flex flex-col items-end">
+                                  <span className="text-[10px] font-black text-cyan-900 uppercase tracking-widest">Custo</span>
+                                  <span className="text-xl font-black text-cyan-400 font-mono leading-none">{cost} <span className="text-[10px]">FOCO</span></span>
+                                </div>
+                              </div>
+
+                              <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-4">
+                                <p className="text-zinc-300 text-xs leading-relaxed italic" dangerouslySetInnerHTML={{ __html: effectDesc.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400">$1</strong>') }} />
+                              </div>
+
+                              {skillId === 'skill_2b' && rollResult === '0' && (
+                                  <div className="flex flex-col items-center gap-4 py-4 bg-cyan-500/5 border border-cyan-500/10 rounded-2xl mb-4">
+                                      <div className="w-full flex items-center justify-center gap-3 px-6">
+                                          <input
+                                              value={breathingRollInputs[m.id] || ""}
+                                              onChange={(e) => setBreathingRollInputs(prev => ({ ...prev, [m.id]: e.target.value }))}
+                                              onKeyDown={(e) => e.key === 'Enter' && handleBreathingRoll(m.id)}
+                                              placeholder={diceExpr}
+                                              className="bg-black/60 border border-cyan-500/20 rounded-xl px-4 py-2 text-center text-lg font-black text-cyan-400 outline-none focus:border-cyan-500/50 transition-all font-mono w-32"
+                                          />
+                                          <button
+                                              onClick={() => handleBreathingRoll(m.id)}
+                                              className="px-6 py-2 bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-cyan-500 hover:text-black transition-all whitespace-nowrap"
+                                          >
+                                              Rolar para Ativar
+                                          </button>
+                                      </div>
+                                  </div>
+                              )}
+
+                              <div className="flex items-center gap-3">
+                                <div className="h-[1px] flex-1 bg-gradient-to-r from-cyan-500/50 to-transparent" />
+                                <span className="text-[9px] font-black text-cyan-500/60 uppercase tracking-[0.2em]">
+                                    {rollResult !== '0' ? `Resultado: ${rollResult} • ` : ""}Executado por @{rollerName || group.player_name}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (m.content.startsWith('DICE_ROLL|')) {
                         const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetInfo = ""] = m.content.split('|');
                         const [targetName, effectNote = ""] = targetInfo.split('|');
                         const styles = {
                           combat: { bg: "bg-red-500/5", border: "border-red-500/20", accent: "text-red-500" },
                           secondary: { bg: "bg-blue-500/5", border: "border-blue-500/20", accent: "text-blue-400" },
                           luck: { bg: "bg-yellow-500/5", border: "border-yellow-500/20", accent: "text-yellow-500" },
+                          breathing: { bg: "bg-cyan-500/5", border: "border-cyan-500/20", accent: "text-cyan-400" },
                           normal: { bg: "bg-zinc-900/80", border: "border-white/5", accent: "text-zinc-500" }
                         };
                         const style = styles[category] || styles.normal;
@@ -992,7 +1190,7 @@ export default function CombatLog({
                                   className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
                                   title="Deletar mensagem"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                               </div>
                             )}
@@ -1116,7 +1314,7 @@ export default function CombatLog({
                                   className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
                                   title="Deletar mensagem"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                               </div>
                             )}
@@ -1234,7 +1432,7 @@ export default function CombatLog({
                                   className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"
                                   title="Deletar mensagem"
                                 >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                               </div>
                             )}
@@ -1408,12 +1606,42 @@ export default function CombatLog({
               </div>
             )}
             {showDiceQuickMenu && (
-              <div className="absolute bottom-full right-0 mb-4 w-64 bg-zinc-900 border border-white/10 rounded-[20px] shadow-2xl z-50 backdrop-blur-md overflow-hidden flex flex-col p-4 animate-in slide-in-from-bottom-2 duration-200">
+              <div className="absolute bottom-full right-0 mb-4 w-72 bg-zinc-900 border border-white/10 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 backdrop-blur-md overflow-hidden flex flex-col p-4 animate-in slide-in-from-bottom-2 duration-200">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-[10px] font-black text-red-500 uppercase tracking-widest">Rolagem Rápida</h3>
                   <button onClick={() => setShowDiceQuickMenu(false)} className="text-zinc-500 hover:text-white text-xl">×</button>
                 </div>
                 <div className="space-y-4">
+                  {(() => {
+                      let rollerChar = allPlayers.find(p => p.id === user?.id);
+                      if (isActingAsMaster && selectedCombatantId) {
+                        const selected = combatants.find(p => p.id === selectedCombatantId);
+                        if (selected) rollerChar = selected;
+                      }
+
+                      const bLvl = rollerChar?.breathing_lvl || 1;
+                      const bLvlBonus = Math.max(0, bLvl - 1);
+                      if (rollerChar?.breathing_skills?.includes('skill_1b') && rollerChar.breathing_style === 'Tempestade') {
+                          const diceExpr = `1d10+${15 + (bLvlBonus * 3)}`;
+                          return (
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-[8px] font-black text-cyan-500 uppercase tracking-tighter ml-1">Dado de Foco</label>
+                                <div className="flex gap-2">
+                                    <div className="flex-1 bg-black/40 border border-cyan-500/20 rounded-lg px-3 py-1.5 text-[10px] text-cyan-400 font-mono flex items-center justify-center">
+                                        {diceExpr}
+                                    </div>
+                                    <button
+                                        onClick={() => handleFocusDiceRoll(rollerChar, diceExpr)}
+                                        className="px-6 py-2 bg-cyan-600/10 border border-cyan-500/30 text-cyan-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-cyan-600 hover:text-white transition-all shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+                                    >
+                                        Rolar
+                                    </button>
+                                </div>
+                            </div>
+                          );
+                      }
+                      return null;
+                  })()}
                   {[
                     { id: 'acerto', label: 'Dado de Acerto' },
                     { id: 'desvio', label: 'Dado de Desvio' },
@@ -1444,6 +1672,111 @@ export default function CombatLog({
             )}
             <input value={input} onChange={handleInputChange} onKeyDown={onKeyDown} placeholder="Interaja com o mundo..." disabled={!!targetingRoll} className="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-8 pr-24 py-5 text-white text-sm outline-none focus:border-red-600 transition-all shadow-2xl disabled:opacity-50" />
             <div className="absolute right-3 top-1/2 -translate-y-[60%] flex items-center gap-1">
+              {(() => {
+                let rollerChar = allPlayers.find(p => p.id === user?.id);
+                if (isActingAsMaster && selectedCombatantId) {
+                  const selected = combatants.find(p => p.id === selectedCombatantId);
+                  if (selected) rollerChar = selected;
+                }
+
+                const activeBreathing = rollerChar?.breathing_style;
+                const learnedSkills = Array.isArray(rollerChar?.breathing_skills) ? rollerChar.breathing_skills : [];
+                
+                if (!activeBreathing || learnedSkills.length === 0) return null;
+
+                const { BREATHING_TREES } = require('../../constants/gameData');
+                const tree = BREATHING_TREES[activeBreathing];
+                // Only skills that have a focus cost and are not passive (skill_1b is passive now)
+                const activatableSkills = tree?.skills.filter(s => 
+                  learnedSkills.includes(s.id) && 
+                  s.id !== 'skill_0' &&
+                  s.id !== 'skill_1b' &&
+                  s.effect.includes('Foco')
+                ) || [];
+
+                if (activatableSkills.length === 0) return null;
+
+                const iconPath = `/breathing_styles/icon_breathing_${activeBreathing.toLowerCase()}.png`;
+
+                return (
+                  <div className="relative flex items-center gap-1 mr-2 border-r border-white/10 pr-2">
+                    {showBreathingMenu && (
+                      <div className="absolute bottom-full right-0 mb-4 w-[450px] bg-zinc-950 border-2 border-cyan-500/30 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex justify-between items-center mb-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center overflow-hidden">
+                              <img src={iconPath} className="w-full h-full object-cover" alt="" />
+                            </div>
+                            <div>
+                              <h3 className="text-[11px] font-black text-cyan-400 uppercase tracking-[0.2em] leading-none mb-1">Formas de Respiração</h3>
+                              <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">{activeBreathing}</p>
+                            </div>
+                          </div>
+                          <button onClick={toggleBreathingMenu} className="text-zinc-600 hover:text-white transition-colors text-2xl leading-none">×</button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pr-1">
+                          {activatableSkills.map(skill => (
+                            <div key={skill.id} className="relative group/skill">
+                              <button
+                                onClick={() => { sendBreathingMove(skill); setShowBreathingMenu(false); }}
+                                className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all text-left relative overflow-hidden"
+                              >
+                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                                <div className="w-8 h-8 rounded-lg bg-black/40 border border-white/10 shrink-0 overflow-hidden relative z-10">
+                                    <img src={iconPath} className="w-full h-full object-cover group-hover/btn:scale-110 transition-transform" alt="" />
+                                </div>
+                                <div className="flex-1 min-w-0 relative z-10">
+                                  <p className="text-[10px] font-black text-zinc-200 group-hover/btn:text-cyan-400 uppercase tracking-tighter truncate leading-tight">{skill.name}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[7px] font-black text-cyan-600 uppercase tracking-widest">Ativar</span>
+                                    <div className="h-[1px] flex-1 bg-white/5" />
+                                    {skill.effect.match(/(\d+)\s*de\s*Foco/i) && (
+                                        <span className="text-[8px] font-black text-cyan-400/60 font-mono">{skill.effect.match(/(\d+)/)[0]} FOCO</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+
+                              {/* BREATHING TREE STYLE TOOLTIP */}
+                              <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-cyan-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
+                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-transparent rounded-lg"></div>
+                                <div className="relative z-[1000] flex flex-col gap-2">
+                                  <div>
+                                    <p className="text-cyan-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
+                                    <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
+                                  </div>
+                                  <div className="flex flex-col gap-3">
+                                    {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
+                                    <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
+                                      {(() => {
+                                        let text = skill.description || skill.effect || "";
+                                        let formatted = text.replace(/_/g, '\u00A0')
+                                                          .replace(/\n/g, '<br />')
+                                                          .replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400 font-black">$1</strong>');
+                                        return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <button 
+                      type="button" 
+                      onClick={toggleBreathingMenu} 
+                      className={`p-2 transition-all ${showBreathingMenu ? 'text-cyan-400 scale-110' : 'text-zinc-500 hover:text-cyan-400'}`} 
+                      title="Formas de Respiração"
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </button>
+                  </div>
+                );
+              })()}
               {isActingAsMaster && (
                 <button type="button" onClick={toggleLootSelector} className={`p-2 transition-all ${showLootSelector ? 'text-yellow-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Enviar Espólio">
                   <span className="text-xl">📦</span>

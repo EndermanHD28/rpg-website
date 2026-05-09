@@ -79,26 +79,81 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         }
       });
       if (damageMult !== 1.0) finalTotal = Math.round(finalTotal * damageMult);
+    }
 
-      // AUTOMATIC DAMAGE APPLICATION
-      // const { life: maxLife } = calculateDerivedStats(targetPlayer);
-      // const currentHP = targetPlayer.current_hp ?? maxLife;
-      // const newHP = Math.max(0, currentHP - finalTotal);
-      
-      // const table = targetPlayer.is_npc ? 'npcs' : 'characters';
-      // const dbId = targetPlayer.is_npc ? targetPlayer.dbId : targetPlayer.id;
-      
-      // await supabase.from(table).update({ current_hp: newHP }).eq('id', dbId);
+    // --- BREATHING SKILL POST-TARGET EFFECTS ---
+    if (targetingRoll?.isBreathingMove) {
+      const rollerChar = allPlayers.find(p => p.char_name === playerName) || allNPCs.find(n => n.name === playerName);
+      if (rollerChar) {
+        // 1. Deduct Focus only NOW
+        const skillId = targetingRoll.skillId;
+        const skillName = targetingRoll.skillName;
+        const cost = targetingRoll.focusCost || 0;
+        const effectDesc = targetingRoll.effectDesc || "";
+
+        const newFocus = (rollerChar.current_focus || 0) - cost;
+        const table = rollerChar.is_npc ? 'npcs' : 'characters';
+        const dbId = rollerChar.is_npc ? rollerChar.dbId : rollerChar.id;
+        await supabase.from(table).update({ current_focus: newFocus }).eq('id', dbId);
+
+        // 2. Send the Breathing Move layout card NOW
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `BREATHING_MOVE|${skillId}|${skillName}|${cost}|${targetingRoll.input}|${effectDesc}|0|${rollerChar.char_name || rollerChar.name}|none`,
+          is_system: true
+        });
+
+        // 3. Apply status effects if hit
+        if (diceResult.status !== 'Desastre') {
+          const targetChar = targetPlayer;
+          if (targetChar) {
+            const { EFFECTS } = await import('../constants/gameData');
+            const currentEffects = Array.isArray(targetChar.effects) ? targetChar.effects : [];
+            let effectToAdd = null;
+            
+            if (skillId === 'skill_1a') effectToAdd = { ...EFFECTS['eletrification'], key: 'eletrification', duration: 2 };
+            if (skillId === 'skill_3a') effectToAdd = { ...EFFECTS['advanced-eletrification'], key: 'advanced-eletrification', duration: 2 };
+            
+            if (effectToAdd) {
+              const newEffects = [...currentEffects, effectToAdd];
+              await supabase.from(targetChar.is_npc ? 'npcs' : 'characters').update({ effects: newEffects }).eq('id', targetChar.is_npc ? targetChar.dbId : targetChar.id);
+            }
+          }
+        }
+      }
     }
 
     const targetInfo = targetPlayer ? `|${targetPlayer.char_name}${effectNote}` : "";
-    const finalPlayerName = playerName;
 
     await supabase.from('messages').insert({
       player_name: "SISTEMA",
-      content: `DICE_ROLL|${finalPlayerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}${targetInfo}`,
+      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}${targetInfo}`,
       is_system: true
     });
+  };
+
+  const handleStartCombat = async () => {
+    if (!isActingAsMaster) return;
+    
+    // Apply Initial Focus to all active combatants who have skill_0
+    for (const p of currentCombatants) {
+      if (!p.is_enemy && Array.isArray(p.breathing_skills) && p.breathing_skills.includes('skill_0')) {
+        const table = p.is_npc ? 'npcs' : 'characters';
+        const dbId = p.is_npc ? p.dbId : p.id;
+        
+        // Tempestade skill_0 says: "Inicie cada combate com 25 de Foco."
+        let initialFocus = 0;
+        if (p.breathing_style === 'Tempestade') {
+          initialFocus = 25;
+        }
+
+        if (initialFocus > 0) {
+          await supabase.from(table).update({ current_focus: initialFocus }).eq('id', dbId);
+        }
+      }
+    }
+
+    await supabase.from('global').update({ is_combat_active: true, current_turn: 1 }).eq('id', 1);
   };
 
   const handleNextTurn = async () => {
@@ -198,6 +253,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
           setSelectedCombatantId={setSelectedCombatantId}
           finishDiceRoll={finishDiceRoll}
           handleNextTurn={handleNextTurn}
+          handleStartCombat={handleStartCombat}
         />
       </div>
     </div>

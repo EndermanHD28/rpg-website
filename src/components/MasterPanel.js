@@ -1,6 +1,6 @@
 /* src/components/MasterPanel.js */
 "use client";
-import { useState } from 'react'; // THIS WAS MISSING
+import { useState, useEffect } from 'react'; // THIS WAS MISSING
 import { supabase } from '../lib/supabase';
 import { useSound } from '../hooks/useSound';
 
@@ -20,12 +20,31 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
   ];
 
   // Fetch maintenance and blocked tabs status
-  useState(() => {
+  useEffect(() => {
     supabase.from('global').select('is_maintenance_active, allowed_discord_usernames, blocked_tabs').eq('id', 1).single()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("MasterPanel: Error fetching global settings:", error);
+          return;
+        }
         if (data) {
           setIsMaintenanceActive(!!data.is_maintenance_active);
-          setAllowedUsers(Array.isArray(data.allowed_discord_usernames) ? data.allowed_discord_usernames.join(", ") : "");
+          
+          const parseAllowedUsers = (val) => {
+            if (Array.isArray(val)) return val.join(", ");
+            if (typeof val === 'string') {
+              try {
+                // If it's a JSON string of an array (e.g. '["user1", "user2"]')
+                const parsed = JSON.parse(val);
+                if (Array.isArray(parsed)) return parsed.join(", ");
+              } catch (e) {
+                // Not a JSON string, or not an array JSON string
+              }
+              return val;
+            }
+            return "";
+          };
+          setAllowedUsers(parseAllowedUsers(data.allowed_discord_usernames));
           setBlockedTabs(Array.isArray(data.blocked_tabs) ? data.blocked_tabs : []);
         }
       });
@@ -225,8 +244,8 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
   const handleAddPS = (p) => {
     setModal({
       isOpen: true,
-      title: "Adicionar PS",
-      message: `Quanto PS deseja dar para @${p.discord_username}?`,
+      title: "Adicionar Ponto de Status",
+      message: `Quanto Ponto de Status deseja dar para @${p.discord_username}?`,
       input: true,
       inputValue: '',
       setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
@@ -236,7 +255,27 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
         await supabase.from('characters').update({
           stat_points_available: (p.stat_points_available || 0) + pts
         }).eq('id', p.id);
-        showToast(`${pts} PS Adicionados!`);
+        showToast(`${pts} Pontos de Status Adicionados!`);
+        closeModal();
+      }
+    });
+  };
+
+  const handleAddResp = (p) => {
+    setModal({
+      isOpen: true,
+      title: "Adicionar Ponto de Respiração",
+      message: `Quanto Ponto de Respiração deseja dar para @${p.discord_username}?`,
+      input: true,
+      inputValue: '',
+      setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
+      onConfirm: async (val) => {
+        const pts = parseInt(val);
+        if (isNaN(pts)) return;
+        await supabase.from('characters').update({
+          breathing_points: (p.breathing_points || 0) + pts
+        }).eq('id', p.id);
+        showToast(`${pts} Pontos de Respiração Adicionados!`);
         closeModal();
       }
     });
@@ -429,14 +468,15 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
                   <p className="text-[8px] text-zinc-600 font-bold uppercase mt-1">@{p.discord_username}</p>
                 </div>
                 <div className="bg-yellow-500/10 text-yellow-500 px-3 py-1 rounded border border-yellow-500/30 text-[10px] font-black font-mono">
-                  {p.stat_points_available || 0} PS
+                  {p.stat_points_available || 0} PS | {p.breathing_points || 0} PR
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => { playSound('tab_change'); onVisualize(p); }} className="text-[8px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/30 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white transition-all">VISUALIZAR</button>
-                <button onClick={() => { playSound('random_button'); handleAddPS(p); }} className="text-[8px] font-black bg-green-600/20 text-green-400 border border-green-600/30 py-2.5 rounded-xl hover:bg-green-600 hover:text-white transition-all">+ PS</button>
+                <button onClick={() => { playSound('random_button'); handleAddPS(p); }} className="text-[8px] font-black bg-green-600/20 text-green-400 border border-green-600/30 py-2.5 rounded-xl hover:bg-green-600 hover:text-white transition-all">+ Ponto de Status</button>
+                <button onClick={() => { playSound('random_button'); handleAddResp(p); }} className="text-[8px] font-black bg-cyan-600/20 text-cyan-400 border border-cyan-600/30 py-2.5 rounded-xl hover:bg-cyan-600 hover:text-white transition-all">+ Ponto de Resp.</button>
                 <button onClick={() => { playSound('random_button'); handleReset(p); }} className="text-[8px] font-black bg-zinc-800 text-zinc-500 py-2.5 rounded-xl hover:bg-zinc-700 hover:text-white transition-all">RESETAR</button>
-                <button onClick={() => { playSound('random_button'); handleDelete(p); }} className="text-[8px] font-black bg-red-900/20 text-red-500 border border-red-900/30 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all">EXCLUIR</button>
+                <button onClick={() => { playSound('random_button'); handleDelete(p); }} className="text-[8px] font-black bg-red-900/20 text-red-500 border border-red-900/30 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all col-span-2">EXCLUIR</button>
               </div>
             </div>
           ))}

@@ -23,12 +23,15 @@ export default function CombatManager({
   selectedCombatantId,
   setSelectedCombatantId,
   finishDiceRoll,
-  handleNextTurn
+  handleNextTurn,
+  handleStartCombat
 }) {
   const [editingHP, setEditingHP] = useState(null);
   const [editingPosture, setEditingPosture] = useState(null);
+  const [editingFocus, setEditingFocus] = useState(null);
   const [hpInput, setHpInput] = useState("");
   const [postureInput, setPostureInput] = useState("");
+  const [focusInput, setFocusInput] = useState("");
 
   const handleHPSubmit = async (player, isShiftPressed = false) => {
     try {
@@ -84,6 +87,33 @@ export default function CombatManager({
     }
   };
 
+  const handleFocusSubmit = async (player, isShiftPressed = false) => {
+    try {
+      const { maxFocus } = calculateDerivedStats(player);
+
+      let equation = focusInput.toLowerCase().replace(/random/g, () => Math.random().toString());
+      let newFocus;
+      try {
+        if (/[^0-9+\-*/().\s|e]/.test(equation)) throw new Error("Invalid characters");
+        newFocus = Math.round(new Function(`return ${equation}`)());
+      } catch (e) {
+        alert("Equação inválida!");
+        return;
+      }
+
+      if (isNaN(newFocus)) return;
+      if (!isShiftPressed && newFocus > maxFocus) newFocus = maxFocus;
+
+      const table = player.is_npc ? 'npcs' : 'characters';
+      const dbId = player.is_npc ? player.dbId : player.id;
+
+      await supabase.from(table).update({ current_focus: newFocus }).eq('id', dbId);
+      setEditingFocus(null);
+    } catch (err) {
+      alert("Erro ao atualizar Foco: " + err.message);
+    }
+  };
+
   return (
     <div className="w-[400px] shrink-0 bg-zinc-950 flex flex-col border-l border-white/5 relative">
       {targetingRoll && (
@@ -109,18 +139,31 @@ export default function CombatManager({
           <div className={`transition-all duration-700 ${!isCombatActive && combatants.length === 0 ? 'opacity-20 grayscale' : 'opacity-0 pointer-events-none absolute inset-0'}`}>
             <div className="flex flex-col items-center justify-center h-64">
               <span className="text-4xl mb-4">⚔️</span>
-              <p className="text-[10px] font-black uppercase tracking-widest text-center">Nenhum combatente ativo</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-center mb-6">Nenhum combatente ativo</p>
+              {isActingAsMaster && (
+                <button
+                  onClick={handleStartCombat}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white font-black text-[9px] uppercase rounded-full transition-all shadow-xl shadow-red-900/40 border border-red-400/20"
+                >
+                  Iniciar Combate
+                </button>
+              )}
             </div>
           </div>
           
           <div className={`flex flex-col gap-2 transition-all duration-700 ${isCombatActive ? 'opacity-100' : 'opacity-0 translate-x-4'}`}>
               {combatants.filter(p => !p.is_enemy).map(p => {
-                const { life: maxLife, posture: maxPosture } = calculateDerivedStats(p);
+                const derived = calculateDerivedStats(p);
+                const { life: maxLife, posture: maxPosture, maxFocus } = derived;
                 const currentLife = p.current_hp ?? maxLife;
                 const hpPerc = Math.max(0, (currentLife / maxLife) * 100);
 
                 const currentPosture = p.current_posture ?? maxPosture;
                 const posturePerc = Math.max(0, (currentPosture / maxPosture) * 100);
+
+                const hasFocusSystem = Array.isArray(p.breathing_skills) && p.breathing_skills.includes('skill_0');
+                const currentFocus = p.current_focus ?? 0;
+                const focusPerc = hasFocusSystem ? Math.max(0, Math.min(100, (currentFocus / maxFocus) * 100)) : 0;
 
                 return (
                   <div
@@ -150,42 +193,59 @@ export default function CombatManager({
                         </button>
                       )}
 
-                      <div className="flex items-start gap-4">
-                        <div className="relative shrink-0">
-                          {p.image_url ? <img src={p.image_url} className="w-13 h-13 rounded-lg object-cover border border-white/10 shadow-xl relative z-10" alt="" /> : <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-xl relative z-10">👤</div>}
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0 self-center">
+                          {p.image_url ? <img src={p.image_url} className="w-14 h-14 rounded-lg object-cover border border-white/10 shadow-xl relative z-10" alt="" /> : <div className="w-14 h-14 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-xl relative z-10">👤</div>}
                         </div>
-                        <div className="flex-1 min-w-0 pt-1">
-                          <h4 className="font-black italic text-white uppercase text-xs tracking-tighter truncate leading-tight mb-0.5">{p.char_name}</h4>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Vitalidade:</span>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-black italic text-white uppercase text-[10px] tracking-tight truncate leading-tight mb-2">{p.char_name}</h4>
+                          <div className="flex flex-col -space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest w-16">Vitalidade:</span>
                               {isActingAsMaster && editingHP === p.id ? (
                                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                  <input autoFocus value={hpInput} onChange={e => setHpInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleHPSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingHP(null); }} className="bg-zinc-800 border border-red-500/50 rounded px-2 py-0.5 text-white font-mono text-xs w-16 outline-none" />
-                                  <span className="font-mono text-[10px] font-black text-red-500/40">/{maxLife}</span>
+                                  <input autoFocus value={hpInput} onChange={e => setHpInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleHPSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingHP(null); }} className="bg-zinc-800 border border-red-500/50 rounded px-1.5 py-0 text-white font-mono text-[10px] w-12 outline-none" />
+                                  <span className="font-mono text-[9px] font-black text-red-500/40">/{maxLife}</span>
                                 </div>
                               ) : (
-                                <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingHP(p.id); setHpInput(currentLife.toString()); } }} className={`flex items-baseline gap-0.5 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1.5 py-0.5 rounded' : ''}`}>
-                                  <span className="font-mono text-sm font-black text-red-500">{currentLife}</span>
-                                  <span className="font-mono text-[11px] font-black text-red-700/60">/{maxLife}</span>
+                                <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingHP(p.id); setHpInput(currentLife.toString()); } }} className={`flex items-baseline gap-0.5 h-4 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1 rounded' : ''}`}>
+                                  <span className="font-mono text-xs font-black text-red-500 leading-none">{currentLife}</span>
+                                  <span className="font-mono text-[10px] font-black text-red-700/60 leading-none">/{maxLife}</span>
                                 </div>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Postura:</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest w-16">Postura:</span>
                               {isActingAsMaster && editingPosture === p.id ? (
                                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                  <input autoFocus value={postureInput} onChange={e => setPostureInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handlePostureSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingPosture(null); }} className="bg-zinc-800 border border-green-500/50 rounded px-2 py-0.5 text-white font-mono text-xs w-16 outline-none" />
-                                  <span className="font-mono text-[10px] font-black text-green-500/40">/{maxPosture}</span>
+                                  <input autoFocus value={postureInput} onChange={e => setPostureInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handlePostureSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingPosture(null); }} className="bg-zinc-800 border border-green-500/50 rounded px-1.5 py-0 text-white font-mono text-[10px] w-12 outline-none" />
+                                  <span className="font-mono text-[9px] font-black text-green-500/40">/{maxPosture}</span>
                                 </div>
                               ) : (
-                                <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingPosture(p.id); setPostureInput(currentPosture.toString()); } }} className={`flex items-baseline gap-0.5 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1.5 py-0.5 rounded' : ''}`}>
-                                  <span className="font-mono text-sm font-black text-green-500">{currentPosture}</span>
-                                  <span className="font-mono text-[10px] font-black text-green-900/60">/{maxPosture}</span>
+                                <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingPosture(p.id); setPostureInput(currentPosture.toString()); } }} className={`flex items-baseline gap-0.5 h-4 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1 rounded' : ''}`}>
+                                  <span className="font-mono text-xs font-black text-green-500 leading-none">{currentPosture}</span>
+                                  <span className="font-mono text-[10px] font-black text-green-900/60 leading-none">/{maxPosture}</span>
                                 </div>
                               )}
                             </div>
+
+                            {hasFocusSystem && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest w-16">Foco:</span>
+                                {isActingAsMaster && editingFocus === p.id ? (
+                                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                    <input autoFocus value={focusInput} onChange={e => setFocusInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleFocusSubmit(p, e.shiftKey); if (e.key === 'Escape') setEditingFocus(null); }} className="bg-zinc-800 border border-cyan-500/50 rounded px-1.5 py-0 text-white font-mono text-[10px] w-12 outline-none" />
+                                    <span className="font-mono text-[9px] font-black text-cyan-500/40">/{maxFocus}</span>
+                                  </div>
+                                ) : (
+                                  <div onClick={e => { if (isActingAsMaster) { e.stopPropagation(); setEditingFocus(p.id); setFocusInput(currentFocus.toString()); } }} className={`flex items-baseline gap-0.5 h-4 ${isActingAsMaster ? 'cursor-pointer hover:bg-white/5 px-1 rounded' : ''}`}>
+                                    <span className="font-mono text-xs font-black text-cyan-500 leading-none">{currentFocus}</span>
+                                    <span className="font-mono text-[10px] font-black text-cyan-900/60 leading-none">/{maxFocus}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -224,6 +284,11 @@ export default function CombatManager({
                         <div className="relative h-2 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
                           <div className={`h-full relative transition-all duration-1000 ease-out bg-gradient-to-r from-green-700 to-green-500`} style={{ width: `${posturePerc}%` }} />
                         </div>
+                        {hasFocusSystem && (
+                          <div className="relative h-2 bg-zinc-950 rounded-full border border-white/5 overflow-hidden shadow-inner">
+                            <div className={`h-full relative transition-all duration-1000 ease-out bg-gradient-to-r from-cyan-800 to-cyan-500`} style={{ width: `${focusPerc}%` }} />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -321,11 +386,12 @@ function DiceBadge({ label, val, category }) {
     combat: { bg: 'bg-red-500/5', border: 'border-red-500/10', text: 'text-red-500' },
     luck: { bg: 'bg-yellow-500/5', border: 'border-yellow-500/10', text: 'text-yellow-500' },
     secondary: { bg: 'bg-blue-500/5', border: 'border-blue-500/10', text: 'text-blue-400' },
-    purple: { bg: 'bg-purple-500/5', border: 'border-purple-500/20', text: 'text-purple-100' }
+    purple: { bg: 'bg-purple-500/5', border: 'border-purple-500/20', text: 'text-purple-100' },
+    focus: { bg: 'bg-cyan-500/5', border: 'border-cyan-500/20', text: 'text-cyan-400' }
   };
   const style = styles[category] || styles.combat;
   return (
-    <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${style.border} ${style.bg}`}>
+    <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${style.border} ${style.bg} ${category === 'focus' ? 'shadow-[0_0_15px_rgba(6,182,212,0.1)]' : ''}`}>
       <span className="text-[7px] font-black text-zinc-500 uppercase tracking-widest mb-1 truncate w-full text-center px-1" title={label}>{label}</span>
       <span className={`text-sm font-black font-mono ${style.text}`}>{val}</span>
     </div>

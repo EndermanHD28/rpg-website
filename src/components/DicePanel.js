@@ -32,6 +32,10 @@ export default function DicePanel({
   const equippedWeapons = activeChar?.inventory?.filter(i => i.equipped && i.subtype && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
   const disarmedPat = calculateDisarmedPAT(activeChar);
 
+  const bLvl = Number(activeChar?.breathing_lvl) || 0;
+  const learnedSkills = Array.isArray(activeChar?.breathing_skills) ? activeChar.breathing_skills : [];
+  const focusDice = learnedSkills.includes('skill_1b') ? (activeChar.breathing_style === 'Tempestade' ? { dice: 10, plus: 15 + (Math.max(0, bLvl - 1) * 3) } : null) : null;
+
   return (
     <div className="bg-slate-900/80 p-6 rounded-[30px] border-2 border-cyan-500/30 shadow-[0_0_25px_rgba(6,182,212,0.1)]">
       <h3 className="font-black text-cyan-500 text-[13px] italic mb-3 tracking-widest uppercase">Dados Resumidos</h3>
