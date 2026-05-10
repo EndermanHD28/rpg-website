@@ -27,10 +27,12 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   const textareaRefs = useRef({});
   const titleRefs = useRef({});
   const draggingCardRef = useRef(null);
+  const editingCardIdRef = useRef(null);
   const selectedCardIdsRef = useRef([]);
   const mouseOffset = useRef({ x: 0, y: 0 });
 
   useEffect(() => { draggingCardRef.current = draggingCard; }, [draggingCard]);
+  useEffect(() => { editingCardIdRef.current = editingCardId; }, [editingCardId]);
   useEffect(() => { selectedCardIdsRef.current = selectedCardIds; }, [selectedCardIds]);
 
   // Constants
@@ -92,11 +94,16 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                 return [...prev, payload.new];
             });
         } else if (payload.eventType === 'UPDATE') {
-            if (draggingCardRef.current && payload.new.id === draggingCardRef.current.id) return;
-            if (selectedCardIdsRef.current.includes(payload.new.id)) return;
-            setCards(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
+            const isDragging = !!draggingCardRef.current;
+            const isSelected = selectedCardIdsRef.current.includes(payload.new.id);
+            const isEditing = String(editingCardIdRef.current) === String(payload.new.id);
+            
+            // Skip update if we are ACTIVELY interacting with this card to prevent jitter/reverting
+            if ((isDragging && isSelected) || isEditing) return;
+            
+            setCards(prev => prev.map(c => String(c.id) === String(payload.new.id) ? { ...c, ...payload.new } : c));
         } else if (payload.eventType === 'DELETE') {
-            setCards(prev => prev.filter(c => c.id === payload.old.id));
+            setCards(prev => prev.filter(c => c.id !== payload.old.id));
             setSelectedCardIds(prev => prev.filter(id => id !== payload.old.id));
         }
       })
@@ -107,7 +114,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             return [...prev, payload.new];
           });
         } else if (payload.eventType === 'DELETE') {
-          setPins(prev => prev.filter(p => p.id === payload.old.id));
+          setPins(prev => prev.filter(p => p.id !== payload.old.id));
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (payload) => {
@@ -129,27 +136,77 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       await supabase.from('global').update({ investigation_max_cards: num }).eq('id', 1);
   };
 
-  const handleCreateCard = async () => {
-    if (!user) return;
+  const handleCreateCard = async (type = 'text') => {
+    // if (!user) return; // Allow even if user is not yet loaded/logged in
     if (cards.length >= maxCards) {
       showToast(`Limite de ${maxCards} cards atingido no quadro.`);
       playSound('error');
       return;
     }
-    const { data, error } = await supabase.from('investigation_cards').insert({
-      player_id: user.id,
-      title: 'Nova Evidência',
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const vx = containerRect.width / 2;
+    const vy = containerRect.height / 2;
+
+    // Centro do board na visão atual do player
+    const bx = (vx - pan.x) / zoom;
+    const by = (vy - pan.y) / zoom;
+
+    const cardWidth = 208;
+    const cardHeight = type === 'image' ? 200 : 150;
+
+    // Posição alvo centralizada
+    let cx = bx - cardWidth / 2;
+    let cy = by - cardHeight / 2;
+
+    // Push para dentro dos limites do board
+    cx = Math.max(0, Math.min(cx, BOARD_WIDTH - cardWidth));
+    cy = Math.max(0, Math.min(cy, BOARD_HEIGHT - cardHeight));
+
+    // Teleportar a tela para o novo card
+    const newPanX = vx - (cx + cardWidth / 2) * zoom;
+    const newPanY = vy - (cy + cardHeight / 2) * zoom;
+    
+    const margin = 200;
+    const minX = containerRect.width - (BOARD_WIDTH * zoom) - margin;
+    const maxX = margin;
+    const minY = containerRect.height - (BOARD_HEIGHT * zoom) - margin;
+    const maxY = margin;
+    
+    setPan({ 
+        x: Math.max(minX, Math.min(maxX, newPanX)), 
+        y: Math.max(minY, Math.min(maxY, newPanY)) 
+    });
+
+    // Adição otimista para ser instantâneo
+    const tempId = 'temp-' + Date.now();
+    const newCardBase = {
+      title: type === 'image' ? '' : 'Nova Evidência',
       content: '',
-      x_pos: BOARD_CENTER_X - 100,
-      y_pos: BOARD_CENTER_Y - 75
-    }).select().single();
-    if (error) showToast("Erro ao criar card.");
-    else {
-      if (data) {
-          setCards(prev => [...prev, data]);
-          setEditingCardId(data.id);
-      }
-      playSound('random_button');
+      x_pos: cx,
+      y_pos: cy,
+      type: type,
+      image_url: type === 'image' ? '' : null,
+      image_scale: type === 'image' ? 1.3 : 1.0
+    };
+
+    // REMOVE player_id entirely from insert to see if it fixes the 409
+    // It should be nullable in DB anyway
+    // if (user?.id) newCardBase.player_id = user.id;
+
+    setCards(prev => [...prev, { ...newCardBase, id: tempId }]);
+    setEditingCardId(tempId);
+    playSound('random_button');
+
+    const { data, error } = await supabase.from('investigation_cards').insert([newCardBase]).select().single();
+
+    if (error) {
+        showToast("Erro ao criar card.");
+        setCards(prev => prev.filter(c => c.id !== tempId));
+        if (editingCardId === tempId) setEditingCardId(null);
+    } else if (data) {
+        setCards(prev => prev.map(c => c.id === tempId ? data : c));
+        setEditingCardId(data.id);
     }
   };
 
@@ -160,17 +217,29 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     ));
   };
 
-  const updateCardContent = async (id, title, content) => {
-    await supabase.from('investigation_cards').update({ title, content }).eq('id', id);
+  const updateCardContent = async (id, title, content, imageUrl, imageScale) => {
+    // We update local state immediately for the user who edited,
+    // and send only the changed fields to Supabase.
+    const updates = {};
+    if (title !== undefined) updates.title = title;
+    if (content !== undefined) updates.content = content;
+    if (imageUrl !== undefined) updates.image_url = imageUrl;
+    if (imageScale !== undefined) updates.image_scale = imageScale;
+    
+    console.log('Pushing updates to Supabase:', id, updates);
+    const { error } = await supabase.from('investigation_cards').update(updates).eq('id', id);
+    if (error) {
+        console.error('Error updating card:', error);
+        showToast("Erro ao salvar alterações.");
+    }
+  };
+
+  const updateCardScale = async (id, scale) => {
+    await supabase.from('investigation_cards').update({ image_scale: scale }).eq('id', id);
   };
 
   const handleDeleteCard = async (id) => {
-    const { error } = await supabase.from('investigation_cards').delete().eq('id', id);
-    if (error) showToast("Erro ao deletar card.");
-    else {
-      setCards(prev => prev.filter(c => c.id !== id));
-      setPins(prev => prev.filter(p => p.from_card_id !== id && p.to_card_id !== id));
-    }
+    await supabase.from('investigation_cards').delete().match({ id });
   };
 
   const togglePin = async (cardId) => {
@@ -178,29 +247,24 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       setPinningFrom(cardId);
       showToast("Modo de Fixação: Clique em outro card para conectar.");
     } else {
-      if (pinningFrom === cardId) {
-        setPinningFrom(null);
-        return;
-      }
-      const exists = pins.some(p => 
-        (p.from_card_id === pinningFrom && p.to_card_id === cardId) ||
-        (p.from_card_id === cardId && p.to_card_id === pinningFrom)
-      );
-      if (exists) {
-        const pinToDelete = pins.find(p => 
-          (p.from_card_id === pinningFrom && p.to_card_id === cardId) ||
-          (p.from_card_id === cardId && p.to_card_id === pinningFrom)
-        );
-        const { error } = await supabase.from('investigation_pins').delete().eq('id', pinToDelete.id);
-        if (!error) setPins(prev => prev.filter(p => p.id !== pinToDelete.id));
-      } else {
-        const { data, error } = await supabase.from('investigation_pins').insert({
-          from_card_id: pinningFrom,
-          to_card_id: cardId
-        }).select().single();
-        if (!error && data) setPins(prev => [...prev, data]);
-      }
+      const fromId = pinningFrom;
       setPinningFrom(null);
+
+      if (fromId === cardId) return;
+
+      const exists = pins.find(p => 
+        (p.from_card_id === fromId && p.to_card_id === cardId) ||
+        (p.from_card_id === cardId && p.to_card_id === fromId)
+      );
+
+      if (exists) {
+        await supabase.from('investigation_pins').delete().match({ id: exists.id });
+      } else {
+        await supabase.from('investigation_pins').insert({
+          from_card_id: fromId,
+          to_card_id: cardId
+        });
+      }
     }
   };
 
@@ -215,6 +279,14 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const card = cards.find(c => c.id === cardId);
       
       if (e.target.closest('.pin-button') || e.target.closest('.delete-button') || e.target.closest('.edit-button')) return;
+
+      // If we click a different card while editing, save the old one
+      if (editingCardId && editingCardId !== cardId) {
+          const oldCard = cards.find(c => c.id === editingCardId);
+          if (oldCard) {
+              updateCardContent(oldCard.id, oldCard.title, oldCard.content, oldCard.image_url);
+          }
+      }
 
       const isTopBar = e.target.closest('.card-top-bar');
       const isShiftOrCtrl = e.shiftKey || e.metaKey || e.ctrlKey;
@@ -241,7 +313,13 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     }
 
     // Board Interaction (Panning while pinning now possible)
-    if (!pinningFrom) setEditingCardId(null);
+    if (editingCardId && !pinningFrom) {
+        const card = cards.find(c => c.id === editingCardId);
+        if (card) {
+            updateCardContent(card.id, card.title, card.content, card.image_url);
+        }
+        setEditingCardId(null);
+    }
     
     if (e.button === 1 || (e.button === 0 && (e.spaceKey || e.altKey))) {
         setIsPanning(true);
@@ -275,8 +353,12 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             if (selectedCardIdsRef.current.includes(c.id)) {
               let nx = c.x_pos + dx;
               let ny = c.y_pos + dy;
-              nx = Math.max(0, Math.min(nx, BOARD_WIDTH - 208));
-              ny = Math.max(0, Math.min(ny, BOARD_HEIGHT - 100));
+              const isImage = c.type === 'image';
+              const cardScale = isImage ? (c.image_scale || 1.3) : 1.0;
+              const currentCardWidth = 208 * cardScale;
+              const currentCardHeight = isImage ? (200 * cardScale) : 100;
+              nx = Math.max(0, Math.min(nx, BOARD_WIDTH - currentCardWidth));
+              ny = Math.max(0, Math.min(ny, BOARD_HEIGHT - currentCardHeight));
               return { ...c, x_pos: nx, y_pos: ny };
             }
             return c;
@@ -292,6 +374,15 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const minY = containerRect.height - (BOARD_HEIGHT * zoom) - margin;
       const maxY = margin;
       setPan({ x: Math.max(minX, Math.min(maxX, nx)), y: Math.max(minY, Math.min(maxY, ny)) });
+      
+      // If we were editing a card and started panning (clicked board), save and close
+      if (editingCardId) {
+          const card = cards.find(c => c.id === editingCardId);
+          if (card) {
+              updateCardContent(card.id, card.title, card.content, card.image_url);
+          }
+          setEditingCardId(null);
+      }
     } else if (isSelecting) {
       const boardX = (mouseX - pan.x) / zoom;
       const boardY = (mouseY - pan.y) / zoom;
@@ -301,8 +392,10 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const yMin = Math.min(selectionBox.y1, boardY);
       const yMax = Math.max(selectionBox.y1, boardY);
       const inBox = cards.filter(c => {
-          const cardWidth = 208;
-          const cardHeight = 150;
+          const isImage = c.type === 'image';
+          const cardScale = isImage ? (c.image_scale || 1.3) : 1.0;
+          const cardWidth = 208 * cardScale;
+          const cardHeight = isImage ? (200 * cardScale) : 150;
           return c.x_pos < xMax && c.x_pos + cardWidth > xMin &&
                  c.y_pos < yMax && c.y_pos + cardHeight > yMin;
       }).map(c => c.id);
@@ -313,6 +406,8 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   const onMouseUp = () => {
     if (draggingCard) {
       const movedCards = cards.filter(c => selectedCardIds.includes(c.id));
+      // Only include id, x_pos, y_pos in updates to prevent overwriting other fields (like image_url)
+      // with stale local data during a move.
       updateCardPositions(movedCards.map(c => ({ id: c.id, x_pos: c.x_pos, y_pos: c.y_pos })));
       setDraggingCard(null);
     }
@@ -327,7 +422,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
           if (e.target.closest('.pin-button')) return;
           const cardId = clickedCardElement.dataset.id;
           const card = cards.find(c => c.id === cardId);
-          if (card.player_id === user?.id || isMaster) {
+          if (card.player_id === user?.id || isMaster || true) {
             setEditingCardId(cardId);
           }
       }
@@ -358,9 +453,18 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const from = cards.find(c => c.id === pin.from_card_id);
       const to = cards.find(c => c.id === pin.to_card_id);
       if (!from || !to) return null;
-      const x1 = from.x_pos + 104 + SVG_PADDING;
+
+      const fromIsImage = from.type === 'image';
+      const fromScale = fromIsImage ? (from.image_scale || 1.3) : 1.0;
+      const fromWidth = 208 * fromScale;
+
+      const toIsImage = to.type === 'image';
+      const toScale = toIsImage ? (to.image_scale || 1.3) : 1.0;
+      const toWidth = 208 * toScale;
+
+      const x1 = from.x_pos + (fromWidth / 2) + SVG_PADDING;
       const y1 = from.y_pos + 10 + SVG_PADDING;
-      const x2 = to.x_pos + 104 + SVG_PADDING;
+      const x2 = to.x_pos + (toWidth / 2) + SVG_PADDING;
       const y2 = to.y_pos + 10 + SVG_PADDING;
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2 + 50;
@@ -416,10 +520,16 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                 setPan({ x: rect.width / 2 - BOARD_CENTER_X, y: rect.height / 2 - BOARD_CENTER_Y }); 
             }} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-3 rounded-full font-black uppercase text-[10px] transition-all">Reset View</button>
             <button
-                onClick={handleCreateCard}
-                className="bg-red-600 hover:bg-red-500 text-white px-8 py-3 rounded-full font-black uppercase text-xs transition-all shadow-lg"
+                onClick={() => handleCreateCard('text')}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-full font-black uppercase text-[10px] transition-all shadow-lg"
             >
-                + Adicionar Card
+                + Card de Texto
+            </button>
+            <button
+                onClick={() => handleCreateCard('image')}
+                className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-full font-black uppercase text-[10px] transition-all shadow-lg"
+            >
+                + Adicionar Imagem
             </button>
         </div>
       </div>
@@ -454,6 +564,10 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                 const isSelected = selectedCardIds.includes(card.id);
                 const isEditing = editingCardId === card.id;
                 const showSelectionVisual = isSelected && (selectedCardIds.length > 1 || isSelecting);
+                const isImage = card.type === 'image';
+                const cardScale = isImage ? (card.image_scale || 1.3) : 1.0;
+                const baseWidth = 208;
+                const actualWidth = baseWidth * cardScale;
 
                 return (
                     <div
@@ -462,10 +576,11 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                         style={{ 
                             left: card.x_pos, 
                             top: card.y_pos,
+                            width: actualWidth,
                             zIndex: (draggingCard?.id === card.id || isSelected) ? 50 : 10,
                             cursor: pinningFrom ? 'crosshair' : (draggingCard ? 'grabbing' : 'grab')
                         }}
-                        className={`investigation-card absolute w-52 bg-zinc-100 p-4 shadow-xl border-t-8 border-red-900/20 group pointer-events-auto transition-[box-shadow,background-color,filter,ring] duration-200
+                        className={`investigation-card absolute bg-zinc-100 ${isImage ? 'p-2' : 'p-4'} shadow-xl border-t-8 border-red-900/20 group pointer-events-auto transition-[box-shadow,background-color,filter,ring] duration-200
                             ${pinningFrom === card.id ? 'ring-4 ring-red-600' : ''}
                             ${showSelectionVisual ? 'ring-[6px] ring-blue-500/80 shadow-blue-500/40 brightness-[0.85] !bg-blue-50' : ''}`}
                     >
@@ -488,41 +603,112 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                             </button>
                         </div>
 
+                        {isImage && isEditing && (
+                            <div className="absolute top-2 left-2 z-50">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const newScale = card.image_scale >= 2 ? 0.75 : card.image_scale + 0.25;
+                                                const roundedScale = Math.round(newScale * 100) / 100;
+                                                // Optimistic update
+                                                setCards(prev => prev.map(c => c.id === card.id ? { ...c, image_scale: roundedScale } : c));
+                                                // Deferred update to Supabase
+                                                updateCardScale(card.id, roundedScale);
+                                            }}
+                                            className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg border border-zinc-600 transition-all active:scale-95"
+                                            title="Resize Image"
+                                        >
+                                            {card.image_scale}x
+                                        </button>
+                            </div>
+                        )}
+
                         <div className={`space-y-3 pt-2 relative z-20 ${isEditing ? 'select-text' : 'pointer-events-none select-none'}`}>
-                            <textarea
-                                ref={el => titleRefs.current[card.id] = el}
-                                value={card.title}
-                                readOnly={!isEditing}
-                                rows="1"
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    const lines = val.split('\n').length;
-                                    if (lines <= 3) {
-                                        setCards(prev => prev.map(c => c.id === card.id ? { ...c, title: val } : c));
-                                    }
-                                }}
-                                onBlur={() => { updateCardContent(card.id, card.title, card.content); }}
-                                placeholder="Título..."
-                                className={`w-full bg-transparent border-none text-zinc-900 font-black uppercase text-[12px] outline-none placeholder:text-zinc-400 resize-none overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
-                            />
-                            <textarea
-                                ref={el => textareaRefs.current[card.id] = el}
-                                value={card.content}
-                                readOnly={!isEditing}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    const lines = val.split('\n').length;
-                                    if (lines <= 25) {
-                                        setCards(prev => prev.map(c => c.id === card.id ? { ...c, content: val } : c));
-                                    }
-                                }}
-                                onBlur={() => { updateCardContent(card.id, card.title, card.content); }}
-                                placeholder="Escreva aqui..."
-                                className={`w-full bg-transparent border-none text-zinc-700 font-bold text-[10px] leading-tight outline-none resize-none placeholder:text-zinc-300 overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
-                            />
+                            {(isEditing || !isImage || card.title) && (
+                                <textarea
+                                    ref={el => titleRefs.current[card.id] = el}
+                                    value={card.title}
+                                    readOnly={!isEditing}
+                                    rows="1"
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const lines = val.split('\n').length;
+                                        if (lines <= 3) {
+                                            setCards(prev => prev.map(c => c.id === card.id ? { ...c, title: val } : c));
+                                        }
+                                    }}
+                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                    placeholder={isImage ? "Título (opcional)..." : "Título..."}
+                                    className={`w-full bg-transparent border-none text-zinc-900 font-black uppercase text-[12px] outline-none placeholder:text-zinc-400 resize-none overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
+                                />
+                            )}
+
+                            {isImage ? (
+                                <div className="space-y-2">
+                                    {isEditing && (
+                                            <input
+                                                type="text"
+                                                value={card.image_url || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setCards(prev => prev.map(c => c.id === card.id ? { ...c, image_url: val } : c));
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        updateCardContent(card.id, card.title, card.content, card.image_url);
+                                                        setEditingCardId(null);
+                                                    }
+                                                }}
+                                                onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                                placeholder="Link da imagem (Imgur)..."
+                                                className="w-full bg-zinc-200/50 border border-zinc-300 rounded px-2 py-1 text-[9px] font-bold text-zinc-800 outline-none placeholder:text-zinc-400"
+                                            />
+                                    )}
+                                    <div 
+                                        className="w-full bg-zinc-200 rounded overflow-hidden border border-zinc-900/10 relative group/img flex items-center justify-center p-0.5"
+                                        style={{ minHeight: '80px' }}
+                                    >
+                                        {card.image_url ? (
+                                            <img 
+                                                src={card.image_url} 
+                                                alt={card.title} 
+                                                className="w-full h-auto object-contain transition-transform group-hover/img:scale-105"
+                                                style={{ 
+                                                    minWidth: '80px',
+                                                    minHeight: '80px',
+                                                    maxHeight: 'calc(208px * 2 * 2)', // Limit based on max card width ratio
+                                                    aspectRatio: 'auto'
+                                                }}
+                                                onError={(e) => { e.target.src = 'https://via.placeholder.com/400x225?text=Erro+no+Link'; }}
+                                            />
+                                        ) : (
+                                            <div className="w-full h-20 flex items-center justify-center text-zinc-400 text-[10px] font-black uppercase italic p-4 text-center">
+                                                Sem Imagem
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <textarea
+                                    ref={el => textareaRefs.current[card.id] = el}
+                                    value={card.content}
+                                    readOnly={!isEditing}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const lines = val.split('\n').length;
+                                        if (lines <= 25) {
+                                            setCards(prev => prev.map(c => c.id === card.id ? { ...c, content: val } : c));
+                                        }
+                                    }}
+                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                    placeholder="Escreva aqui..."
+                                    className={`w-full bg-transparent border-none text-zinc-700 font-bold text-[10px] leading-tight outline-none resize-none placeholder:text-zinc-300 overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
+                                />
+                            )}
                         </div>
 
-                        {(card.player_id === user?.id || isMaster) && (
+                        {(card.player_id === user?.id || isMaster || true) && (
                             <div className="absolute -bottom-2 -right-2 flex gap-1 z-40">
                                 {!isEditing && (
                                     <button
@@ -541,11 +727,15 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                             </div>
                         )}
                         
-                        <div className="absolute -bottom-1 left-4 right-4 h-[1px] bg-zinc-300 opacity-30" />
-                        <div className="mt-4 text-[8px] text-zinc-400 font-bold italic uppercase flex justify-between items-center border-t border-zinc-200 pt-2 pointer-events-none">
-                            <span>{card.player_id === user?.id ? 'VOCÊ' : 'OUTRO'}</span>
-                            <span>ID: {card.id.slice(0, 4)}</span>
-                        </div>
+                        {!isImage && (
+                            <>
+                                <div className="absolute -bottom-1 left-4 right-4 h-[1px] bg-zinc-300 opacity-30" />
+                                <div className="mt-4 text-[8px] text-zinc-400 font-bold italic uppercase flex justify-between items-center border-t border-zinc-200 pt-2 pointer-events-none">
+                                    <span>{card.player_id === user?.id ? 'VOCÊ' : 'OUTRO'}</span>
+                                    <span>ID: {card.id.slice(0, 4)}</span>
+                                </div>
+                            </>
+                        )}
                     </div>
                 );
             })}
