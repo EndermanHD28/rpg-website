@@ -24,6 +24,12 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [sfxDurationInput, setSfxDurationInput] = useState(30); // Re-added with better default for loops
   const [sfxVolumeInput, setSfxVolumeInput] = useState(1.0);
 
+  // Track volume for callbacks without triggering re-renders
+  const volumeRef = useRef(volume);
+  useEffect(() => {
+    volumeRef.current = volume;
+  }, [volume]);
+
   // Track last played SFX to prevent double-triggering on local state changes
   const lastPlayedSfxRef = useRef({ url: null, triggeredAt: null });
 
@@ -108,7 +114,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
         },
         events: {
           onReady: (event) => {
-            event.target.setVolume(volume * 100);
+            event.target.setVolume(volumeRef.current * 100);
             setDuration(event.target.getDuration());
 
             if (lastSyncTime.current > 0) {
@@ -127,7 +133,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
             }, 1000);
           },
           onStateChange: async (event) => {
-            event.target.setVolume(volume * 100);
+            event.target.setVolume(volumeRef.current * 100);
 
             // If Master pauses or plays, we should update music_started_at to keep sync
           if (isMaster) {
@@ -224,7 +230,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           setTimeout(() => {
             if (ytPlayer.current) {
               if (ytPlayer.current.playVideo) ytPlayer.current.playVideo();
-              if (ytPlayer.current.setVolume) ytPlayer.current.setVolume(volume * 100);
+              if (ytPlayer.current.setVolume) ytPlayer.current.setVolume(volumeRef.current * 100);
             }
           }, 500);
         };
@@ -558,7 +564,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     audio.crossOrigin = "anonymous";
     sfxAudioRef.current = audio;
     
-    const targetVolume = (sfxVolume ?? 1.0) * volume;
+    const targetVolume = (sfxVolume ?? 1.0) * volumeRef.current;
     sfxAudioRef.current.volume = Math.max(0, Math.min(1, targetVolume));
     sfxAudioRef.current.loop = sfxLoop;
     
