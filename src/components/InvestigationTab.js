@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { TooltipWrapper } from './UIElements';
 
 export default function InvestigationTab({ user, isMaster, showToast, playSound }) {
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
   const [cards, setCards] = useState([]);
   const [pins, setPins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +23,9 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   // View State
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  // Category Management State
+  const [isManagingCategories, setIsManagingCategories] = useState(false);
   
   // Internal Refs
   const containerRef = useRef(null);
@@ -80,19 +85,47 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   // Fetch and Realtime Data
   useEffect(() => {
     const fetchData = async () => {
+      // Fetch Categories
+      const { data: catsData } = await supabase
+        .from('investigation_categories')
+        .select('*')
+        .order('display_order', { ascending: true });
+      
+      const cats = catsData || [];
+      setCategories(cats);
+      
+      // Default selection to first category or 'Default'
+      if (cats.length > 0) {
+        setSelectedCategoryId(cats[0].id);
+        setMaxCards(cats[0].max_cards || 20);
+      }
+
       const { data: cardsData } = await supabase.from('investigation_cards').select('*');
       const { data: pinsData } = await supabase.from('investigation_pins').select('*');
-      const { data: globalData } = await supabase.from('global').select('investigation_max_cards').eq('id', 1).maybeSingle();
       
       setCards(cardsData || []);
       setPins(pinsData || []);
-      if (globalData?.investigation_max_cards) setMaxCards(globalData.investigation_max_cards);
       setLoading(false);
     };
 
     fetchData();
 
     const channel = supabase.channel('investigation_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'investigation_categories' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+              setCategories(prev => [...prev, payload.new].sort((a, b) => a.display_order - b.display_order));
+          } else if (payload.eventType === 'UPDATE') {
+              setCategories(prev => prev.map(c => c.id === payload.new.id ? payload.new : c).sort((a, b) => a.display_order - b.display_order));
+              if (selectedCategoryId === payload.new.id) {
+                  setMaxCards(payload.new.max_cards);
+              }
+          } else if (payload.eventType === 'DELETE') {
+              setCategories(prev => prev.filter(c => c.id !== payload.old.id));
+              if (selectedCategoryId === payload.old.id) {
+                  setSelectedCategoryId(null);
+              }
+          }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'investigation_cards' }, (payload) => {
         if (payload.eventType === 'INSERT') {
             setCards(prev => {
@@ -104,7 +137,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             const isSelected = selectedCardIdsRef.current.includes(payload.new.id);
             const isEditing = String(editingCardIdRef.current) === String(payload.new.id);
             
-            // Skip update if we are ACTIVELY interacting with this card to prevent jitter/reverting
             if ((isDragging && isSelected) || isEditing) return;
             
             setCards(prev => prev.map(c => String(c.id) === String(payload.new.id) ? { ...c, ...payload.new } : c));
@@ -123,11 +155,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
           setPins(prev => prev.filter(p => p.id !== payload.old.id));
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global' }, (payload) => {
-          if (payload.new.investigation_max_cards !== undefined) {
-              setMaxCards(payload.new.investigation_max_cards);
-          }
-      })
       .subscribe();
 
     return () => {
@@ -135,17 +162,81 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     };
   }, []);
 
-  const updateMaxCards = async (val) => {
-      const num = parseInt(val);
-      if (isNaN(num)) return;
-      setMaxCards(num);
-      await supabase.from('global').update({ investigation_max_cards: num }).eq('id', 1);
+  const currentCategoryCards = cards.filter(c => c.category_id === selectedCategoryId);
+
+  const updateMaxCards = async (catId, val) => {
+      const num = parseInt(val) || 0;
+      setCategories(prev => prev.map(c => c.id === catId ? { ...c, max_cards: num } : c));
+      if (catId === selectedCategoryId) setMaxCards(num);
+      await supabase.from('investigation_categories').update({ max_cards: num }).eq('id', catId);
+  };
+
+  const handleCreateCategory = async () => {
+    const newCat = {
+        name: 'Nova Categoria',
+        max_cards: 20,
+        display_order: categories.length
+    };
+    const { data } = await supabase.from('investigation_categories').insert(newCat).select().single();
+    if (data) {
+        setCategories(prev => [...prev, data].sort((a, b) => a.display_order - b.display_order));
+        setSelectedCategoryId(data.id);
+        setMaxCards(data.max_cards);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+      if (categories.length <= 1) {
+          showToast("Você não pode deletar a última categoria.");
+          return;
+      }
+      if (confirm("Tem certeza? Todos os cards desta categoria serão deletados.")) {
+          setCategories(prev => prev.filter(c => c.id !== id));
+          if (selectedCategoryId === id) {
+              const remaining = categories.filter(c => c.id !== id);
+              setSelectedCategoryId(remaining[0]?.id);
+              setMaxCards(remaining[0]?.max_cards || 20);
+          }
+          await supabase.from('investigation_categories').delete().eq('id', id);
+      }
+  };
+
+  const handleMoveCategory = async (id, direction) => {
+      const idx = categories.findIndex(c => c.id === id);
+      if (direction === 'up' && idx > 0) {
+          const newCats = [...categories];
+          const other = newCats[idx - 1];
+          const tempOrder = other.display_order;
+          other.display_order = newCats[idx].display_order;
+          newCats[idx].display_order = tempOrder;
+          setCategories(newCats.sort((a, b) => a.display_order - b.display_order));
+
+          await Promise.all([
+              supabase.from('investigation_categories').update({ display_order: other.display_order }).eq('id', other.id),
+              supabase.from('investigation_categories').update({ display_order: tempOrder }).eq('id', id)
+          ]);
+      } else if (direction === 'down' && idx < categories.length - 1) {
+          const newCats = [...categories];
+          const other = newCats[idx + 1];
+          const tempOrder = other.display_order;
+          other.display_order = newCats[idx].display_order;
+          newCats[idx].display_order = tempOrder;
+          setCategories(newCats.sort((a, b) => a.display_order - b.display_order));
+
+          await Promise.all([
+              supabase.from('investigation_categories').update({ display_order: other.display_order }).eq('id', other.id),
+              supabase.from('investigation_categories').update({ display_order: tempOrder }).eq('id', id)
+          ]);
+      }
   };
 
   const handleCreateCard = async (type = 'text') => {
-    // if (!user) return; // Allow even if user is not yet loaded/logged in
-    if (cards.length >= maxCards) {
-      showToast(`Limite de ${maxCards} cards atingido no quadro.`);
+    if (!selectedCategoryId) {
+        showToast("Selecione ou crie uma categoria primeiro.");
+        return;
+    }
+    if (currentCategoryCards.length >= maxCards) {
+      showToast(`Limite de ${maxCards} cards atingido nesta categoria.`);
       playSound('error');
       return;
     }
@@ -154,38 +245,18 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     const vx = containerRect.width / 2;
     const vy = containerRect.height / 2;
 
-    // Centro do board na visão atual do player
     const bx = (vx - pan.x) / zoom;
     const by = (vy - pan.y) / zoom;
 
     const cardWidth = 208;
     const cardHeight = type === 'image' ? 200 : 150;
 
-    // Posição alvo centralizada
     let cx = bx - cardWidth / 2;
     let cy = by - cardHeight / 2;
 
-    // Push para dentro dos limites do board
     cx = Math.max(0, Math.min(cx, BOARD_WIDTH - cardWidth));
     cy = Math.max(0, Math.min(cy, BOARD_HEIGHT - cardHeight));
 
-    // Teleportar a tela para o novo card
-    const newPanX = vx - (cx + cardWidth / 2) * zoom;
-    const newPanY = vy - (cy + cardHeight / 2) * zoom;
-    
-    const margin = 200;
-    const minX = containerRect.width - (BOARD_WIDTH * zoom) - margin;
-    const maxX = margin;
-    const minY = containerRect.height - (BOARD_HEIGHT * zoom) - margin;
-    const maxY = margin;
-    
-    setPan({ 
-        x: Math.max(minX, Math.min(maxX, newPanX)), 
-        y: Math.max(minY, Math.min(maxY, newPanY)) 
-    });
-
-    // Adição otimista para ser instantâneo
-    const tempId = 'temp-' + Date.now();
     const newCardBase = {
       title: type === 'image' ? '' : 'Nova Evidência',
       content: '',
@@ -193,14 +264,12 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       x_pos: cx,
       y_pos: cy,
       type: type,
+      category_id: selectedCategoryId,
       image_url: type === 'image' ? '' : null,
       image_scale: type === 'image' ? 1.3 : 1.0
     };
 
-    // REMOVE player_id entirely from insert to see if it fixes the 409
-    // It should be nullable in DB anyway
-    // if (user?.id) newCardBase.player_id = user.id;
-
+    const tempId = 'temp-' + Date.now();
     setCards(prev => [...prev, { ...newCardBase, id: tempId }]);
     setEditingCardId(tempId);
     playSound('random_button');
@@ -225,8 +294,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   };
 
   const updateCardContent = async (id, title, content, imageUrl, imageScale, description) => {
-    // We update local state immediately for the user who edited,
-    // and send only the changed fields to Supabase.
     const updates = {};
     if (title !== undefined) updates.title = title;
     if (content !== undefined) updates.content = content;
@@ -234,12 +301,8 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     if (imageScale !== undefined) updates.image_scale = imageScale;
     if (description !== undefined) updates.description = description;
     
-    console.log('Pushing updates to Supabase:', id, updates);
     const { error } = await supabase.from('investigation_cards').update(updates).eq('id', id);
-    if (error) {
-        console.error('Error updating card:', error);
-        showToast("Erro ao salvar alterações.");
-    }
+    if (error) showToast("Erro ao salvar alterações.");
   };
 
   const updateCardScale = async (id, scale) => {
@@ -257,7 +320,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     } else {
       const fromId = pinningFrom;
       setPinningFrom(null);
-
       if (fromId === cardId) return;
 
       const exists = pins.find(p => 
@@ -285,34 +347,23 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     if (clickedCardElement) {
       const cardId = clickedCardElement.dataset.id;
       const card = cards.find(c => c.id === cardId);
-      
       if (e.target.closest('.pin-button') || e.target.closest('.delete-button') || e.target.closest('.edit-button')) return;
 
-      // If we click a different card while editing, save the old one
       if (editingCardId && editingCardId !== cardId) {
           const oldCard = cards.find(c => c.id === editingCardId);
-          if (oldCard) {
-              updateCardContent(oldCard.id, oldCard.title, oldCard.content, oldCard.image_url, oldCard.image_scale, oldCard.description);
-          }
+          if (oldCard) updateCardContent(oldCard.id, oldCard.title, oldCard.content, oldCard.image_url, oldCard.image_scale, oldCard.description);
       }
 
       const isTopBar = e.target.closest('.card-top-bar');
       const isShiftOrCtrl = e.shiftKey || e.metaKey || e.ctrlKey;
       
       if (isShiftOrCtrl) {
-          setSelectedCardIds(prev => {
-              if (prev.includes(cardId)) return prev.filter(id => id !== cardId);
-              return [...prev, cardId];
-          });
+          setSelectedCardIds(prev => prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]);
       } else {
-          if (editingCardId === cardId) {
-              if (!isTopBar) return;
-          } else {
+          if (editingCardId !== cardId) {
               setEditingCardId(null);
-              if (!selectedCardIds.includes(cardId)) {
-                  setSelectedCardIds([cardId]);
-              }
-          }
+              if (!selectedCardIds.includes(cardId)) setSelectedCardIds([cardId]);
+          } else if (!isTopBar) return;
       }
 
       setDraggingCard(card);
@@ -320,12 +371,9 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       return;
     }
 
-    // Board Interaction (Panning while pinning now possible)
     if (editingCardId && !pinningFrom) {
         const card = cards.find(c => c.id === editingCardId);
-        if (card) {
-            updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
-        }
+        if (card) updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
         setEditingCardId(null);
     }
     
@@ -382,13 +430,9 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const minY = containerRect.height - (BOARD_HEIGHT * zoom) - margin;
       const maxY = margin;
       setPan({ x: Math.max(minX, Math.min(maxX, nx)), y: Math.max(minY, Math.min(maxY, ny)) });
-      
-      // If we were editing a card and started panning (clicked board), save and close
       if (editingCardId) {
           const card = cards.find(c => c.id === editingCardId);
-          if (card) {
-              updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
-          }
+          if (card) updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
           setEditingCardId(null);
       }
     } else if (isSelecting) {
@@ -399,7 +443,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const xMax = Math.max(selectionBox.x1, boardX);
       const yMin = Math.min(selectionBox.y1, boardY);
       const yMax = Math.max(selectionBox.y1, boardY);
-      const inBox = cards.filter(c => {
+      const inBox = currentCategoryCards.filter(c => {
           const isImage = c.type === 'image';
           const cardScale = isImage ? (c.image_scale || 1.3) : 1.0;
           const cardWidth = 208 * cardScale;
@@ -414,8 +458,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   const onMouseUp = () => {
     if (draggingCard) {
       const movedCards = cards.filter(c => selectedCardIds.includes(c.id));
-      // Only include id, x_pos, y_pos in updates to prevent overwriting other fields (like image_url)
-      // with stale local data during a move.
       updateCardPositions(movedCards.map(c => ({ id: c.id, x_pos: c.x_pos, y_pos: c.y_pos })));
       setDraggingCard(null);
     }
@@ -428,11 +470,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const clickedCardElement = e.target.closest('.investigation-card');
       if (clickedCardElement) {
           if (e.target.closest('.pin-button')) return;
-          const cardId = clickedCardElement.dataset.id;
-          const card = cards.find(c => c.id === cardId);
-          if (card.player_id === user?.id || isMaster || true) {
-            setEditingCardId(cardId);
-          }
+          setEditingCardId(clickedCardElement.dataset.id);
       }
   };
 
@@ -458,8 +496,8 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
 
   const renderLines = () => {
     return pins.map(pin => {
-      const from = cards.find(c => c.id === pin.from_card_id);
-      const to = cards.find(c => c.id === pin.to_card_id);
+      const from = currentCategoryCards.find(c => c.id === pin.from_card_id);
+      const to = currentCategoryCards.find(c => c.id === pin.to_card_id);
       if (!from || !to) return null;
 
       const fromIsImage = from.type === 'image';
@@ -504,24 +542,48 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
         }
       `}</style>
       <div className="flex justify-between items-center mb-8 bg-zinc-950/80 p-6 rounded-2xl border border-zinc-800 backdrop-blur-sm z-10">
-        <div>
-          <h2 className="text-4xl font-black italic text-red-600 uppercase tracking-tighter">Investigação</h2>
-          <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-1">
-            Dois Cliques para Editar • SHIFT + Arrastar para selecionar
-          </p>
+        <div className="flex items-center gap-6">
+          <div>
+            <h2 className="text-4xl font-black italic text-red-600 uppercase tracking-tighter">Investigação</h2>
+            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-1">
+              {currentCategoryCards.length} / {maxCards} Cards • Shift + Clique para Selecionar
+            </p>
+          </div>
+          
+          <div className="h-12 w-[1px] bg-zinc-800" />
+
+          {/* Category Dropdown */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-zinc-500 uppercase px-2">Caso / Categoria</span>
+            <div className="flex items-center gap-2">
+                <select 
+                    value={selectedCategoryId || ''}
+                    onChange={(e) => {
+                        const cat = categories.find(c => c.id === e.target.value);
+                        setSelectedCategoryId(e.target.value);
+                        setMaxCards(cat?.max_cards || 20);
+                        setSelectedCardIds([]);
+                    }}
+                    className="bg-zinc-900 border border-zinc-800 text-white font-black uppercase text-xs rounded-full px-4 py-2 outline-none focus:ring-1 focus:ring-red-600 appearance-none cursor-pointer pr-10"
+                    style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0\' stroke=\'white\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '12px' }}
+                >
+                    {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                </select>
+                {isMaster && (
+                    <button 
+                        onClick={() => setIsManagingCategories(!isManagingCategories)}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isManagingCategories ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                    >
+                        ⚙️
+                    </button>
+                )}
+            </div>
+          </div>
         </div>
+
         <div className="flex gap-4 items-center">
-            {isMaster && (
-                <div className="flex items-center gap-2 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800">
-                    <span className="text-[9px] font-black text-zinc-500 uppercase">Máx Cards:</span>
-                    <input 
-                        type="number" 
-                        value={maxCards} 
-                        onChange={(e) => updateMaxCards(e.target.value)}
-                        className="bg-transparent border-none text-white font-black w-8 text-center outline-none text-xs"
-                    />
-                </div>
-            )}
             <button onClick={() => { 
                 const rect = containerRef.current.getBoundingClientRect();
                 setZoom(1); 
@@ -541,6 +603,55 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             </button>
         </div>
       </div>
+
+      {/* Category Manager Modal-ish */}
+      {isManagingCategories && isMaster && (
+          <div className="absolute top-36 left-8 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-2xl z-[100] w-80 animate-in fade-in slide-in-from-top-4 duration-200">
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-black uppercase text-xs italic tracking-widest">Gerenciar Categorias</h3>
+                  <button onClick={() => setIsManagingCategories(false)} className="text-zinc-500 hover:text-white font-black">×</button>
+              </div>
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                  {categories.map((cat, idx) => (
+                      <div key={cat.id} className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+                          <div className="flex items-center gap-2">
+                              <input 
+                                  value={cat.name}
+                                  onChange={async (e) => {
+                                      const val = e.target.value;
+                                      setCategories(prev => prev.map(c => c.id === cat.id ? { ...c, name: val } : c));
+                                      await supabase.from('investigation_categories').update({ name: val }).eq('id', cat.id);
+                                  }}
+                                  className="bg-transparent border-none text-white font-bold text-[11px] outline-none w-full"
+                              />
+                              <div className="flex gap-1">
+                                  <button onClick={() => handleMoveCategory(cat.id, 'up')} className="text-[10px] bg-zinc-800 px-1 rounded hover:bg-zinc-700 opacity-50 hover:opacity-100">▲</button>
+                                  <button onClick={() => handleMoveCategory(cat.id, 'down')} className="text-[10px] bg-zinc-800 px-1 rounded hover:bg-zinc-700 opacity-50 hover:opacity-100">▼</button>
+                              </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black text-zinc-600 uppercase">Máx:</span>
+                                <input 
+                                    type="number"
+                                    value={cat.max_cards}
+                                    onChange={(e) => updateMaxCards(cat.id, e.target.value)}
+                                    className="bg-zinc-900 border-none text-zinc-400 font-bold text-[10px] w-8 text-center rounded"
+                                />
+                            </div>
+                            <button onClick={() => handleDeleteCategory(cat.id)} className="text-[9px] font-black text-red-900 hover:text-red-500 uppercase tracking-tighter transition-colors">Deletar</button>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+              <button 
+                  onClick={handleCreateCategory}
+                  className="w-full mt-4 bg-red-600/20 hover:bg-red-600/40 text-red-500 border border-red-600/30 py-2 rounded-xl text-[10px] font-black uppercase transition-all"
+              >
+                  + Nova Categoria
+              </button>
+          </div>
+      )}
 
       <div 
         ref={containerRef}
@@ -568,7 +679,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                 {renderLines()}
             </svg>
 
-            {cards.map(card => {
+            {currentCategoryCards.map(card => {
                 const isSelected = selectedCardIds.includes(card.id);
                 const isEditing = editingCardId === card.id;
                 const showSelectionVisual = isSelected && (selectedCardIds.length > 1 || isSelecting);
@@ -618,9 +729,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                                 e.stopPropagation();
                                                 const newScale = card.image_scale >= 2 ? 0.75 : card.image_scale + 0.25;
                                                 const roundedScale = Math.round(newScale * 100) / 100;
-                                                // Optimistic update
                                                 setCards(prev => prev.map(c => c.id === card.id ? { ...c, image_scale: roundedScale } : c));
-                                                // Deferred update to Supabase
                                                 updateCardScale(card.id, roundedScale);
                                             }}
                                             className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg border border-zinc-600 transition-all active:scale-95"
@@ -685,7 +794,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                                 style={{ 
                                                     minWidth: '80px',
                                                     minHeight: '80px',
-                                                    maxHeight: 'calc(208px * 2 * 2)', // Limit based on max card width ratio
+                                                    maxHeight: 'calc(208px * 2 * 2)',
                                                     aspectRatio: 'auto'
                                                 }}
                                                 onError={(e) => { e.target.src = 'https://via.placeholder.com/400x225?text=Erro+no+Link'; }}
@@ -730,7 +839,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                             )}
                         </div>
 
-                        {(card.player_id === user?.id || isMaster || true) && (
+                        {(isMaster || true) && (
                             <div className="absolute -bottom-2 -right-2 flex gap-1 z-40">
                                 {!isEditing && (
                                     <button
@@ -753,7 +862,6 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                             <>
                                 <div className="absolute -bottom-1 left-4 right-4 h-[1px] bg-zinc-300 opacity-30" />
                                 <div className="mt-4 text-[8px] text-zinc-400 font-bold italic uppercase flex justify-between items-center border-t border-zinc-200 pt-2 pointer-events-none">
-                                    <span>{card.player_id === user?.id ? 'VOCÊ' : 'OUTRO'}</span>
                                     <span>ID: {card.id.slice(0, 4)}</span>
                                 </div>
                             </>
