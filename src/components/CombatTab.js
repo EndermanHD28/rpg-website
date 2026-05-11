@@ -13,7 +13,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
 
   const currentCombatants = [
     ...allPlayers.filter(p => p.is_in_combat && (p.discord_username !== 'EnderU' || p.rank !== 'Mestre')),
-    ...allNPCs.filter(n => n.is_in_combat && n.is_enemy).map(n => ({
+    ...allNPCs.filter(n => n.is_in_combat).map(n => ({
       ...n,
       id: `npc-${n.id}`,
       dbId: n.id,
@@ -139,15 +139,20 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         const table = p.is_npc ? 'npcs' : 'characters';
         const dbId = p.is_npc ? p.dbId : p.id;
         
-        // Tempestade skill_0 says: "Inicie cada combate com 25 de Foco."
+        // Tempestade skill_0 says: "Inicie cada combate com 25 de Foco." (Actually 35 as per user)
         let initialFocus = 0;
         if (p.breathing_style === 'Tempestade') {
           initialFocus = 35;
         }
 
-        if (initialFocus > 0) {
-          await supabase.from(table).update({ current_focus: initialFocus }).eq('id', dbId);
-        }
+        const { maxFocus } = calculateDerivedStats(p);
+        const finalFocus = Math.min(initialFocus, maxFocus);
+
+        await supabase.from(table).update({ 
+          current_focus: finalFocus,
+          current_hp: p.current_hp ?? calculateDerivedStats(p).life,
+          current_posture: p.current_posture ?? calculateDerivedStats(p).posture
+        }).eq('id', dbId);
       }
     }
 
@@ -252,6 +257,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
           finishDiceRoll={finishDiceRoll}
           handleNextTurn={handleNextTurn}
           handleStartCombat={handleStartCombat}
+          allNPCs={allNPCs}
         />
       </div>
     </div>

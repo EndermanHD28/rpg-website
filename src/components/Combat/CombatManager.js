@@ -24,14 +24,85 @@ export default function CombatManager({
   setSelectedCombatantId,
   finishDiceRoll,
   handleNextTurn,
-  handleStartCombat
+  handleStartCombat,
+  allNPCs = []
 }) {
   const [editingHP, setEditingHP] = useState(null);
   const [editingPosture, setEditingPosture] = useState(null);
   const [editingFocus, setEditingFocus] = useState(null);
+  const [showAddCombatant, setShowAddCombatant] = useState(false);
+  const [showAddEffect, setShowAddEffect] = useState(null); // combatantId
   const [hpInput, setHpInput] = useState("");
   const [postureInput, setPostureInput] = useState("");
   const [focusInput, setFocusInput] = useState("");
+  const [effectDuration, setEffectDuration] = useState("2");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [addAsEnemy, setAddAsEnemy] = useState(true);
+
+  const toggleCombatant = async (entity, type) => {
+    try {
+      const table = type === 'player' ? 'characters' : 'npcs';
+      const isCurrentlyIn = entity.is_in_combat;
+      
+      const update = { is_in_combat: !isCurrentlyIn };
+      
+      if (!isCurrentlyIn) {
+        if (type === 'npc') {
+          update.is_enemy = addAsEnemy;
+        }
+        const derived = calculateDerivedStats(entity);
+        update.current_hp = derived.life;
+        update.current_posture = derived.posture;
+        
+        const hasFocus = Array.isArray(entity.breathing_skills) && entity.breathing_skills.includes('skill_0');
+        if (hasFocus) {
+          update.current_focus = entity.breathing_style === 'Tempestade' ? 35 : 0;
+        }
+      }
+
+      console.log(`Updating ${table} ID ${entity.id}:`, update);
+      const { error } = await supabase.from(table).update(update).eq('id', entity.id);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error toggling combatant:", err);
+      alert(`Erro ao atualizar combatente: ${err.message}`);
+    }
+  };
+
+  const toggleEnemyStatus = async (entity, type) => {
+    try {
+      const table = type === 'player' ? 'characters' : 'npcs';
+      // Only NPCs currently have is_enemy column in DB cache, so we skip for players to avoid errors
+      if (type === 'player') {
+        alert("Status de inimigo para jogadores não suportado no banco de dados.");
+        return;
+      }
+      await supabase.from(table).update({ is_enemy: !entity.is_enemy }).eq('id', entity.id);
+    } catch (err) {
+      console.error("Error toggling enemy status:", err);
+    }
+  };
+
+  const addEffect = async (combatant, effectKey) => {
+    const { EFFECTS } = await import('../../constants/gameData');
+    const effectTemplate = EFFECTS[effectKey];
+    if (!effectTemplate) return;
+
+    const currentEffects = Array.isArray(combatant.effects) ? combatant.effects : [];
+    const newEffect = {
+      ...effectTemplate,
+      key: effectKey,
+      duration: parseInt(effectDuration) || 2,
+      addedAtTurn: turn
+    };
+
+    const newEffects = [...currentEffects, newEffect];
+    const table = combatant.is_npc ? 'npcs' : 'characters';
+    const dbId = combatant.is_npc ? combatant.dbId : combatant.id;
+
+    await supabase.from(table).update({ effects: newEffects }).eq('id', dbId);
+    setShowAddEffect(null);
+  };
 
   const handleHPSubmit = async (player, isShiftPressed = false) => {
     try {
@@ -133,8 +204,178 @@ export default function CombatManager({
         </div>
       )}
 
+      {/* ADD COMBATANT MODAL */}
+      {isActingAsMaster && showAddCombatant && (
+        <div className="absolute inset-0 z-[100] bg-zinc-950 flex flex-col border-l border-white/10 animate-in slide-in-from-right duration-300">
+          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.4em] italic">Adicionar Combatente</h3>
+            <button onClick={() => setShowAddCombatant(false)} className="text-zinc-500 hover:text-white transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="p-4 border-b border-white/5 space-y-4">
+            <input
+              type="text"
+              placeholder="Pesquisar..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500/50"
+            />
+            <div className="flex flex-col gap-2">
+              <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Adicionar como:</span>
+              <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+                <button
+                  onClick={() => setAddAsEnemy(false)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${!addAsEnemy ? 'bg-green-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                >
+                  <span>🛡️</span>
+                  <span>Aliado</span>
+                </button>
+                <button
+                  onClick={() => setAddAsEnemy(true)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${addAsEnemy ? 'bg-red-600 text-white shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                >
+                  <span>💀</span>
+                  <span>Inimigo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-2 px-2">Jogadores</h4>
+                <div className="flex flex-col gap-1">
+                  {allPlayers
+                    .filter(p => {
+                      if (p.discord_username === 'EnderU' && p.rank === 'Mestre') return false;
+                      const normalizedName = p.char_name?.toLowerCase().replace(/\s/g, '');
+                      if (normalizedName === 'novorecruta') return false;
+                      return p.char_name?.toLowerCase().includes(searchTerm.toLowerCase());
+                    })
+                    .sort((a, b) => (b.is_in_combat ? 1 : 0) - (a.is_in_combat ? 1 : 0))
+                    .map(p => (
+                      <div key={p.id} className="flex items-center gap-1 group">
+                        <button
+                          onClick={() => toggleCombatant(p, 'player')}
+                          className={`flex-1 flex items-center gap-3 p-2 rounded-lg border transition-all ${p.is_in_combat ? 'bg-red-600/20 border-red-500/50 text-white' : 'bg-white/5 border-transparent text-zinc-400 hover:bg-white/10'}`}
+                        >
+                          <div className="w-8 h-8 rounded-md bg-zinc-800 overflow-hidden shrink-0 border border-white/10">
+                            {p.image_url ? <img src={p.image_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-[10px]">👤</div>}
+                          </div>
+                          <span className="text-[10px] font-bold uppercase truncate">{p.char_name}</span>
+                          {p.is_in_combat && (
+                            <span className="ml-auto text-[8px] font-black px-1.5 py-0.5 rounded bg-red-600 text-black">
+                              IN
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-2 px-2">NPCs / Inimigos</h4>
+                <div className="flex flex-col gap-1">
+                  {allNPCs
+                    .filter(n => {
+                      const normalizedName = n.name?.toLowerCase().replace(/\s/g, '');
+                      if (normalizedName === 'novorecruta') return false;
+                      return n.name?.toLowerCase().includes(searchTerm.toLowerCase());
+                    })
+                    .sort((a, b) => (b.is_in_combat ? 1 : 0) - (a.is_in_combat ? 1 : 0))
+                    .map(n => (
+                      <div key={n.id} className="flex items-center gap-1 group">
+                        <button
+                          onClick={() => toggleCombatant(n, 'npc')}
+                          className={`flex-1 flex items-center gap-3 p-2 rounded-lg border transition-all ${n.is_in_combat ? (n.is_enemy ? 'bg-red-600/20 border-red-500/50 text-white' : 'bg-green-600/20 border-green-500/50 text-white') : 'bg-white/5 border-transparent text-zinc-400 hover:bg-white/10'}`}
+                        >
+                          <div className="w-8 h-8 rounded-md bg-zinc-800 overflow-hidden shrink-0 border border-white/10">
+                            {n.image_url ? <img src={n.image_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-[10px]">👤</div>}
+                          </div>
+                          <div className="flex flex-col items-start min-w-0">
+                            <span className="text-[10px] font-bold uppercase truncate">{n.name}</span>
+                            <span className="text-[7px] text-zinc-500 uppercase">{n.category} • {n.type}</span>
+                          </div>
+                          {n.is_in_combat && (
+                            <span className={`ml-auto text-[8px] font-black px-1.5 py-0.5 rounded ${n.is_enemy ? 'bg-red-600 text-black' : 'bg-green-600 text-black'}`}>
+                              {n.is_enemy ? 'ENEMY' : 'ALLY'}
+                            </span>
+                          )}
+                        </button>
+                        {n.is_in_combat && (
+                          <button
+                            onClick={() => toggleEnemyStatus(n, 'npc')}
+                            className={`w-8 h-12 flex items-center justify-center rounded-lg border transition-all ${n.is_enemy ? 'bg-red-600/20 border-red-500/40 text-red-500' : 'bg-green-600/10 border-green-500/20 text-green-500'}`}
+                            title={n.is_enemy ? "Inimigo" : "Aliado"}
+                          >
+                            <span className="text-xs">{n.is_enemy ? "💀" : "🛡️"}</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD EFFECT MODAL */}
+      {isActingAsMaster && showAddEffect && (
+        <div className="absolute inset-0 z-[100] bg-zinc-950 flex flex-col border-l border-white/10 animate-in slide-in-from-right duration-300">
+          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.4em] italic">Adicionar Efeito</h3>
+            <button onClick={() => setShowAddEffect(null)} className="text-zinc-500 hover:text-white transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="p-4 border-b border-white/5 space-y-2">
+            <label className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Duração (Turnos)</label>
+            <input
+              type="number"
+              value={effectDuration}
+              onChange={(e) => setEffectDuration(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500/50"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
+            {(() => {
+              const { EFFECTS } = require('../../constants/gameData');
+              return Object.entries(EFFECTS).map(([key, eff]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    const combatant = combatants.find(c => c.id === showAddEffect);
+                    if (combatant) addEffect(combatant, key);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all group"
+                >
+                  <div className="w-10 h-10 shrink-0 flex items-center justify-center bg-black/40 rounded-lg text-xl border border-white/10 group-hover:border-red-500/50 transition-colors leading-none">{eff.emoji}</div>
+                  <div className="flex flex-col items-start min-w-0">
+                    <span className="text-[10px] font-black text-white uppercase tracking-wider truncate w-full">{eff.name}</span>
+                    <span className="text-[8px] text-zinc-500 font-medium line-clamp-2 leading-tight">{eff.description}</span>
+                  </div>
+                </button>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
       <div className={`flex-1 overflow-y-auto p-4 custom-scrollbar transition-all duration-700 ${targetingRoll ? 'relative z-[75]' : ''}`}>
-        <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] italic text-center mb-4">Combatentes</h3>
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] italic text-center">Combatentes</h3>
+          {isActingAsMaster && (
+            <button
+              onClick={() => setShowAddCombatant(true)}
+              className="p-1.5 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-lg border border-red-500/20 transition-all hover:scale-105 active:scale-95"
+              title="Adicionar Combatente"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          )}
+        </div>
         <div className="relative">
           <div className={`transition-all duration-700 ${!isCombatActive && combatants.length === 0 ? 'opacity-20 grayscale' : 'opacity-0 pointer-events-none absolute inset-0'}`}>
             <div className="flex flex-col items-center justify-center h-64">
@@ -254,7 +495,7 @@ export default function CombatManager({
                         {Array.isArray(p.effects) && p.effects.map((eff, idx) => (
                           <TooltipWrapper key={idx} text={`**${eff.name}**\n${eff.description}`}>
                             <div className={`flex items-center gap-1 bg-zinc-950 border border-red-900/30 pl-0.5 pr-1.5 py-0.5 rounded relative ${targetingRoll ? '' : 'hover:border-red-600/50 cursor-help group/eff'}`}>
-                              <div className="min-w-[1rem] h-4 px-0.5 flex items-center justify-center bg-red-600/10 rounded text-[10px]">{eff.emoji}</div>
+                              <div className="min-w-[1rem] h-4 px-1 flex items-center justify-center bg-red-600/10 rounded text-[10px] leading-none">{eff.emoji}</div>
                               <span className="text-[9px] font-black uppercase tracking-wider text-red-500/80">{eff.name}</span>
                               <span className="text-[11px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1">{eff.duration ?? '-'}</span>
                               {isActingAsMaster && (
@@ -275,6 +516,15 @@ export default function CombatManager({
                             </div>
                           </TooltipWrapper>
                         ))}
+                        {isActingAsMaster && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowAddEffect(p.id); }}
+                            className="flex items-center justify-center w-6 h-6 bg-zinc-950 border border-white/10 rounded hover:border-red-500/50 transition-colors text-zinc-500 hover:text-red-500"
+                            title="Adicionar Efeito"
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M5 12h14"/></svg>
+                          </button>
+                        )}
                       </div>
 
                       <div className="space-y-1">
