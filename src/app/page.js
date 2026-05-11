@@ -1001,6 +1001,11 @@ export default function Home() {
               <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3 ml-4">Individual</p>
               <div className="flex flex-col gap-1">
                 <NavButton active={activeTab === 'sheet' && !viewingTarget} label="Minha Ficha" onClick={() => {
+                  if (isEditing && !isViewingOnly) {
+                    playSoundEffect('error');
+                    showToast("Você precisa concluir sua edição antes de visualizar outras abas.");
+                    return;
+                  }
                   playSoundEffect('tab_change');
                   const myChar = allPlayers.find(p => p.id === user?.id);
                   if (myChar) {
@@ -1087,6 +1092,11 @@ export default function Home() {
                                   showToast("Ficha ainda não aprovada pelo mestre.");
                                   return;
                                 }
+                                if (isEditing && !isViewingOnly) {
+                                  playSoundEffect('error');
+                                  showToast("Você precisa concluir sua edição antes de visualizar outras fichas.");
+                                  return;
+                                }
                                 playSoundEffect('tab_change');
                                 setCharacter(p);
                                 if (!isEditing) setTempChar(p);
@@ -1119,6 +1129,11 @@ export default function Home() {
                       label={npc.name}
                       isNPC
                       onClick={() => {
+                        if (isEditing && !isViewingOnly) {
+                          playSoundEffect('error');
+                          showToast("Você precisa concluir sua edição antes de visualizar outras fichas.");
+                          return;
+                        }
                         playSoundEffect('tab_change');
                         setCharacter(npc);
                         setTempChar(npc);
@@ -1307,6 +1322,11 @@ export default function Home() {
 
 
               <button onClick={() => {
+                if (isEditing && !isViewingOnly) {
+                  playSoundEffect('error');
+                  showToast("Você precisa concluir sua edição antes de visualizar outras fichas.");
+                  return;
+                }
                 playSoundEffect('tab_change');
                 const myChar = allPlayers.find(p => p.id === user?.id);
                 if (myChar) {

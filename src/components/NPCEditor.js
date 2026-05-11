@@ -75,7 +75,6 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
         const { error } = await supabase.from('npcs').insert([data]);
         if (!error) {
           showToast("NPC Criado!");
-          fetchNPCs();
           closeModal();
         } else {
           console.error("DEBUG NPC ERROR:", error);
@@ -97,7 +96,6 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
         const { error } = await supabase.from('npcs').update(data).eq('id', npc.id);
         if (!error) {
           showToast("NPC Atualizado!");
-          fetchNPCs();
           closeModal();
         } else {
           showToast("Erro ao atualizar NPC.");
@@ -107,7 +105,6 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
         const { error } = await supabase.from('npcs').delete().eq('id', npc.id);
         if (!error) {
           showToast("NPC Excluído.");
-          fetchNPCs();
           closeModal();
         }
       }
@@ -159,7 +156,6 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
 
     if (!error) {
       showToast(newVisibility ? "NPC agora está Visível!" : "NPC agora está Oculto!");
-      fetchNPCs();
     } else {
       showToast("Erro ao alterar visibilidade.");
     }
@@ -240,7 +236,6 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                       if (error) throw error;
 
                       showToast(`${preparedNPCs.length} NPCs Importados!`);
-                      fetchNPCs();
                       closeModal();
                     } catch (err) {
                       showToast(`Erro na importação: ${err.message}`);

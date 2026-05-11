@@ -51,6 +51,12 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 400) + 'px'; // ~25 lines max visual
       }
+      // Description Resize (for images)
+      const descEl = textareaRefs.current[`desc-${card.id}`];
+      if (descEl) {
+        descEl.style.height = 'auto';
+        descEl.style.height = Math.min(descEl.scrollHeight, 300) + 'px';
+      }
       // Title Resize
       const titleEl = titleRefs.current[card.id];
       if (titleEl) {
@@ -183,6 +189,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     const newCardBase = {
       title: type === 'image' ? '' : 'Nova Evidência',
       content: '',
+      description: '',
       x_pos: cx,
       y_pos: cy,
       type: type,
@@ -217,7 +224,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     ));
   };
 
-  const updateCardContent = async (id, title, content, imageUrl, imageScale) => {
+  const updateCardContent = async (id, title, content, imageUrl, imageScale, description) => {
     // We update local state immediately for the user who edited,
     // and send only the changed fields to Supabase.
     const updates = {};
@@ -225,6 +232,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     if (content !== undefined) updates.content = content;
     if (imageUrl !== undefined) updates.image_url = imageUrl;
     if (imageScale !== undefined) updates.image_scale = imageScale;
+    if (description !== undefined) updates.description = description;
     
     console.log('Pushing updates to Supabase:', id, updates);
     const { error } = await supabase.from('investigation_cards').update(updates).eq('id', id);
@@ -284,7 +292,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       if (editingCardId && editingCardId !== cardId) {
           const oldCard = cards.find(c => c.id === editingCardId);
           if (oldCard) {
-              updateCardContent(oldCard.id, oldCard.title, oldCard.content, oldCard.image_url);
+              updateCardContent(oldCard.id, oldCard.title, oldCard.content, oldCard.image_url, oldCard.image_scale, oldCard.description);
           }
       }
 
@@ -316,7 +324,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     if (editingCardId && !pinningFrom) {
         const card = cards.find(c => c.id === editingCardId);
         if (card) {
-            updateCardContent(card.id, card.title, card.content, card.image_url);
+            updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
         }
         setEditingCardId(null);
     }
@@ -379,7 +387,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       if (editingCardId) {
           const card = cards.find(c => c.id === editingCardId);
           if (card) {
-              updateCardContent(card.id, card.title, card.content, card.image_url);
+              updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
           }
           setEditingCardId(null);
       }
@@ -637,7 +645,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                             setCards(prev => prev.map(c => c.id === card.id ? { ...c, title: val } : c));
                                         }
                                     }}
-                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description); }}
                                     placeholder={isImage ? "Título (opcional)..." : "Título..."}
                                     className={`w-full bg-transparent border-none text-zinc-900 font-black uppercase text-[12px] outline-none placeholder:text-zinc-400 resize-none overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
                                 />
@@ -656,11 +664,11 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
-                                                        updateCardContent(card.id, card.title, card.content, card.image_url);
+                                                        updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description);
                                                         setEditingCardId(null);
                                                     }
                                                 }}
-                                                onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                                onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description); }}
                                                 placeholder="Link da imagem (Imgur)..."
                                                 className="w-full bg-zinc-200/50 border border-zinc-300 rounded px-2 py-1 text-[9px] font-bold text-zinc-800 outline-none placeholder:text-zinc-400"
                                             />
@@ -688,6 +696,20 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                             </div>
                                         )}
                                     </div>
+                                    {(isEditing || card.description) && (
+                                        <textarea
+                                            ref={el => textareaRefs.current[`desc-${card.id}`] = el}
+                                            value={card.description || ''}
+                                            readOnly={!isEditing}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setCards(prev => prev.map(c => c.id === card.id ? { ...c, description: val } : c));
+                                            }}
+                                            onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description); }}
+                                            placeholder="Descrição (opcional)..."
+                                            className={`w-full bg-transparent border-none text-zinc-700 font-bold text-[10px] leading-tight outline-none resize-none placeholder:text-zinc-300 overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 <textarea
@@ -701,7 +723,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                                             setCards(prev => prev.map(c => c.id === card.id ? { ...c, content: val } : c));
                                         }
                                     }}
-                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url); }}
+                                    onBlur={() => { updateCardContent(card.id, card.title, card.content, card.image_url, card.image_scale, card.description); }}
                                     placeholder="Escreva aqui..."
                                     className={`w-full bg-transparent border-none text-zinc-700 font-bold text-[10px] leading-tight outline-none resize-none placeholder:text-zinc-300 overflow-hidden ${isEditing ? 'cursor-text' : 'cursor-inherit'}`}
                                 />
