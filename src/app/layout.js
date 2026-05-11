@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono, Caveat } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "../components/UIElements";
+import VersionCheck from "../components/VersionCheck";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} ${caveat.variable} antialiased`}>
+        <VersionCheck />
         <TooltipProvider>
           {children}
         </TooltipProvider>
