@@ -527,10 +527,10 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     });
   };
 
-  if (loading) return <div className="p-8 text-zinc-500 font-black italic uppercase">Carregando Quadro...</div>;
+  if (loading && categories.length === 0) return null;
 
   return (
-    <div className="h-full flex flex-col p-8 overflow-hidden bg-zinc-950 select-none">
+    <div className="h-full flex flex-col p-8 overflow-hidden bg-zinc-950 select-none relative">
       <style>{`
         .pin-active-ring {
             box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.6);
@@ -540,10 +540,36 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             0% { box-shadow: 0 0 0 0px rgba(220, 38, 38, 0.8); }
             100% { box-shadow: 0 0 0 20px rgba(220, 38, 38, 0); }
         }
+        .investigation-fade-out {
+            animation: investigation-fade-out 1s forwards;
+        }
+        @keyframes investigation-fade-out {
+            from { opacity: 1; }
+            to { opacity: 0; pointer-events: none; }
+        }
       `}</style>
-      <div className="flex justify-between items-center mb-8 bg-zinc-950/80 p-6 rounded-2xl border border-zinc-800 backdrop-blur-sm z-10">
+
+      {/* Global Loading Overlay */}
+      {loading && (
+        <div className="absolute inset-0 z-[200] bg-black flex items-center justify-center">
+            <div className="text-center space-y-4">
+                <div className="text-4xl animate-pulse text-red-600 font-black italic uppercase tracking-tighter">Sincronizando Arquivos...</div>
+                <div className="w-48 h-1 bg-zinc-900 mx-auto rounded-full overflow-hidden">
+                    <div className="h-full bg-red-600 animate-[loading-bar_2s_infinite_ease-in-out]" style={{ width: '40%' }}></div>
+                </div>
+            </div>
+            <style>{`
+                @keyframes loading-bar {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(250%); }
+                }
+            `}</style>
+        </div>
+      )}
+
+      <div className={`flex justify-between items-center mb-8 bg-zinc-950/80 p-6 rounded-2xl border border-zinc-800 backdrop-blur-sm z-10 transition-opacity duration-1000 ${loading ? 'opacity-0' : 'opacity-100'}`}>
         <div className="flex items-center gap-6">
-          <div>
+          <div className="min-w-[200px]">
             <h2 className="text-4xl font-black italic text-red-600 uppercase tracking-tighter">Investigação</h2>
             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-1">
               {currentCategoryCards.length} / {maxCards} Cards • Shift + Clique para Selecionar
@@ -553,7 +579,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
           <div className="h-12 w-[1px] bg-zinc-800" />
 
           {/* Category Dropdown */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-[200px]">
             <span className="text-[9px] font-black text-zinc-500 uppercase px-2">Caso / Categoria</span>
             <div className="flex items-center gap-2">
                 <select 
@@ -564,7 +590,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                         setMaxCards(cat?.max_cards || 20);
                         setSelectedCardIds([]);
                     }}
-                    className="bg-zinc-900 border border-zinc-800 text-white font-black uppercase text-xs rounded-full px-4 py-2 outline-none focus:ring-1 focus:ring-red-600 appearance-none cursor-pointer pr-10"
+                    className="bg-zinc-900 border border-zinc-800 text-white font-black uppercase text-xs rounded-full px-4 py-2 outline-none focus:ring-1 focus:ring-red-600 appearance-none cursor-pointer pr-10 w-full"
                     style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0\' stroke=\'white\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '12px' }}
                 >
                     {categories.map(cat => (
@@ -574,7 +600,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
                 {isMaster && (
                     <button 
                         onClick={() => setIsManagingCategories(!isManagingCategories)}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isManagingCategories ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${isManagingCategories ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
                     >
                         ⚙️
                     </button>
@@ -655,7 +681,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
 
       <div 
         ref={containerRef}
-        className="flex-1 relative border-4 border-zinc-900 rounded-[40px] bg-black/40 overflow-hidden cursor-grab active:cursor-grabbing"
+        className={`flex-1 relative border-4 border-zinc-900 rounded-[40px] bg-black/40 overflow-hidden cursor-grab active:cursor-grabbing transition-opacity duration-1000 ${loading ? 'opacity-0' : 'opacity-100'}`}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}

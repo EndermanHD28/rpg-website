@@ -17,6 +17,12 @@ import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
 import { TooltipWrapper } from '../UIElements';
 
+/* 
+  NOTE: This system uses a server-side RPC function 'toggle_session' to clear the chat.
+  If you need to preserve messages in the future, modify the 'toggle_session' 
+  database function in Supabase to avoid the 'DELETE FROM messages' command.
+*/
+
 export default function CombatLog({ 
   user, 
   allPlayers, 
@@ -38,7 +44,9 @@ export default function CombatLog({
   input,
   setInput,
   quickDiceInputs,
-  setQuickDiceInputs
+  setQuickDiceInputs,
+  traders = [],
+  tradeRequests = []
 }) {
 
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -52,6 +60,7 @@ export default function CombatLog({
   const [suggestions, setSuggestions] = useState([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [suggestionData, setSuggestionData] = useState(null);
+  const [isSending, setIsSending] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
   const [displayImage, setDisplayImage] = useState(sharedImage);
@@ -61,45 +70,19 @@ export default function CombatLog({
 
   const [editingHP, setEditingHP] = useState(null);
   const [editingPosture, setEditingPosture] = useState(null);
+  const [editingDamage, setEditingDamage] = useState(null); // { msgId, field: 'final' | 'posture' }
   const [hpInput, setHpInput] = useState("");
   const [postureInput, setPostureInput] = useState("");
+  const [damageInput, setDamageInput] = useState("");
 
   const [showTraderSelector, setShowTraderSelector] = useState(false);
   const [showTradeRequests, setShowTradeRequests] = useState(false);
-  const [traders, setTraders] = useState([]);
-  const [tradeRequests, setTradeRequests] = useState([]);
 
   const [itemsDB, setItemsDB] = useState([]);
 
   useEffect(() => {
-    fetchTraders();
     fetchItemsDB();
-    if (isMaster) fetchTradeRequests();
-
-    const tradersChannel = supabase.channel('combatlog_traders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'traders' }, () => fetchTraders())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_requests' }, () => {
-        if (isMaster) fetchTradeRequests();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(tradersChannel);
-    };
-  }, [isMaster]);
-
-  const fetchTraders = async () => {
-    const { data } = await supabase.from('traders').select('*').order('name');
-    if (data) setTraders(data);
-  };
-
-  const fetchTradeRequests = async () => {
-    const { data } = await supabase.from('trade_requests')
-      .select('*, characters(char_name)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
-    if (data) setTradeRequests(data);
-  };
+  }, []);
 
   const fetchItemsDB = async () => {
     const { data } = await supabase.from('items').select('*');
@@ -264,8 +247,8 @@ export default function CombatLog({
 
   useEffect(() => {
     const handleTradeUpdates = (payload) => {
-      const { old: oldReq, new: newReq } = payload;
-      if (payload.eventType === 'UPDATE' && oldReq.status === 'pending') {
+      const { new: newReq } = payload;
+      if (payload.eventType === 'UPDATE') {
         if (newReq.player_id === user?.id) {
             if (newReq.status === 'declined') {
                 showToast(`Sua oferta de venda para ${newReq.item.name} foi recusada.`);
@@ -737,6 +720,81 @@ export default function CombatLog({
     }
   };
 
+  const handleUpdateDamageState = async (msg, newState) => {
+    const parts = msg.content.split('|');
+    // DICE_ROLL|pName|expr|total|detail|status|category|pImage|diceType|targetName|targetId|effectNote|damageState
+    // damageState is at index 12.
+    while (parts.length < 13) parts.push("{}");
+    
+    const currentState = JSON.parse(parts[12] || "{}");
+    const updatedState = { ...currentState, ...newState };
+    parts[12] = JSON.stringify(updatedState);
+    
+    const newContent = parts.join('|');
+    await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
+
+    // If finalizing, apply damage to target
+    if (newState.finalized && updatedState.finalized) {
+      const targetId = parts[10];
+      if (!targetId) return;
+
+      const target = combatants.find(c => c.id === targetId);
+      if (!target) {
+        console.error("Target not found in active combatants:", targetId);
+        return;
+      }
+
+      const finalDmg = updatedState.editedFinal ?? updatedState.selectedFinal ?? 0;
+      const postureDmg = updatedState.editedPosture ?? updatedState.selectedPosture ?? 0;
+
+      const { life: maxLife, posture: maxPosture } = calculateDerivedStats(target);
+      const currentLife = target.current_hp ?? maxLife;
+      const currentPosture = target.current_posture ?? maxPosture;
+
+      const newLife = Math.max(0, currentLife - finalDmg);
+      const newPosture = Math.max(0, currentPosture - postureDmg);
+
+      const table = target.is_npc ? 'npcs' : 'characters';
+      const dbId = target.is_npc ? target.dbId : target.id;
+
+      const { error } = await supabase.from(table).update({ 
+        current_hp: newLife, 
+        current_posture: newPosture 
+      }).eq('id', dbId);
+      
+      if (error) {
+        console.error("Error applying damage:", error);
+        showToast("Erro ao aplicar dano no banco de dados.");
+      } else {
+        showToast(`Dano aplicado a ${target.char_name || target.name}! (HP: ${currentLife} -> ${newLife})`);
+      }
+    }
+  };
+
+  const handleDamageEditSubmit = async (msg, field) => {
+    if (!damageInput.trim()) {
+      setEditingDamage(null);
+      return;
+    }
+
+    let finalValue;
+    try {
+      // Safe math evaluation
+      let equation = damageInput.toLowerCase().replace(/random/g, () => Math.random().toString());
+      if (/[^0-9+\-*/().\s|e]/.test(equation)) throw new Error("Invalid characters");
+      finalValue = Math.round(new Function(`return ${equation}`)());
+    } catch (e) {
+      showToast("Equação inválida!");
+      return;
+    }
+
+    if (isNaN(finalValue)) return;
+
+    const newState = field === 'final' ? { editedFinal: finalValue } : { editedPosture: finalValue };
+    await handleUpdateDamageState(msg, newState);
+    setEditingDamage(null);
+  };
+
   const groupMessages = (msgs) => {
     const groups = [];
     if (!msgs || msgs.length === 0) return groups;
@@ -890,48 +948,56 @@ export default function CombatLog({
   };
 
   const sendMsg = async (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+    if (e) e.preventDefault();
+    if (!input.trim() || isSending) return;
 
-    if (input.startsWith('/') && isActingAsMaster) {
-      const res = await handleCommand(input, user, allPlayers, allNPCs);
-      await supabase.from('messages').insert({
-        player_name: "SISTEMA",
-        content: `${res.success ? '✅' : '❌'} ${res.message}`,
-        is_system: true
-      });
-    } else {
-      let playerChar = allPlayers?.find(p => p.id === user?.id);
-      let playerName = playerChar?.char_name || user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
-      
-      if (isActingAsMaster && selectedCombatantId) {
-        const selected = combatants.find(p => p.id === selectedCombatantId);
-        if (selected) {
-          playerChar = selected;
-          playerName = selected.char_name;
-        }
-      }
-
-      const playerImage = playerChar?.image_url || "";
-      const diceResult = rollDice(input, playerChar);
-      
-      if (diceResult) {
-        const isTargetingType = ['ataque', 'acerto', 'desvio', 'dano', 'bloqueio'].includes(diceResult.type);
-        if (isTargetingType) {
-          setTargetingRoll({ input, diceResult, playerName, playerImage });
-          setInput("");
-          setSuggestions([]);
-          setSuggestionData(null);
-          return;
-        }
-        await finishDiceRoll(diceResult, input, playerName, playerImage);
+    setIsSending(true);
+    try {
+      if (input.startsWith('/') && isActingAsMaster) {
+        const res = await handleCommand(input, user, allPlayers, allNPCs);
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `${res.success ? '✅' : '❌'} ${res.message}`,
+          is_system: true
+        });
       } else {
-        await supabase.from('messages').insert({ player_name: playerName, content: input });
+        let playerChar = allPlayers?.find(p => p.id === user?.id);
+        let playerName = playerChar?.char_name || user?.user_metadata?.full_name || user?.user_metadata?.preferred_username;
+        
+        if (isActingAsMaster && selectedCombatantId) {
+          const selected = combatants.find(p => p.id === selectedCombatantId);
+          if (selected) {
+            playerChar = selected;
+            playerName = selected.char_name;
+          }
+        }
+
+        const playerImage = playerChar?.image_url || "";
+        const diceResult = rollDice(input, playerChar);
+        
+        if (diceResult) {
+          const isTargetingType = ['ataque', 'acerto', 'desvio', 'dano', 'bloqueio'].includes(diceResult.type);
+          if (isTargetingType) {
+            setTargetingRoll({ input, diceResult, playerName, playerImage });
+            setInput("");
+            setSuggestions([]);
+            setSuggestionData(null);
+            return;
+          }
+          await finishDiceRoll(diceResult, input, playerName, playerImage);
+        } else {
+          await supabase.from('messages').insert({ player_name: playerName, content: input });
+        }
       }
+      setInput("");
+      setSuggestions([]);
+      setSuggestionData(null);
+    } catch (err) {
+      console.error("Error sending message:", err);
+      showToast("Erro ao enviar mensagem.");
+    } finally {
+      setIsSending(false);
     }
-    setInput("");
-    setSuggestions([]);
-    setSuggestionData(null);
   };
 
   const handleQuickRoll = async (type, inputVal) => {
@@ -1156,7 +1222,12 @@ export default function CombatLog({
                   
                   {isActingAsMaster && !targetingRoll && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedCombatantId(selectedCombatantId === enemy.id ? null : enemy.id); }}
+                      onClick={async (e) => { 
+                        e.stopPropagation(); 
+                        const newId = selectedCombatantId === enemy.id ? null : enemy.id;
+                        setSelectedCombatantId(newId);
+                        await supabase.from('global').update({ imitated_id: newId }).eq('id', 1);
+                      }}
                       className={`absolute top-2 right-2 z-20 p-1 rounded-full border transition-all ${selectedCombatantId === enemy.id ? 'bg-green-500 border-green-400 text-white scale-110 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-black/40 border-white/10 text-white/20 hover:text-white/50'}`}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -1424,8 +1495,9 @@ export default function CombatLog({
                           );
                         }
                         if (m.content.startsWith('DICE_ROLL|')) {
-                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetInfo = ""] = m.content.split('|');
-                        const [targetName, effectNote = ""] = targetInfo.split('|');
+                        const parts = m.content.split('|');
+                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = "", targetId = "", effectNote = ""] = parts;
+                        
                         const styles = {
                           combat: { bg: "bg-red-500/5", border: "border-red-500/20", accent: "text-red-500" },
                           secondary: { bg: "bg-blue-500/5", border: "border-blue-500/20", accent: "text-blue-400" },
@@ -1463,7 +1535,7 @@ export default function CombatLog({
                                   {diceType && <span className="ml-auto bg-white/10 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded border border-white/10 tracking-widest italic">{diceType}</span>}
                                 </div>
                                 <div className="flex items-end gap-4">
-                                  <div className="text-5xl font-black italic text-white/40 tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">{total}</div>
+                                  <div className="text-5xl font-black italic text-white/40 tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">{Number(total).toFixed(0)}</div>
                                   <div className="pb-1.5"><div className="flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: detail }} /></div>
                                 </div>
 
@@ -1491,45 +1563,167 @@ export default function CombatLog({
                                 {/* Decorative Background Effect */}
                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-red-600/5 blur-[60px] -z-10" />
                                 
-                                {/* Dano Final Section */}
-                                <div className="flex flex-col items-center">
-                                  <span className="text-[9px] font-black text-red-600/60 uppercase tracking-[0.4em] mb-3">Dano Final</span>
-                                  <div className="relative">
-                                    {/* Note: This value can include future RPG math bonuses/modifiers */}
-                                    <span className="text-5xl font-black italic text-white tracking-tighter drop-shadow-[0_0_25px_rgba(220,38,38,0.5)]">{total}</span>
-                                    <div className="absolute -bottom-1 left-0 right-0 h-1 bg-red-600/20 blur-md rounded-full" />
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const parts = m.content.split('|');
+                                  const dStateRaw = parts[12] || "{}";
+                                  let dState = {};
+                                  try { dState = JSON.parse(dStateRaw); } catch(e) {}
+                                  
+                                  const dmgValue = Number(total);
+                                  const dNormal = Math.round(dmgValue);
+                                  const dBlocked = Math.round(dmgValue * 0.7);
 
-                                <div className="hidden md:block w-px h-16 bg-white/5" />
+                                  const basePostureDamage = dmgValue / 3;
+                                  function roundPostureDamage(pDmg, roundingFunction) {
+                                    return roundingFunction(Math.max(pDmg / 5, pDmg));
+                                  }
+                                  const pLeve = roundPostureDamage(basePostureDamage, Math.floor);
+                                  const pMedio = roundPostureDamage(basePostureDamage * 1.6, Math.round);
+                                  const pPesado = roundPostureDamage(basePostureDamage * 2.5, Math.ceil);
 
-                                {/* Dano de Postura Section */}
-                                <div className="flex flex-col items-center">
-                                  <span className="text-[9px] font-black text-green-500/40 uppercase tracking-[0.4em] mb-4">Dano de Postura</span>
-                                  {(() => {
-                                    const dmgValue = Number(total);
-                                    const pLeve = Math.max(1, Math.floor(dmgValue / 5));
-                                    const pMedio = Math.min(pLeve * 2, Math.max(1, Math.round(dmgValue / 3)));
-                                    const pPesado = Math.min(pMedio * 3, Math.max(1, Math.ceil(dmgValue)));
-                                    
-                                    return (
-                                      <div className="grid grid-cols-3 gap-10">
-                                        <div className="flex flex-col items-center">
-                                          <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1">Leve</span>
-                                          <span className="text-2xl font-black text-green-600/80 font-mono drop-shadow-[0_0_10px_rgba(22,163,74,0.2)]">{pLeve}</span>
-                                        </div>
-                                        <div className="flex flex-col items-center">
-                                          <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1">Médio</span>
-                                          <span className="text-2xl font-black text-green-500 font-mono drop-shadow-[0_0_10px_rgba(34,197,94,0.2)]">{pMedio}</span>
-                                        </div>
-                                        <div className="flex flex-col items-center">
-                                          <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1">Pesado</span>
-                                          <span className="text-2xl font-black text-green-400 font-mono drop-shadow-[0_0_10px_rgba(74,222,128,0.2)]">{pPesado}</span>
+                                  const isFinalized = dState.finalized;
+                                  const showToPlayer = isFinalized || isActingAsMaster;
+
+                                  return (
+                                    <>
+                                      {/* Dano Final Section */}
+                                      <div className="flex flex-col items-center">
+                                        <span className="text-[9px] font-black text-red-600/60 uppercase tracking-[0.4em] mb-3">Dano Final</span>
+                                        <div className="relative flex flex-col items-center">
+                                          {!showToPlayer ? (
+                                            <span className="text-5xl font-black italic text-white/20 tracking-tighter drop-shadow-[0_0_25px_rgba(220,38,38,0.2)]">?</span>
+                                          ) : isActingAsMaster && !isFinalized ? (
+                                            dState.selectedFinal ? (
+                                              editingDamage?.msgId === m.id && editingDamage?.field === 'final' ? (
+                                                <div className="flex flex-col items-center gap-2">
+                                                  <input
+                                                    autoFocus
+                                                    value={damageInput}
+                                                    onChange={e => setDamageInput(e.target.value)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') handleDamageEditSubmit(m, 'final');
+                                                      if (e.key === 'Escape') setEditingDamage(null);
+                                                    }}
+                                                    className="bg-zinc-800 border border-red-500 rounded px-2 py-1 text-white font-black italic text-xl w-24 text-center outline-none"
+                                                  />
+                                                  <span className="text-[7px] text-zinc-500 uppercase font-black">Enter para salvar</span>
+                                                </div>
+                                              ) : (
+                                                <div 
+                                                  onClick={() => {
+                                                    setEditingDamage({ msgId: m.id, field: 'final' });
+                                                    setDamageInput((dState.editedFinal ?? dState.selectedFinal).toString());
+                                                  }}
+                                                  className="cursor-pointer group/dmg relative"
+                                                >
+                                                  <span className="text-5xl font-black italic text-white tracking-tighter drop-shadow-[0_0_25px_rgba(220,38,38,0.5)]">
+                                                    {dState.editedFinal ?? dState.selectedFinal}
+                                                  </span>
+                                                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 opacity-0 group-hover/dmg:opacity-100 transition-opacity bg-red-600 text-white text-[7px] font-black px-1 rounded whitespace-nowrap">CLIQUE PARA EDITAR</div>
+                                                </div>
+                                              )
+                                            ) : (
+                                              <div className="flex gap-4">
+                                                <button 
+                                                  onClick={() => handleUpdateDamageState(m, { selectedFinal: dNormal })}
+                                                  className="flex flex-col items-center group/btn"
+                                                >
+                                                  <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Normal</span>
+                                                  <span className="text-2xl font-black text-white/40 group-hover/btn:text-white transition-all font-mono">{dNormal}</span>
+                                                </button>
+                                                <button 
+                                                  onClick={() => handleUpdateDamageState(m, { selectedFinal: dBlocked })}
+                                                  className="flex flex-col items-center group/btn"
+                                                >
+                                                  <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Bloqueado</span>
+                                                  <span className="text-2xl font-black text-white/40 group-hover/btn:text-white transition-all font-mono">{dBlocked}</span>
+                                                </button>
+                                              </div>
+                                            )
+                                          ) : (
+                                            <span className="text-5xl font-black italic text-white tracking-tighter drop-shadow-[0_0_25px_rgba(220,38,38,0.5)]">
+                                              {dState.editedFinal ?? dState.selectedFinal ?? "?"}
+                                            </span>
+                                          )}
+                                          <div className="absolute -bottom-1 left-0 right-0 h-1 bg-red-600/20 blur-md rounded-full" />
                                         </div>
                                       </div>
-                                    );
-                                  })()}
-                                </div>
+
+                                      <div className="hidden md:block w-px h-16 bg-white/5" />
+
+                                      {/* Dano de Postura Section */}
+                                      <div className="flex flex-col items-center">
+                                        <span className="text-[9px] font-black text-green-500/40 uppercase tracking-[0.4em] mb-4">Dano de Postura</span>
+                                        {!showToPlayer ? (
+                                          <span className="text-3xl font-black italic text-green-500/20 tracking-tighter drop-shadow-[0_0_15px_rgba(34,197,94,0.1)]">?</span>
+                                        ) : isActingAsMaster && !isFinalized ? (
+                                          dState.selectedPosture ? (
+                                            editingDamage?.msgId === m.id && editingDamage?.field === 'posture' ? (
+                                              <div className="flex flex-col items-center gap-2">
+                                                <input
+                                                  autoFocus
+                                                  value={damageInput}
+                                                  onChange={e => setDamageInput(e.target.value)}
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleDamageEditSubmit(m, 'posture');
+                                                    if (e.key === 'Escape') setEditingDamage(null);
+                                                  }}
+                                                  className="bg-zinc-800 border border-green-500 rounded px-2 py-1 text-white font-black italic text-xl w-24 text-center outline-none"
+                                                />
+                                                <span className="text-[7px] text-zinc-500 uppercase font-black">Enter para salvar</span>
+                                              </div>
+                                            ) : (
+                                              <div 
+                                                onClick={() => {
+                                                  setEditingDamage({ msgId: m.id, field: 'posture' });
+                                                  setDamageInput((dState.editedPosture ?? dState.selectedPosture).toString());
+                                                }}
+                                                className="cursor-pointer group/dmg relative"
+                                              >
+                                                <span className="text-4xl font-black italic text-green-500 tracking-tighter drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                                                  {dState.editedPosture ?? dState.selectedPosture}
+                                                </span>
+                                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 opacity-0 group-hover/dmg:opacity-100 transition-opacity bg-green-600 text-white text-[7px] font-black px-1 rounded whitespace-nowrap">CLIQUE PARA EDITAR</div>
+                                              </div>
+                                            )
+                                          ) : (
+                                            <div className="grid grid-cols-3 gap-10">
+                                              <button onClick={() => handleUpdateDamageState(m, { selectedPosture: pLeve })} className="flex flex-col items-center group/btn">
+                                                <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Leve</span>
+                                                <span className="text-2xl font-black text-green-600/40 group-hover/btn:text-green-600/80 font-mono transition-all">{pLeve}</span>
+                                              </button>
+                                              <button onClick={() => handleUpdateDamageState(m, { selectedPosture: pMedio })} className="flex flex-col items-center group/btn">
+                                                <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Médio</span>
+                                                <span className="text-2xl font-black text-green-500/40 group-hover/btn:text-green-500 font-mono transition-all">{pMedio}</span>
+                                              </button>
+                                              <button onClick={() => handleUpdateDamageState(m, { selectedPosture: pPesado })} className="flex flex-col items-center group/btn">
+                                                <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Pesado</span>
+                                                <span className="text-2xl font-black text-green-400/40 group-hover/btn:text-green-400 font-mono transition-all">{pPesado}</span>
+                                              </button>
+                                            </div>
+                                          )
+                                        ) : (
+                                          <div className="flex items-center">
+                                            <span className="text-4xl font-black italic text-green-500 tracking-tighter drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                                              {dState.editedPosture ?? dState.selectedPosture ?? "?"}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {isActingAsMaster && dState.selectedFinal && dState.selectedPosture && !isFinalized && (
+                                        <div className="absolute bottom-[-20px] left-1/2 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                          <button 
+                                            onClick={() => handleUpdateDamageState(m, { finalized: true })}
+                                            className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-[0.2em] px-8 py-2 rounded-full shadow-2xl border border-red-400/20 transition-all hover:scale-110 active:scale-95"
+                                          >
+                                            Finalizar
+                                          </button>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>
@@ -2275,7 +2469,7 @@ export default function CombatLog({
               <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
               <button type="button" disabled={isUploading} onClick={() => fileInputRef.current?.click()} className={`p-2 transition-all ${isUploading ? 'animate-pulse text-yellow-500' : 'text-zinc-500 hover:text-white'}`} title="Anexar Imagem"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg></button>
               <button type="button" onClick={toggleGifPicker} className={`p-2 transition-all ${showGifPicker ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-white'}`} title="Inserir GIF"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
-              <button type="submit" disabled={!input.trim()} className="p-2 text-zinc-500 hover:text-white disabled:opacity-30 transition-colors" title="Enviar mensagem"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+              <button type="submit" disabled={!input.trim() || isSending} className="p-2 text-zinc-500 hover:text-white disabled:opacity-30 transition-colors" title="Enviar mensagem"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
             </div>
           </div>
         </div>

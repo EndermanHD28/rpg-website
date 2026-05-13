@@ -19,8 +19,8 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
   const isActingAsMaster = isMaster && !isViewingOthers;
 
   // View Configuration
-  const BOARD_WIDTH = 2100;
-  const BOARD_HEIGHT = 1050;
+  const BOARD_WIDTH = 2100 * (treeData.boardMultiplier?.x || 1);
+  const BOARD_HEIGHT = 1050 * (treeData.boardMultiplier?.y || 1);
   const ZOOM_MIN = 0.8;
   const ZOOM_MAX = 1.5;
   const PAN_MARGIN = 200;

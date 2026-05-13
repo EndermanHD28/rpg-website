@@ -10,6 +10,7 @@ import {
   calculateBloqueio,
   calculateDerivedStats 
 } from '../../lib/rpg-math';
+import { BREATHING_TREES } from '../../constants/gameData';
 
 export default function CombatManager({
   user,
@@ -54,9 +55,21 @@ export default function CombatManager({
         update.current_hp = derived.life;
         update.current_posture = derived.posture;
         
-        const hasFocus = Array.isArray(entity.breathing_skills) && entity.breathing_skills.includes('skill_0');
-        if (hasFocus) {
-          update.current_focus = entity.breathing_style === 'Tempestade' ? 35 : 0;
+        const learnedSkills = Array.isArray(entity.breathing_skills) ? entity.breathing_skills : [];
+        let totalStartingFocus = 0;
+        
+        if (entity.breathing_style && BREATHING_TREES[entity.breathing_style]) {
+          const styleSkills = BREATHING_TREES[entity.breathing_style].skills;
+          learnedSkills.forEach(skillId => {
+            const skillData = styleSkills.find(s => s.id === skillId);
+            if (skillData && skillData.skillLogic && skillData.skillLogic.startingFocus) {
+              totalStartingFocus += skillData.skillLogic.startingFocus;
+            }
+          });
+        }
+        
+        if (learnedSkills.includes('skill_0')) {
+          update.current_focus = totalStartingFocus;
         }
       }
 
@@ -427,7 +440,12 @@ export default function CombatManager({
                     <div className="flex flex-col gap-2 relative">
                       {isActingAsMaster && !targetingRoll && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedCombatantId(selectedCombatantId === p.id ? null : p.id); }}
+                          onClick={async (e) => { 
+                            e.stopPropagation(); 
+                            const newId = selectedCombatantId === p.id ? null : p.id;
+                            setSelectedCombatantId(newId);
+                            await supabase.from('global').update({ imitated_id: newId }).eq('id', 1);
+                          }}
                           className={`absolute top-0 right-0 z-20 p-1 rounded-full border transition-all ${selectedCombatantId === p.id ? 'bg-green-500 border-green-400 text-white scale-110 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-black/40 border-white/10 text-white/20 hover:text-white/50'}`}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>

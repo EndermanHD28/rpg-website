@@ -309,9 +309,9 @@ export const COMMANDS = [
     description: "Clears all messages from the chat",
     args: [],
     execute: async () => {
-      const { error } = await supabase.from('messages').delete().not('id', 'is', null);
+      const { error } = await supabase.rpc('toggle_session', { status: true });
       if (error) return { success: false, message: `Error clearing chat: ${error.message}` };
-      return { success: true, message: "Chat cleared." };
+      return { success: true, message: "Chat cleared via RPC." };
     }
   },
   {

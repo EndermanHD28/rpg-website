@@ -1,4 +1,4 @@
-import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES } from '../constants/gameData';
+import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES, BREATHING_TREES } from '../constants/gameData';
 
 const GLOBAL_PAT_MULTIPLIER = 0.6;
 
@@ -121,7 +121,7 @@ export function calculateBloqueio(char) {
       (sResistance * 1.3) +
       (sStrength * 0.4) +
       (sAptitude * 1.0)
-    ) * 1.3,
+    ) * 0.85,
     0.82
   ));
 }
@@ -199,7 +199,7 @@ export function calculateDerivedStats(char) {
   
   // Posture: Complex formula matches CombatManager and is used in the sheet
   const isComplex = !char.is_npc || char.type === 'Complex';
-  const posture = Math.floor((resistanceWithBuffs * 2.3) + (aptitudeWithBuffs * 4.2) + (Number(char.concentration || 0) * 2));
+  const posture = Math.floor((resistanceWithBuffs * 1.6) + (aptitudeWithBuffs * 4.2));
   
   // Life: Strength + (Resistance * 7)
   let life = strengthWithBuffs * 1.5 + (resistanceWithBuffs * 8.5);
@@ -210,8 +210,17 @@ export function calculateDerivedStats(char) {
   const bLvl = Number(char.breathing_lvl) || 0;
 
   if (learnedSkills.includes('skill_0')) {
-    if (char.breathing_style === 'Tempestade') {
-      maxFocus = 75 + (Math.max(0, bLvl - 1) * 5);
+    if (char.breathing_style && BREATHING_TREES[char.breathing_style]) {
+      const tree = BREATHING_TREES[char.breathing_style];
+      // Get skill_0 logic
+      const skill0 = tree.skills.find(s => s.id === 'skill_0');
+      const config = skill0?.skillLogic;
+      
+      if (config) {
+        maxFocus = (config.maxFocus || 100) + (Math.max(0, bLvl - 1) * (config.extraMaxFocusPerLevel || 0));
+      } else {
+        maxFocus = 100;
+      }
     } else {
       // Default fallback if focus unlocked but style logic missing
       maxFocus = 100;
@@ -521,8 +530,18 @@ export function rollDice(expression, charContext = null) {
 
   // Apply Focus Buff to Damage
   if (diceType === 'dano') {
-    const focusBuff = 1 + (Math.floor((charContext.current_focus || 0) / 5) / 100);
-    total *= focusBuff;
+    const tree = BREATHING_TREES[charContext.breathing_style];
+    const skill0 = tree?.skills.find(s => s.id === 'skill_0');
+    const config = skill0?.skillLogic;
+    if (config) {
+      const amount = config.eachXFocusMultiplyDamage || 5;
+      const mult = config.damageMultiplierPerXFocus || 0.01;
+      const focusBuff = 1 + (Math.floor((charContext.current_focus || 0) / amount) * mult);
+      total *= focusBuff;
+    } else {
+      const focusBuff = 1 + (Math.floor((charContext.current_focus || 0) / 5) / 100);
+      total *= focusBuff;
+    }
     
     // Skill 2a: Furacão Elétrico (+25% + 3% per Lvl after 1)
     const effects = Array.isArray(charContext.effects) ? charContext.effects : [];

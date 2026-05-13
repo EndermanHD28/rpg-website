@@ -170,12 +170,6 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
     }
   };
 
-  if (loading) return <div className="text-zinc-500 font-bold italic">Carregando Relatórios...</div>;
-
-  const isEditingThis = !!(editingReport && editingReport.editing_by === user?.id);
-  const playerTextClass = "font-['var(--font-caveat)'] text-xl text-zinc-800 leading-none";
-  const handwrittenBtnClass = "font-['var(--font-caveat)'] text-3xl text-black hover:text-zinc-600 transition-all hover:scale-105 active:scale-95 hover:underline underline-offset-4 decoration-black disabled:opacity-30 disabled:cursor-not-allowed";
-
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8 h-full">
       <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 shrink-0">
@@ -197,42 +191,50 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
         <div className="space-y-4 flex flex-col h-full overflow-hidden">
           <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-widest ml-2 shrink-0">Arquivos Recentes</h3>
           <div className="space-y-2 overflow-y-auto pr-2 custom-scrollbar flex-1">
-            {reports.map(r => (
-              <div
-                key={r.id}
-                onClick={() => !editingReport && setActiveReport(r)}
-                className={`p-4 rounded-xl border transition-all cursor-pointer group ${
-                  activeReport?.id === r.id 
-                    ? 'bg-zinc-100 border-zinc-100 text-black' 
-                    : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                } ${editingReport && editingReport.id !== r.id ? 'opacity-50' : ''}`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-[10px] font-black font-mono">{r.mission_id || 'MIS-XXXX'}</span>
-                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
-                    r.status === 'accepted' ? 'bg-green-500/20 text-green-500' :
-                    r.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
-                    'bg-yellow-500/20 text-yellow-500'
-                  }`}>
-                    {r.status === 'accepted' ? 'Aprovado' : r.status === 'draft' ? 'Rascunho' : 'Pendente'}
-                  </span>
-                </div>
-                <p className="text-xs font-black uppercase text-white truncate">{r.mission_date || 'Data não definida'}</p>
-                <div className="mt-2 space-y-1">
-                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
-                    Relator: <span className="text-zinc-300">{r.author_name || 'Desconhecido'}</span>
-                  </p>
-                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
-                    Unidade: <span className="text-zinc-300">{r.unit_id || 'N/A'}</span>
-                  </p>
-                </div>
-                {r.editing_by && r.editing_by !== user?.id && (
-                  <p className="text-[9px] italic mt-2 animate-pulse text-red-500 font-bold uppercase tracking-widest">
-                    [ Jogador escrevendo... ]
-                  </p>
-                )}
+            {loading ? (
+              <div className="p-4 text-[10px] font-black text-zinc-600 uppercase tracking-widest animate-pulse">
+                Carregando Arquivos...
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-500">
+                {reports.map(r => (
+                  <div
+                    key={r.id}
+                    onClick={() => !editingReport && setActiveReport(r)}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer group ${
+                      activeReport?.id === r.id 
+                        ? 'bg-zinc-100 border-zinc-100 text-black' 
+                        : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    } ${editingReport && editingReport.id !== r.id ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-[10px] font-black font-mono">{r.mission_id || 'MIS-XXXX'}</span>
+                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        r.status === 'accepted' ? 'bg-green-500/20 text-green-500' :
+                        r.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
+                        'bg-yellow-500/20 text-yellow-500'
+                      }`}>
+                        {r.status === 'accepted' ? 'Aprovado' : r.status === 'draft' ? 'Rascunho' : 'Pendente'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-black uppercase text-white truncate">{r.mission_date || 'Data não definida'}</p>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
+                        Relator: <span className="text-zinc-300">{r.author_name || 'Desconhecido'}</span>
+                      </p>
+                      <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
+                        Unidade: <span className="text-zinc-300">{r.unit_id || 'N/A'}</span>
+                      </p>
+                    </div>
+                    {r.editing_by && r.editing_by !== user?.id && (
+                      <p className="text-[9px] italic mt-2 animate-pulse text-red-500 font-bold uppercase tracking-widest">
+                        [ Jogador escrevendo... ]
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

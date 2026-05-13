@@ -85,6 +85,7 @@ export default function Home() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [messages, setMessages] = useState([]);
   const [turn, setTurn] = useState(1);
+  const [selectedCombatantId, setSelectedCombatantId] = useState(null);
   const [sharedImage, setSharedImage] = useState({ url: null, title: null, contrast: false });
   const [chatInput, setChatInput] = useState("");
   const [quickDiceInputs, setQuickDiceInputs] = useState({
@@ -219,6 +220,15 @@ export default function Home() {
       const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
       setLootTables(lootData || []);
 
+      const { data: tradersData } = await supabase.from('traders').select('*').order('name');
+      setAllTraders(tradersData || []);
+
+      const { data: tradeRequestsData } = await supabase.from('trade_requests')
+        .select('*, characters(char_name)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      setTradeRequests(tradeRequestsData || []);
+
       let activeUser;
       const savedFakeUser = localStorage.getItem('fake_discord_user');
       if (savedFakeUser) {
@@ -318,18 +328,19 @@ export default function Home() {
       setAllowedDiscordUsernames(globalData?.allowed_discord_usernames || []);
       setBlockedTabs(globalData?.blocked_tabs || []);
       if (globalData?.current_turn !== undefined) setTurn(globalData.current_turn);
+      if (globalData?.imitated_id !== undefined) setSelectedCombatantId(globalData.imitated_id);
       setSharedImage({
         url: globalData?.image_url || globalData?.imag_url || null,
         title: globalData?.image_title || null,
         contrast: !!globalData?.image_contrast
       });
 
-      // Fetch last 50 messages
+      // Fetch last 100 messages
       const { data: msgData } = await supabase
         .from('messages')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (msgData) {
         // Ensure chronological order
         const sorted = [...msgData].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -362,6 +373,23 @@ export default function Home() {
 
     // UNIFIED REALTIME CHANNEL
     const mainChannel = supabase.channel('game_state')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'traders' }, () => {
+        const fetchTraders = async () => {
+          const { data } = await supabase.from('traders').select('*').order('name');
+          if (data) setAllTraders(data);
+        };
+        fetchTraders();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_requests' }, () => {
+        const fetchTradeReqs = async () => {
+          const { data } = await supabase.from('trade_requests')
+            .select('*, characters(char_name)')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+          if (data) setTradeRequests(data);
+        };
+        fetchTradeReqs();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, (p) => {
         // 1. Sync My Character Data
         const characterData = p.new || p.old;
@@ -412,9 +440,9 @@ export default function Home() {
         if (p.new.is_session_active !== undefined) {
           const nowActive = !!p.new.is_session_active;
           setIsSessionActive(prev => {
-            if (!prev && nowActive) {
-              setMessages([]); // Clear messages only when switching from inactive to active
-            }
+            // If the session status changed (in any direction), 
+            // the RPC already handled the message clearing on the server.
+            // We just need to update our local state.
             return nowActive;
           });
         }
@@ -452,6 +480,11 @@ export default function Home() {
           setTurn(p.new.current_turn);
         }
 
+        // Handle Imitated Character
+        if (p.new.imitated_id !== undefined) {
+          setSelectedCombatantId(p.new.imitated_id);
+        }
+
         // Handle Shared Image (Partial updates)
         const newUrl = p.new.image_url !== undefined ? p.new.image_url : p.new.imag_url;
         // Check for null explicitly since that's what happens when hiding
@@ -469,7 +502,7 @@ export default function Home() {
           setMessages(prev => {
             if (prev.some(m => m.id === p.new.id)) return prev;
             const newList = [...prev, p.new].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-            if (newList.length > 50) return newList.slice(-50);
+            if (newList.length > 100) return newList.slice(-90);
             return newList;
           });
         } else if (p.eventType === 'UPDATE') {
@@ -945,7 +978,15 @@ export default function Home() {
                 <NavButton 
                   active={activeTab === 'home'} 
                   label="Início" 
-                  onClick={() => { playSoundEffect('tab_change'); setActiveTab('home'); }} 
+                  onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('home'); 
+                  }} 
                 />
                 <NavButton 
                   active={activeTab === 'combat'} 
@@ -953,6 +994,11 @@ export default function Home() {
                   disabled={!isActingAsMaster && blockedTabs.includes('combat')}
                   isBlocked={!isActingAsMaster && blockedTabs.includes('combat')}
                   onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
                     if (!isActingAsMaster && blockedTabs.includes('combat')) {
                       playSoundEffect('error');
                       showToast("Esta página está bloqueada pelo Mestre.");
@@ -968,6 +1014,11 @@ export default function Home() {
                   disabled={!isActingAsMaster && blockedTabs.includes('reports')}
                   isBlocked={!isActingAsMaster && blockedTabs.includes('reports')}
                   onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
                     if (!isActingAsMaster && blockedTabs.includes('reports')) {
                       playSoundEffect('error');
                       showToast("Esta página está bloqueada pelo Mestre.");
@@ -983,6 +1034,11 @@ export default function Home() {
                   disabled={!isActingAsMaster && blockedTabs.includes('investigation')}
                   isBlocked={!isActingAsMaster && blockedTabs.includes('investigation')}
                   onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
                     if (!isActingAsMaster && blockedTabs.includes('investigation')) {
                       playSoundEffect('error');
                       showToast("Esta página está bloqueada pelo Mestre.");
@@ -1019,29 +1075,34 @@ export default function Home() {
                 {/* Respiração Tab - Always visible if player has a breathing style */}
                 {allPlayers.find(p => p.id === user?.id)?.breathing_style && (
                   <NavButton 
-                    active={activeTab === 'breathing' && (viewingTarget === null || viewingTarget === user?.id)} 
-                    label="Respiração" 
-                    disabled={!isActingAsMaster && blockedTabs.includes('breathing')}
-                    isBlocked={!isActingAsMaster && blockedTabs.includes('breathing')}
-                    onClick={() => {
-                      if (!isActingAsMaster && blockedTabs.includes('breathing')) {
-                        playSoundEffect('error');
-                        showToast("Esta página está bloqueada pelo Mestre.");
-                        return;
-                      }
-                      playSoundEffect('tab_change');
-                      
-                      // CRITICAL: Force refresh of character data for current user
-                      const myChar = allPlayers.find(p => p.id === user?.id);
-                      if (myChar) {
-                        setCharacter(myChar);
-                        if (!isEditing) setTempChar(myChar);
-                      }
-                      
-                      setViewingTarget(null);
-                      setActiveTab('breathing');
-                    }} 
-                  />
+                  active={activeTab === 'breathing' && (viewingTarget === null || viewingTarget === user?.id)} 
+                  label="Respiração" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('breathing')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('breathing')}
+                  onClick={() => {
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    if (!isActingAsMaster && blockedTabs.includes('breathing')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change');
+                    
+                    // CRITICAL: Force refresh of character data for current user
+                    const myChar = allPlayers.find(p => p.id === user?.id);
+                    if (myChar) {
+                      setCharacter(myChar);
+                      if (!isEditing) setTempChar(myChar);
+                    }
+                    
+                    setViewingTarget(null);
+                    setActiveTab('breathing');
+                  }} 
+                />
                 )}
                 {/* Highlight Breathing Tab when Master is viewing someone else's tree */}
                 {isActingAsMaster && viewingTarget && viewingTarget !== user?.id && activeTab === 'breathing' && (
@@ -1143,12 +1204,17 @@ export default function Home() {
                     />
                   ))}
 
-                <NavButton 
+                 <NavButton 
                   active={activeTab === 'npcs'} 
                   label="NPCs" 
                   disabled={!isActingAsMaster && blockedTabs.includes('npcs')}
                   isBlocked={!isActingAsMaster && blockedTabs.includes('npcs')}
                   onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
                     if (!isActingAsMaster && blockedTabs.includes('npcs')) {
                       playSoundEffect('error');
                       showToast("Esta página está bloqueada pelo Mestre.");
@@ -1169,13 +1235,25 @@ export default function Home() {
                 <div>
                   <p className="text-[9px] font-black text-red-900 uppercase tracking-widest mb-3 ml-4">Mestre</p>
                   <div className="flex flex-col gap-1">
-                  <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => { playSoundEffect('tab_change'); setActiveTab('master'); }} />
+                  <NavButton active={activeTab === 'master'} label="Mestre" onClick={() => {
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); setActiveTab('master'); 
+                  }} />
                   <NavButton 
                     active={activeTab === 'items'} 
                     label="Itens" 
                     disabled={!isActingAsMaster && blockedTabs.includes('items')}
                     isBlocked={!isActingAsMaster && blockedTabs.includes('items')}
                     onClick={() => { 
+                      if (isEditing && !isViewingOnly) {
+                        playSoundEffect('error');
+                        showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                        return;
+                      }
                       if (!isActingAsMaster && blockedTabs.includes('items')) {
                         playSoundEffect('error');
                         showToast("Esta página está bloqueada pelo Mestre.");
@@ -1191,6 +1269,11 @@ export default function Home() {
                     disabled={!isActingAsMaster && blockedTabs.includes('loot')}
                     isBlocked={!isActingAsMaster && blockedTabs.includes('loot')}
                     onClick={() => { 
+                      if (isEditing && !isViewingOnly) {
+                        playSoundEffect('error');
+                        showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                        return;
+                      }
                       if (!isActingAsMaster && blockedTabs.includes('loot')) {
                         playSoundEffect('error');
                         showToast("Esta página está bloqueada pelo Mestre.");
@@ -1206,6 +1289,11 @@ export default function Home() {
                     disabled={!isActingAsMaster && blockedTabs.includes('traders')}
                     isBlocked={!isActingAsMaster && blockedTabs.includes('traders')}
                     onClick={() => { 
+                      if (isEditing && !isViewingOnly) {
+                        playSoundEffect('error');
+                        showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                        return;
+                      }
                       if (!isActingAsMaster && blockedTabs.includes('traders')) {
                         playSoundEffect('error');
                         showToast("Esta página está bloqueada pelo Mestre.");
@@ -1700,6 +1788,10 @@ export default function Home() {
               setChatInput={setChatInput}
               quickDiceInputs={quickDiceInputs}
               setQuickDiceInputs={setQuickDiceInputs}
+              selectedCombatantId={selectedCombatantId}
+              setSelectedCombatantId={setSelectedCombatantId}
+              traders={allTraders}
+              tradeRequests={tradeRequests}
             />
           </div>
         )}

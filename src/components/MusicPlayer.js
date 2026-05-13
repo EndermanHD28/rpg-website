@@ -26,9 +26,16 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
   // Track volume for callbacks without triggering re-renders
   const volumeRef = useRef(volume);
+  const urlRef = useRef(url);
+  const currentSfxUrlRef = useRef(currentSfxUrl);
+  const currentSfxTriggeredAtRef = useRef(currentSfxTriggeredAt);
+
   useEffect(() => {
     volumeRef.current = volume;
-  }, [volume]);
+    urlRef.current = url;
+    currentSfxUrlRef.current = currentSfxUrl;
+    currentSfxTriggeredAtRef.current = currentSfxTriggeredAt;
+  }, [volume, url, currentSfxUrl, currentSfxTriggeredAt]);
 
   // Track last played SFX to prevent double-triggering on local state changes
   const lastPlayedSfxRef = useRef({ url: null, triggeredAt: null });
@@ -314,7 +321,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
       // --- Music Sync ---
       if (data.music_url !== undefined) {
-        const urlChanged = data.music_url !== url;
+        const urlChanged = data.music_url !== urlRef.current;
         
         // Only update local state if it actually changed to avoid re-triggering effects
         if (urlChanged) {
@@ -392,7 +399,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
           
           if (isDifferentSfx || isNewerTrigger) {
             // For Master, we only play if they didn't just trigger it themselves
-            if (isMaster && data.sfx_triggered_at === currentSfxTriggeredAt && data.sfx_url === currentSfxUrl) {
+            if (isMaster && data.sfx_triggered_at === currentSfxTriggeredAtRef.current && data.sfx_url === currentSfxUrlRef.current) {
                 lastPlayedSfxRef.current = { url: data.sfx_url, triggeredAt: data.sfx_triggered_at };
                 return;
             }

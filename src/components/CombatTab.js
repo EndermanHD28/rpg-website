@@ -5,9 +5,9 @@ import CombatLog from './Combat/CombatLog';
 import CombatManager from './Combat/CombatManager';
 
 import { calculateDerivedStats } from '../lib/rpg-math';
+import { BREATHING_TREES } from '../constants/gameData';
 
-export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables, showToast, chatInput, setChatInput, quickDiceInputs, setQuickDiceInputs }) {
-  const [selectedCombatantId, setSelectedCombatantId] = useState(null);
+export default function CombatTab({ user, allPlayers, allNPCs = [], messages, isCombatActive, isSessionActive, isMaster, isActingAsMaster, setActiveTab, turn, sharedImage, lootTables, showToast, chatInput, setChatInput, quickDiceInputs, setQuickDiceInputs, selectedCombatantId, setSelectedCombatantId, traders, tradeRequests }) {
   const [targetingRoll, setTargetingRoll] = useState(null); // { input, diceResult, playerName, playerImage }
   const [displayCombatants, setDisplayCombatants] = useState([]);
 
@@ -58,9 +58,9 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
 
     let category = "normal";
     const lowerInput = originalInput.toLowerCase();
-    if (lowerInput.includes('pat') || ['ataque', 'desvio', 'dano'].includes(diceResult.type)) {
+    if (lowerInput.includes('pat') || diceResult.type === 'dano') {
       category = "combat";
-    } else if (lowerInput.includes('convencimento') || lowerInput.includes('raciocínio') || lowerInput.includes('raciocinio')) {
+    } else if (lowerInput.includes('convencimento') || lowerInput.includes('raciocínio') || lowerInput.includes('raciocinio') || ['acerto', 'desvio', 'bloqueio'].includes(diceResult.type)) {
       category = "secondary";
     } else if (lowerInput.includes('loot') || lowerInput.includes('prosperidade')) {
       category = "luck";
@@ -121,11 +121,17 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
       }
     }
 
-    const targetInfo = targetPlayer ? `|${targetPlayer.char_name}${effectNote}` : "";
+    const targetName = targetPlayer ? targetPlayer.char_name : "";
+    const targetId = targetPlayer ? targetPlayer.id : "";
+    
+    let damageState = "";
+    if (diceResult.type === 'dano') {
+      damageState = "|{}";
+    }
 
     await supabase.from('messages').insert({
       player_name: "SISTEMA",
-      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}${targetInfo}`,
+      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}|${targetName}|${targetId}|${effectNote}${damageState}`,
       is_system: true
     });
   };
@@ -135,18 +141,24 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
     
     // Apply Initial Focus to all active combatants who have skill_0
     for (const p of currentCombatants) {
-      if (!p.is_enemy && Array.isArray(p.breathing_skills) && p.breathing_skills.includes('skill_0')) {
+      const learnedSkills = Array.isArray(p.breathing_skills) ? p.breathing_skills : [];
+      if (!p.is_enemy && learnedSkills.includes('skill_0')) {
         const table = p.is_npc ? 'npcs' : 'characters';
         const dbId = p.is_npc ? p.dbId : p.id;
         
-        // Tempestade skill_0 says: "Inicie cada combate com 25 de Foco." (Actually 35 as per user)
-        let initialFocus = 0;
-        if (p.breathing_style === 'Tempestade') {
-          initialFocus = 35;
+        let totalStartingFocus = 0;
+        if (p.breathing_style && BREATHING_TREES[p.breathing_style]) {
+          const styleSkills = BREATHING_TREES[p.breathing_style].skills;
+          learnedSkills.forEach(skillId => {
+            const skillData = styleSkills.find(s => s.id === skillId);
+            if (skillData && skillData.skillLogic && skillData.skillLogic.startingFocus) {
+              totalStartingFocus += skillData.skillLogic.startingFocus;
+            }
+          });
         }
 
         const { maxFocus } = calculateDerivedStats(p);
-        const finalFocus = Math.min(initialFocus, maxFocus);
+        const finalFocus = Math.min(totalStartingFocus, maxFocus);
 
         await supabase.from(table).update({ 
           current_focus: finalFocus,
@@ -241,6 +253,8 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
           setInput={setChatInput}
           quickDiceInputs={quickDiceInputs}
           setQuickDiceInputs={setQuickDiceInputs}
+          traders={traders}
+          tradeRequests={tradeRequests}
         />
 
         <CombatManager 
