@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'; // THIS WAS MISSING
 import { supabase } from '../lib/supabase';
 import { useSound } from '../hooks/useSound';
+import { calculateDerivedStats } from '../lib/rpg-math';
 
 export default function MasterPanel({ requests, setRequests, allPlayers, onVisualize, showToast, setModal, closeModal, now, globalLock, isCombatActive, isSessionActive, setActiveTab }) {
   const { playSound } = useSound();
@@ -141,7 +142,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
 
   const toggleCombatant = async (p) => {
     playSound('random_button');
-    const maxLife = (p.strength || 0) + (p.resistance || 0) * 4;
+    const { life: maxLife } = calculateDerivedStats(p);
     // Get HP from stage or default to max
     const stagedHP = hpStage[p.id] !== undefined ? hpStage[p.id] : maxLife;
 

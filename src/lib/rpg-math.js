@@ -202,7 +202,7 @@ export function calculateDerivedStats(char) {
   const posture = Math.floor((resistanceWithBuffs * 1.6) + (aptitudeWithBuffs * 4.2));
   
   // Life: Strength + (Resistance * 7)
-  let life = strengthWithBuffs * 1.5 + (resistanceWithBuffs * 8.5);
+  let life = strengthWithBuffs * 3 + (resistanceWithBuffs * 12);
 
   // Focus: Based on Breathing Style Skill 0
   let maxFocus = 0;

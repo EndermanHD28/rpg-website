@@ -365,14 +365,7 @@ export const COMMANDS = [
 ];
 
 const calculateHP = (p, hpPerc) => {
-  const baseLife = (p.strength || 0) + (p.resistance || 0) * 7;
-  let maxLife = baseLife;
-  if (Array.isArray(p.effects)) {
-    p.effects.forEach(eff => {
-      if (eff.modifiers?.maxLife) maxLife *= eff.modifiers.maxLife;
-    });
-  }
-  maxLife = Math.floor(maxLife);
+  const { life: maxLife } = calculateDerivedStats(p);
   return Math.floor((hpPerc / 100) * maxLife);
 };
 

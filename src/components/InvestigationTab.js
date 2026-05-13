@@ -496,6 +496,104 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     setZoom(newZoom);
   };
 
+  const handleExportPNG = async () => {
+    if (!containerRef.current || isExporting) return;
+    
+    setIsExporting(true);
+    showToast("Preparando exportação... Aguarde.");
+    playSound('random_button');
+
+    try {
+      // Find the element to capture (the actual board content)
+      const boardElement = containerRef.current.querySelector('div[style*="transform"]');
+      if (!boardElement) throw new Error("Board element not found");
+
+      // Calculate bounds of visible cards in current category
+      if (currentCategoryCards.length === 0) {
+        showToast("Nenhum card para exportar nesta categoria.");
+        setIsExporting(false);
+        return;
+      }
+
+      let minX = BOARD_WIDTH, minY = BOARD_HEIGHT, maxX = 0, maxY = 0;
+      currentCategoryCards.forEach(c => {
+        const isImage = c.type === 'image';
+        const cardScale = isImage ? (c.image_scale || 1.3) : 1.0;
+        const cardWidth = 208 * cardScale;
+        const cardHeight = isImage ? (200 * cardScale) : 150; // Approximated max height for text
+
+        minX = Math.min(minX, c.x_pos);
+        minY = Math.min(minY, c.y_pos);
+        maxX = Math.max(maxX, c.x_pos + cardWidth);
+        maxY = Math.max(maxY, c.y_pos + cardHeight);
+      });
+
+      // Add padding
+      const padding = 100;
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(BOARD_WIDTH, maxX + padding);
+      maxY = Math.min(BOARD_HEIGHT, maxY + padding);
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      // Temporary styles for export
+      const originalTransform = boardElement.style.transform;
+      const originalWidth = boardElement.style.width;
+      const originalHeight = boardElement.style.height;
+
+      // Reset transform and set specific size for capture
+      boardElement.style.transform = `translate(${-minX}px, ${-minY}px) scale(1)`;
+      boardElement.style.width = `${BOARD_WIDTH}px`;
+      boardElement.style.height = `${BOARD_HEIGHT}px`;
+
+      const canvas = await html2canvas(boardElement, {
+        backgroundColor: '#09090b', // zinc-950
+        width: width,
+        height: height,
+        scale: 2, // High quality
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Hide UI elements that shouldn't be in the export
+          const clonedBoard = clonedDoc.querySelector('div[style*="transform"]');
+          if (clonedBoard) {
+            clonedBoard.querySelectorAll('.pin-button, .edit-button, .delete-button, .card-top-bar').forEach(el => {
+              el.style.display = 'none';
+            });
+            // Ensure cards have proper background for export
+            clonedBoard.querySelectorAll('.investigation-card').forEach(card => {
+              card.style.boxShadow = '0 10px 15px -3px rgb(0 0 0 / 0.1)';
+            });
+          }
+        }
+      });
+
+      // Restore original styles
+      boardElement.style.transform = originalTransform;
+      boardElement.style.width = originalWidth;
+      boardElement.style.height = originalHeight;
+
+      // Download
+      const categoryName = categories.find(c => c.id === selectedCategoryId)?.name || 'Investigacao';
+      const link = document.createElement('a');
+      link.download = `Investigacao_${categoryName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      
+      showToast("Exportação concluída!");
+      playSound('celebration');
+    } catch (err) {
+      console.error("Export error:", err);
+      showToast("Erro ao exportar imagem.");
+      playSound('error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderLines = () => {
     return pins.map(pin => {
       const from = currentCategoryCards.find(c => c.id === pin.from_card_id);
@@ -612,6 +710,23 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
         </div>
 
         <div className="flex gap-4 items-center">
+            <button
+                onClick={handleExportPNG}
+                disabled={isExporting}
+                className={`bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-3 rounded-full font-black uppercase text-[10px] transition-all flex items-center gap-2 ${isExporting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+                {isExporting ? (
+                    <>
+                        <div className="w-3 h-3 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
+                        Exportando...
+                    </>
+                ) : (
+                    <>
+                        <span>📸</span>
+                        Baixar PNG
+                    </>
+                )}
+            </button>
             <button onClick={() => { 
                 const rect = containerRef.current.getBoundingClientRect();
                 setZoom(1); 

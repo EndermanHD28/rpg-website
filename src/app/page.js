@@ -284,15 +284,15 @@ export default function Home() {
               discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
               char_name: "Novo Recruta",
               age: 18,
-              strength: 3,
-              resistance: 3,
-              aptitude: 3,
-              agility: 3,
-              precision: 3,
-              concentration: 3,
-              intelligence: 3,
-              luck: 3,
-              charisma: 3,
+              strength: 5,
+              resistance: 5,
+              aptitude: 5,
+              agility: 5,
+              precision: 5,
+              concentration: 5,
+              intelligence: 5,
+              luck: 5,
+              charisma: 5,
               stat_points_available: 0,
               dollars: 0,
               inventory: [],
@@ -632,7 +632,7 @@ export default function Home() {
       const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'concentration', 'intelligence', 'luck', 'charisma'];
 
       // VALIDATION 1: Check for stats lower than 3 (or 1 for complex NPCs) or empty
-      const minStat = (sanitized?.is_complex || isNPC) ? 1 : 3;
+      const minStat = (sanitized?.is_complex || isNPC) ? 1 : 5;
       const hasInvalidStat = keys.some(k => sanitized[k] === "" || Number(sanitized[k]) < minStat);
       if (hasInvalidStat) {
         showToast(`Erro: Todos os atributos devem ser pelo menos ${minStat}.`);
