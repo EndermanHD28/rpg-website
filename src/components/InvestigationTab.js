@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { supabase } from '../lib/supabase';
 import { TooltipWrapper } from './UIElements';
 
@@ -23,6 +24,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   // View State
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isExporting, setIsExporting] = useState(false);
 
   // Category Management State
   const [isManagingCategories, setIsManagingCategories] = useState(false);

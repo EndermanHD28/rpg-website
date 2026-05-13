@@ -125,8 +125,48 @@ export default function TradersTab({ isActingAsMaster, showToast, setModal, clos
     const { error } = await supabase.from('traders').update({ items: newItems }).eq('id', trader.id);
     if (!error) {
       showToast("Item Removido!");
+      const { data: updatedTrader } = await supabase.from('traders').select('*').eq('id', trader.id).single();
+      if (updatedTrader) setActiveTrader(updatedTrader);
       fetchTraders();
     }
+  };
+
+  const handleUpdateItemQty = async (trader, index, newQty) => {
+    const qty = parseInt(newQty);
+    if (isNaN(qty) || qty < 0) return;
+
+    // Optimistic update
+    const newItems = [...trader.items];
+    newItems[index] = { ...newItems[index], qty };
+    
+    // Update local state immediately
+    const updatedTrader = { ...trader, items: newItems };
+    setActiveTrader(updatedTrader);
+    
+    // Update traders list to reflect change in the sidebar and other components
+    // We trigger the state update for allTraders if passed or fetch if needed
+    // In this app, fetchTraders() updates the parent state via realtime or direct call
+    setTraders(prev => prev.map(t => t.id === trader.id ? updatedTrader : t));
+
+    // Persist to database
+    const { error } = await supabase.from('traders').update({ items: newItems }).eq('id', trader.id);
+    if (!error) {
+      // The realtime listener in TradersTab or Home will catch this and update allTraders
+      // But we call fetchTraders just to be sure if realtime is slow
+      fetchTraders();
+    }
+  };
+
+  const handleUpdateTraderMoney = async (trader, newMoney) => {
+    const dollars = parseInt(newMoney);
+    if (isNaN(dollars) || dollars < 0) return;
+
+    // Optimistic update
+    const updatedTrader = { ...trader, dollars };
+    setActiveTrader(updatedTrader);
+    setTraders(prev => prev.map(t => t.id === trader.id ? updatedTrader : t));
+
+    await supabase.from('traders').update({ dollars }).eq('id', trader.id);
   };
 
   return (
@@ -183,12 +223,25 @@ export default function TradersTab({ isActingAsMaster, showToast, setModal, clos
           {activeTrader ? (
             <div className="bg-zinc-900/50 rounded-[40px] border border-white/5 overflow-hidden">
               <div className="bg-black/40 p-4 border-b border-white/5 flex justify-between items-center">
-                <div className="flex gap-4">
+                <div className="flex items-center gap-4">
                   <button
                     className="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-white text-black"
                   >
                     Estoque
                   </button>
+                  {isActingAsMaster && (
+                    <div className="flex items-center bg-black/40 border border-white/10 rounded-xl px-4 py-2">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase mr-3 tracking-widest">Saldo</label>
+                      <span className="text-green-500 font-black mr-1">$</span>
+                      <input 
+                        type="number" 
+                        min="0"
+                        value={activeTrader.dollars || 0}
+                        onChange={(e) => handleUpdateTraderMoney(activeTrader, e.target.value)}
+                        className="bg-transparent text-white text-xs font-black outline-none focus:text-green-500 transition-colors w-24"
+                      />
+                    </div>
+                  )}
                 </div>
                 {isActingAsMaster && (
                   <button
@@ -209,25 +262,37 @@ export default function TradersTab({ isActingAsMaster, showToast, setModal, clos
                       const item = itemsDB.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
                       if (!item) return null;
                       return (
-                        <div key={idx} className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between group">
+                        <div key={idx} className={`bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between group ${ti.qty === 0 ? 'opacity-70' : ''}`}>
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-zinc-800 rounded-xl flex items-center justify-center text-lg border border-white/5 relative">
+                            <div className={`w-10 h-10 bg-zinc-800 rounded-xl flex items-center justify-center text-lg border border-white/5 relative`}>
                               📦
-                              <span className="absolute -top-2 -right-2 bg-zinc-800 text-white border border-white/10 w-5 h-5 flex items-center justify-center rounded-full text-[8px] font-black">{ti.qty}</span>
+                              <span className={`absolute -top-2 -right-2 ${ti.qty === 0 ? 'bg-red-900' : 'bg-zinc-800'} text-white border border-white/10 w-5 h-5 flex items-center justify-center rounded-full text-[8px] font-black`}>{ti.qty}</span>
                             </div>
                             <div>
-                              <p className={`text-xs font-black uppercase ${RARITY_CONFIG[item.rarity]?.text || 'text-white'}`}>{item.name}</p>
-                              <p className="text-[10px] font-bold text-green-500 tracking-wider">${ti.price}</p>
+                              <p className={`text-xs font-black uppercase ${ti.qty === 0 ? 'text-zinc-500' : (RARITY_CONFIG[item.rarity]?.text || 'text-white')}`}>{item.name}</p>
+                              <p className={`text-[10px] font-bold tracking-wider ${ti.qty === 0 ? 'text-zinc-600' : 'text-green-500'}`}>${ti.price}</p>
                             </div>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex items-center gap-2">
                             {isActingAsMaster && (
-                              <button 
-                                onClick={() => handleRemoveItemFromTrader(activeTrader, idx)}
-                                className="bg-zinc-800 text-zinc-500 p-2 rounded-lg hover:text-red-500 transition-all"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                              </button>
+                              <>
+                                <div className="flex items-center bg-black/40 border border-white/10 rounded-lg px-2 py-1">
+                                  <label className="text-[8px] font-black text-zinc-500 uppercase mr-2">Qtd</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={ti.qty}
+                                    onChange={(e) => handleUpdateItemQty(activeTrader, idx, e.target.value)}
+                                    className="w-10 bg-transparent text-white text-[10px] font-bold outline-none focus:text-red-500 transition-colors"
+                                  />
+                                </div>
+                                <button 
+                                  onClick={() => handleRemoveItemFromTrader(activeTrader, idx)}
+                                  className="bg-zinc-800 text-zinc-500 p-2 rounded-lg hover:text-red-500 hover:bg-zinc-700 transition-all"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>

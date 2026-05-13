@@ -23,6 +23,12 @@ import { TooltipWrapper } from '../UIElements';
   database function in Supabase to avoid the 'DELETE FROM messages' command.
 */
 
+/* 
+  NOTE: This system uses a server-side RPC function 'toggle_session' to clear the chat.
+  If you need to preserve messages in the future, modify the 'toggle_session' 
+  database function in Supabase to avoid the 'DELETE FROM messages' command.
+*/
+
 export default function CombatLog({ 
   user, 
   allPlayers, 
@@ -82,11 +88,31 @@ export default function CombatLog({
 
   useEffect(() => {
     fetchItemsDB();
-  }, []);
+    fetchPendingTradeOffers();
+
+    // Check every 5 seconds as a safety fallback for Realtime issues
+    const pollInterval = setInterval(fetchPendingTradeOffers, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [user?.id]);
 
   const fetchItemsDB = async () => {
     const { data } = await supabase.from('items').select('*');
     if (data) setItemsDB(data);
+  };
+
+  const fetchPendingTradeOffers = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('trade_requests')
+      .select('item')
+      .eq('player_id', user.id)
+      .eq('status', 'pending');
+    
+    if (data) {
+      const pendingIds = data.map(req => req.item?.id).filter(Boolean);
+      setPendingOffers(pendingIds);
+    }
   };
 
   const toggleTraderSelector = () => {
@@ -124,54 +150,36 @@ export default function CombatLog({
   };
 
   const handleAcceptTradeRequest = async (request) => {
-    console.log('Accepting trade request:', request);
-    if (!request.player_id || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(request.player_id)) {
-      console.error("Invalid player_id in trade request:", request.player_id);
-      showToast("ERRO: ID de jogador inválido no pedido de troca.");
-      return;
-    }
-    const { data: charData, error: fetchError } = await supabase.from('characters').select('inventory, dollars').eq('id', request.player_id).single();
-    if (fetchError || !charData) {
-      console.error("Error fetching character:", fetchError);
-      showToast("ERRO: Personagem não encontrado.");
-      return;
-    }
-
-    let newInventory = charData.inventory || [];
-    // We need a robust way to find the item. The client-side generated ID might not be reliable.
-    // Let's try to find it by a more stable property, like item_id, and then remove one instance.
-    const itemIndex = newInventory.findIndex(i => i.item_id === request.item.item_id);
-    if (itemIndex !== -1) {
-      newInventory.splice(itemIndex, 1);
-    } else {
-      // As a fallback, try to find by name, but this is less reliable
-      const fallbackIndex = newInventory.findIndex(i => i.name === request.item.name);
-      if (fallbackIndex !== -1) {
-        newInventory.splice(fallbackIndex, 1);
-      } else {
-        showToast("AVISO: Item da troca não encontrado no inventário do jogador.");
-        // We might still proceed to give money, depending on game rules.
-        // For now, we'll continue.
-      }
-    }
-
-    const newDollars = (charData.dollars || 0) + request.value;
-
-    const { error } = await supabase.from('characters').update({ inventory: newInventory, dollars: newDollars }).eq('id', request.player_id);
+    console.log('Accepting trade request:', request.id);
     
-    if (error) {
-      console.error("Error updating character after trade:", error);
-      showToast(`Erro ao aprovar a venda: ${error.message}`);
+    // We update the status to 'approved' FIRST so the player sees it immediately via Realtime
+    // and the button re-enables/item clears. The select() ensures the payload is complete.
+    await supabase.from('trade_requests').update({ status: 'approved' }).eq('id', request.id).select();
+
+    const { data, error } = await supabase.rpc('approve_trade_request', {
+      p_request_id: request.id,
+      p_master_id: user.id
+    });
+
+    if (error || !data?.success) {
+      console.error("Error approving trade:", error || data?.error);
+      showToast(`Erro ao aprovar a venda: ${error?.message || data?.error || 'Erro desconhecido'}`);
+      // If RPC fails, we might want to revert status but usually it's better to just log
       return;
     }
       
-    await supabase.from('trade_requests').update({ status: 'approved' }).eq('id', request.id);
     showToast("Venda aprovada!");
   };
 
   const handleRejectTradeRequest = async (request) => {
-    await supabase.from('trade_requests').update({ status: 'declined' }).eq('id', request.id);
-    showToast("Venda rejeitada.");
+    console.log('Rejecting trade request:', request.id);
+    const { error } = await supabase.from('trade_requests').update({ status: 'declined' }).eq('id', request.id).select();
+    if (!error) {
+      showToast("Venda rejeitada.");
+    } else {
+      console.error("Error rejecting trade:", error);
+      showToast("Erro ao rejeitar venda.");
+    }
   };
 
   const handleHPSubmit = async (player, isShiftPressed = false) => {
@@ -247,23 +255,52 @@ export default function CombatLog({
 
   useEffect(() => {
     const handleTradeUpdates = (payload) => {
-      const { new: newReq } = payload;
-      if (payload.eventType === 'UPDATE') {
-        if (newReq.player_id === user?.id) {
-            if (newReq.status === 'declined') {
-                showToast(`Sua oferta de venda para ${newReq.item.name} foi recusada.`);
-                setPendingOffers(prev => prev.filter(id => id !== newReq.item.id));
-            } else if (newReq.status === 'approved') {
-                showToast(`Sua oferta de venda para ${newReq.item.name} foi aprovada!`);
-                setPendingOffers(prev => prev.filter(id => id !== newReq.item.id));
+      console.log('Trade update received:', payload);
+      const { new: newReq, old: oldReq, eventType } = payload;
+      
+      const targetReq = eventType === 'DELETE' ? oldReq : newReq;
+      if (!targetReq) return;
+
+      // Use a loose equality check or compare with user.id and check character state
+      // The payload might contain player_id as a string or numeric, let's be robust
+      const targetPlayerId = String(targetReq.player_id || targetReq.characters?.id || "");
+      const currentPlayerId = String(user?.id || "");
+
+      const itemId = targetReq.item?.id;
+      if (!itemId) return;
+
+      console.log(`Checking match: target=${targetPlayerId}, current=${currentPlayerId}, item=${itemId}`);
+
+      // We remove from pendingOffers if:
+      // 1. It belongs to us AND (status changed to approved/declined OR was deleted)
+      // 2. OR if it was deleted (even if we don't have the player_id, we can try matching by itemId as a fallback)
+      
+      const isOurRequest = targetPlayerId === currentPlayerId;
+      
+      if (isOurRequest) {
+          if (eventType === 'UPDATE') {
+            if (targetReq.status === 'declined' || targetReq.status === 'approved') {
+                if (targetReq.status === 'declined') {
+                  showToast(`Sua oferta de venda para ${targetReq.item.name} foi recusada.`);
+                } else {
+                  showToast(`Sua oferta de venda para ${targetReq.item.name} foi aprovada!`);
+                }
+                setPendingOffers(prev => prev.filter(id => String(id) !== String(itemId)));
             }
-        }
+          } else if (eventType === 'DELETE') {
+            setPendingOffers(prev => prev.filter(id => String(id) !== String(itemId)));
+          }
+      } else if (eventType === 'DELETE') {
+          // Fallback: if we see a delete for an item that is in our pending list, remove it
+          setPendingOffers(prev => prev.filter(id => String(id) !== String(itemId)));
       }
     };
 
     const subscription = supabase
       .channel('trade_requests_updates')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trade_requests' }, handleTradeUpdates)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trade_requests' }, (p) => {
+        handleTradeUpdates(p);
+      })
       .subscribe();
 
     return () => {
@@ -383,62 +420,41 @@ export default function CombatLog({
     const playerChar = allPlayers.find(p => p.id === user.id);
     if (!playerChar) return;
 
-
+    if (itemToBuy.qty <= 0) return showToast("Item esgotado!");
 
     if ((playerChar.dollars || 0) < itemToBuy.price) {
       return showToast("Dinheiro insuficiente!");
     }
 
-    // Weight check
-    const currentWeight = calculateCurrentWeight(playerChar.inventory || []);
+    // 1. Find full item data
     const fullItemData = itemsDB.find(i => i.id === itemToBuy.item_id || i.item_id === itemToBuy.item_id);
-    if (!fullItemData) return showToast("Item não encontrado no DB");
+    if (!fullItemData) return showToast("Item não encontrado no banco de dados.");
     
-    const itemWeight = Number(fullItemData.carga) || 1;
-    const maxWeight = calculateDerivedStats(playerChar).weight_limit || 0;
+    // 2. Weight (Carga) check
+    const currentInventory = playerChar.inventory || [];
+    const currentWeight = calculateCurrentWeight(currentInventory);
+    const itemWeight = Number(fullItemData.carga) || 1; 
+    const { weight_limit: maxWeight } = calculateDerivedStats(playerChar);
 
     if (currentWeight + itemWeight > maxWeight) {
-      return showToast("Inventário Cheio! Você não tem Cargas suficientes.");
-    }
-
-    // Process Purchase
-    // 1. Deduct money & add item
-    const newInventory = [...(playerChar.inventory || []), { ...fullItemData, id: Date.now() + Math.random(), equipped: false }];
-    const newDollars = (playerChar.dollars || 0) - itemToBuy.price;
-    const { error: updateError } = await supabase.from('characters').update({ inventory: newInventory, dollars: newDollars }).eq('id', playerChar.id);
-
-    if (updateError) {
-      showToast("Erro ao atualizar personagem: " + updateError.message);
+      showToast("Inventário Cheio! Você não tem Cargas suficientes.");
       return;
     }
 
-    // 2. Reduce trader stock
-    const { data: traderData, error: traderError } = await supabase.from('traders').select('items').eq('id', traderId).single();
+    // 3. Process Purchase via RPC (Atomic money and stock update)
+    const { data, error } = await supabase.rpc('process_item_purchase', {
+      p_trader_id: traderId,
+      p_player_id: playerChar.id,
+      p_item_id: itemToBuy.item_id,
+      p_price: itemToBuy.price
+    });
 
-    if (traderError) {
-        showToast("Erro ao buscar comerciante: " + traderError.message);
-        // Optionally, revert the character update here
-        return;
+    if (error || !data?.success) {
+      showToast("Erro ao processar compra: " + (error?.message || data?.error || 'Erro desconhecido'));
+      return;
     }
 
-    if (traderData) {
-      let newTraderItems = [...traderData.items];
-      const tItemIdx = newTraderItems.findIndex(i => i.item_id === itemToBuy.item_id);
-      if (tItemIdx >= 0) {
-        newTraderItems[tItemIdx].qty -= 1;
-        if (newTraderItems[tItemIdx].qty <= 0) {
-          newTraderItems.splice(tItemIdx, 1);
-        }
-        const { error: traderUpdateError } = await supabase.from('traders').update({ items: newTraderItems }).eq('id', traderId);
-        if (traderUpdateError) {
-            showToast("Erro ao atualizar o estoque do comerciante: " + traderUpdateError.message);
-            // Optionally, revert the character update here
-            return;
-        }
-      }
-    }
-
-    showToast(`Comprado: ${fullItemData.name}`);
+    showToast(`Comprado: ${data.itemName || fullItemData.name}`);
   };
 
   const handleSellToTrader = async (traderId, invItem, price) => {
@@ -452,6 +468,28 @@ export default function CombatLog({
 
     if (!price || isNaN(price) || price <= 0) {
       return showToast("Defina um preço válido.");
+    }
+
+    // Check for existing pending offer for this item
+    const { data: existingOffer, error: fetchError } = await supabase
+      .from('trade_requests')
+      .select('id')
+      .eq('player_id', playerChar.id)
+      .eq('trader_id', traderId)
+      .eq('status', 'pending')
+      .filter('item->>id', 'eq', invItem.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Error checking existing offers:", fetchError);
+    }
+
+    if (existingOffer) {
+      showToast("Já existe uma oferta pendente para este item.");
+      if (!pendingOffers.includes(invItem.id)) {
+        setPendingOffers(prev => [...prev, invItem.id]);
+      }
+      return;
     }
 
     setPendingOffers(prev => [...prev, invItem.id]);
@@ -471,6 +509,8 @@ export default function CombatLog({
       setPendingOffers(prev => prev.filter(id => String(id) !== String(invItem.id))); // Re-enable button on error
     } else {
       showToast("Oferta enviada ao Mestre!");
+      // We also update the tradeRequests prop via parent if possible, but usually Realtime handles the list
+      // The master needs to see this in their tradeRequests list.
     }
   };
 
@@ -1901,6 +1941,9 @@ export default function CombatLog({
                                 </h4>
                                 <div className="flex items-center gap-2">
                                   <span className="text-[9px] font-black uppercase tracking-widest text-green-500">Negociação Aberta</span>
+                                  {trader?.dollars !== undefined && (
+                                    <span className="text-[9px] font-black uppercase text-zinc-500 border-l border-white/10 pl-2">Saldo: <span className="text-green-500">${trader.dollars}</span></span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1924,25 +1967,23 @@ export default function CombatLog({
                                 ) : (
                                   trader.items.map((ti, idx) => {
                                     const fullItem = itemsDB.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
-                                    /*if (!fullItem) {
-                                      console.log('Item not found in itemsDB:', ti);
-                                      return null;
-                                    }*/
+                                    if (!fullItem) return null;
                                     return (
-                                      <div key={idx} className="flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl hover:border-green-500/30 transition-all">
+                                      <div key={idx} className={`flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl transition-all ${ti.qty === 0 ? 'opacity-50 grayscale' : 'hover:border-green-500/30'}`}>
                                         <div className="flex justify-between items-start">
                                           <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-zinc-200">{fullItem.name} <span className="text-[12px] ml-1 text-green-500">x{ti.qty}</span></span>
+                                            <span className="text-xs font-bold text-zinc-200">{fullItem.name} <span className={`text-[12px] ml-1 ${ti.qty === 0 ? 'text-zinc-500' : 'text-green-500'}`}>x{ti.qty}</span></span>
                                             <span className="text-[11px] font-black text-zinc-500 uppercase tracking-tighter">Base: {fullItem.value}$</span>
                                           </div>
                                           <div className="flex flex-col items-end">
-                                            <span className="text-[10px] font-black text-green-500 uppercase">${ti.price}</span>
-                                            {!isMaster && (
+                                            <span className={`text-[10px] font-black uppercase ${ti.qty === 0 ? 'text-zinc-500' : 'text-green-500'}`}>${ti.price}</span>
+                                            {(
                                               <button 
                                                 onClick={() => handleBuyFromTrader(trader.id, ti)}
-                                                className="mt-1 px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-500 rounded text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-all"
+                                                disabled={ti.qty === 0}
+                                                className={`mt-1 px-3 py-1 rounded text-[9px] font-black uppercase transition-all ${ti.qty === 0 ? 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed' : 'bg-green-500/10 border border-green-500/30 text-green-500 hover:bg-green-500 hover:text-white'}`}
                                               >
-                                                Comprar
+                                                {ti.qty === 0 ? 'Esgotado' : 'Comprar'}
                                               </button>
                                             )}
                                           </div>
@@ -1963,9 +2004,7 @@ export default function CombatLog({
 
                             {activeTab === 'vender' && (
                               <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
-                                {isMaster ? (
-                                  <p className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-500 py-4">Jogadores usam esta aba</p>
-                                ) : (
+                                {(
                                   !playerChar?.inventory || playerChar.inventory.length === 0 ? (
                                     <p className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-500 py-4">Seu inventário está vazio</p>
                                   ) : (
@@ -1985,7 +2024,7 @@ export default function CombatLog({
                                                 value={sellPrices[`${m.id}-${invItem.id}`] || ''}
                                                 onChange={(e) => setSellPrices(prev => ({ ...prev, [`${m.id}-${invItem.id}`]: e.target.value }))}
                                                 disabled={isPending}
-                                                className="w-16 bg-black/60 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-yellow-500 disabled:opacity-50"
+                                                className={`w-16 bg-black/60 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-yellow-500 disabled:opacity-50`}
                                               />
                                               <button
                                                 onClick={() => handleSellToTrader(traderId, invItem, sellPrices[`${m.id}-${invItem.id}`])}
@@ -2000,6 +2039,11 @@ export default function CombatLog({
                                               </button>
                                             </div>
                                           </div>
+                                          {isPending && (
+                                            <div className="flex justify-end">
+                                              <span className="text-[7px] text-yellow-500/50 uppercase font-black tracking-widest animate-pulse">Aguardando Mestre...</span>
+                                            </div>
+                                          )}
                                         </div>
                                       )
                                     })

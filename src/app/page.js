@@ -278,6 +278,7 @@ export default function Home() {
             if (!isEditing) setTempChar(dbChar);
           } else if (tId === activeUser.id) {
             // AUTO-CREATE CHARACTER IF MISSING
+            console.log("Character missing for user, creating default sheet...", { userId: activeUser.id });
             const newChar = {
               id: activeUser.id,
               discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
@@ -306,7 +307,11 @@ export default function Home() {
               .select()
               .single();
 
-            if (!createError && createdChar) {
+            if (createError) {
+              console.error("CRITICAL: Failed to auto-create character sheet:", createError);
+              showToast("Erro ao criar ficha automática. Verifique o console.");
+            } else if (createdChar) {
+              console.log("Character sheet created successfully:", createdChar.id);
               setCharacter(createdChar);
               if (!isEditing) setTempChar(createdChar);
               setAllPlayers(prev => {

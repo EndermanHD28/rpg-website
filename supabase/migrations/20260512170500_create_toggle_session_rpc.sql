@@ -13,7 +13,7 @@ BEGIN
     -- 2. If we are STARTING a session, clear all messages
     -- We use status = true to identify session start
     IF status = TRUE THEN
-        DELETE FROM messages;
+        DELETE FROM messages WHERE id IS NOT NULL;
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
