@@ -295,7 +295,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                 </div>
 
                 <div className="space-y-2 mt-8">
-                  <label className="text-[10px] font-black uppercase text-zinc-500 block mb-2">Descrição Detalhada dos Eventos</label>
+                  <label className="text-[10px] font-black uppercase text-zinc-500 block mb-2">Descrição Breve dos Eventos</label>
                   <div className="relative min-h-[400px] bg-white/20 p-4 rounded border border-zinc-200">
                     {isEditingThis ? (
                       <textarea value={editingReport.description} onChange={(e) => updateField('description', e.target.value)} className={`w-full bg-transparent outline-none min-h-[400px] resize-none ${playerTextClass}`} placeholder="" />

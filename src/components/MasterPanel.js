@@ -19,6 +19,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
     { id: 'breathing', label: 'Respiração' },
     { id: 'traders', label: 'Comerciantes'},
     { id: 'npcs', label: 'NPCs' },
+    { id: 'almanaque', label: 'Almanaque' },
   ];
 
   // Fetch maintenance and blocked tabs status
