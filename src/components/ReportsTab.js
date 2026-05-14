@@ -170,6 +170,11 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
     }
   };
 
+  const playerTextClass = "font-serif text-lg text-zinc-800 tracking-tight leading-relaxed";
+  const handwrittenBtnClass = "text-xs font-black uppercase tracking-widest hover:scale-105 transition-all opacity-70 hover:opacity-100 underline decoration-2 underline-offset-4";
+
+  const isEditingThis = editingReport && activeReport && editingReport.id === activeReport.id;
+
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8 h-full">
       <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 shrink-0">
@@ -203,7 +208,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                     onClick={() => !editingReport && setActiveReport(r)}
                     className={`p-4 rounded-xl border transition-all cursor-pointer group ${
                       activeReport?.id === r.id 
-                        ? 'bg-zinc-100 border-zinc-100 text-black' 
+                        ? 'bg-zinc-800 border-zinc-700 text-white' 
                         : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     } ${editingReport && editingReport.id !== r.id ? 'opacity-50' : ''}`}
                   >

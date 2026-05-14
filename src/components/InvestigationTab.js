@@ -798,23 +798,25 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
 
       <div 
         ref={containerRef}
-        className={`flex-1 relative border-4 border-zinc-900 rounded-[40px] bg-black/40 overflow-hidden cursor-grab active:cursor-grabbing transition-opacity duration-1000 ${loading ? 'opacity-0' : 'opacity-100'}`}
+        className={`flex-1 relative border-4 border-zinc-900 rounded-[40px] bg-black overflow-hidden cursor-grab active:cursor-grabbing transition-opacity duration-1000 ${loading ? 'opacity-0' : 'opacity-100'}`}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
+        style={{ backfaceVisibility: 'hidden', transform: 'translateZ(0)' }}
       >
         <div 
             style={{ 
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
                 transformOrigin: '0 0',
                 width: BOARD_WIDTH,
                 height: BOARD_HEIGHT,
-                backgroundImage: 'url("https://www.transparenttextures.com/patterns/cork-board.png")',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.1)'
+                backgroundColor: '#09090b', // zinc-950
+                border: '2px solid rgba(255,255,255,0.1)',
+                borderRadius: '40px',
+                willChange: 'transform'
             }}
             className="absolute inset-0 pointer-events-none"
         >

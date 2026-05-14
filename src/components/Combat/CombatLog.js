@@ -228,6 +228,30 @@ export default function CombatLog({
     }
   };
 
+  const [showAddEffect, setShowAddEffect] = useState(null); // combatantId
+  const [effectDuration, setEffectDuration] = useState("2");
+
+  const addEffect = async (combatant, effectKey) => {
+    const { EFFECTS } = await import('../../constants/gameData');
+    const effectTemplate = EFFECTS[effectKey];
+    if (!effectTemplate) return;
+
+    const currentEffects = Array.isArray(combatant.effects) ? combatant.effects : [];
+    const newEffect = {
+      ...effectTemplate,
+      key: effectKey,
+      duration: parseInt(effectDuration) || 2,
+      addedAtTurn: 1 // Assuming 1 if not passed from CombatManager context or we could pass turn as prop
+    };
+
+    const newEffects = [...currentEffects, newEffect];
+    const table = combatant.is_npc ? 'npcs' : 'characters';
+    const dbId = combatant.is_npc ? combatant.dbId : combatant.id;
+
+    await supabase.from(table).update({ effects: newEffects }).eq('id', dbId);
+    setShowAddEffect(null);
+  };
+
   const scrollRef = useRef();
   const chatContainerRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -1339,13 +1363,37 @@ export default function CombatLog({
                       <div className="flex flex-wrap gap-1">
                         {Array.isArray(enemy.effects) && enemy.effects.slice(0, 4).map((eff, idx) => (
                           <TooltipWrapper key={idx} text={`**${eff.name}**\n${eff.description}`}>
-                            <div className="flex items-center gap-1 bg-black/40 border border-red-900/30 pl-0.5 pr-1 py-0.5 rounded cursor-help hover:border-red-600/50 transition-colors">
+                            <div className="flex items-center gap-1 bg-black/40 border border-red-900/30 pl-0.5 pr-1 py-0.5 rounded cursor-help hover:border-red-600/50 transition-colors relative group/eff">
                               <span className="text-[10px]">{eff.emoji}</span>
                               <span className="text-[8px] font-black uppercase tracking-tight text-red-500/80">{eff.name}</span>
                               <span className="text-[10px] font-black font-mono text-zinc-300 ml-0.5 border-l border-white/10 pl-1 leading-none">{eff.duration ?? '-'}</span>
+                              {isActingAsMaster && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const newEffects = enemy.effects.filter((_, i) => i !== idx);
+                                    const { life: nML } = calculateDerivedStats({ ...enemy, effects: newEffects });
+                                    const update = { effects: newEffects };
+                                    if ((enemy.current_hp || nML) > nML) update.current_hp = nML;
+                                    await supabase.from(enemy.is_npc ? 'npcs' : 'characters').update(update).eq('id', enemy.is_npc ? enemy.dbId : enemy.id);
+                                  }}
+                                  className="absolute -top-1 -right-1 bg-red-900/80 text-white/70 rounded p-0.5 opacity-0 group-hover/eff:opacity-100 transition-opacity"
+                                >
+                                  <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                </button>
+                              )}
                             </div>
                           </TooltipWrapper>
                         ))}
+                        {isActingAsMaster && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setShowAddEffect(enemy.id); }}
+                            className="flex items-center justify-center w-5 h-5 bg-zinc-950 border border-white/10 rounded hover:border-red-500/50 transition-colors text-zinc-500 hover:text-red-500"
+                            title="Adicionar Efeito"
+                          >
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M12 5v14M5 12h14"/></svg>
+                          </button>
+                        )}
                       </div>
                       <span className={`text-[7px] font-black text-zinc-600 uppercase tracking-widest italic ${isActingAsMaster || targetingRoll ? 'group-hover:text-red-500/50' : ''} transition-colors`}>Combatente</span>
                     </div>
@@ -1356,10 +1404,18 @@ export default function CombatLog({
                           {(() => {
                             if (enemy.type === 'Complex') {
                               const equippedWeapons = enemy.inventory?.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
-                              const wPAT1 = equippedWeapons.length > 0 ? Math.round(calculateWeaponPAT(equippedWeapons[0], enemy)) : null;
-                              const wPAT2 = equippedWeapons.length > 1 ? Math.round(calculateWeaponPAT(equippedWeapons[1], enemy)) : null;
-                              const dPAT = Math.round(calculateDisarmedPAT(enemy));
+                              const wStats1 = equippedWeapons.length > 0 ? calculateWeaponPAT(equippedWeapons[0], enemy) : null;
+                              const wStats2 = equippedWeapons.length > 1 ? calculateWeaponPAT(equippedWeapons[1], enemy) : null;
+                              const dStats = calculateDisarmedPAT(enemy);
                               
+                              const formatBadge = (stats) => {
+                                if (!stats) return "---";
+                                const d = Math.floor(stats.dice);
+                                const pVal = Math.floor(stats.plus);
+                                const tpt = stats.tpt || 1;
+                                return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
+                              };
+
                               const acertoValue = calculateAcerto(enemy);
                               const desvioValue = calculateDesvio(enemy);
                               const bloqueioValue = calculateBloqueio(enemy);
@@ -1368,18 +1424,18 @@ export default function CombatLog({
                                 <>
                                   <div className="flex gap-2">
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
-                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={wPAT1 ? equippedWeapons[0].name : "Ataque Armado"}>{wPAT1 ? equippedWeapons[0].name : "Ataque Armado"}</span>
-                                      <span className="text-[9px] font-black text-red-500 font-mono">{wPAT1 ? `1d${wPAT1}` : "---"}</span>
+                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={wStats1 ? equippedWeapons[0].name : "Ataque Armado"}>{wStats1 ? equippedWeapons[0].name : "Ataque Armado"}</span>
+                                      <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(wStats1)}</span>
                                     </div>
-                                    {wPAT2 && (
+                                    {wStats2 && (
                                       <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
                                         <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={equippedWeapons[1].name}>{equippedWeapons[1].name}</span>
-                                        <span className="text-[9px] font-black text-red-500 font-mono">1d{wPAT2}</span>
+                                        <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(wStats2)}</span>
                                       </div>
                                     )}
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
                                       <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Desarmado</span>
-                                      <span className="text-[9px] font-black text-red-500 font-mono">1d{dPAT}</span>
+                                      <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(dStats)}</span>
                                     </div>
                                   </div>
                                   <div className="flex gap-2">
@@ -1401,8 +1457,16 @@ export default function CombatLog({
                             } else {
                               // Updated simple logic for simple NPCs
                               const wPAT = enemy.armed_pat ? (enemy.armed_pat.toString().startsWith('1d') ? enemy.armed_pat : `1d${enemy.armed_pat}`) : null;
-                              const dPAT = Math.round(calculateDisarmedPAT(enemy));
+                              const dStats = calculateDisarmedPAT(enemy);
                               
+                              const formatBadge = (stats) => {
+                                if (!stats) return "---";
+                                const d = Math.floor(stats.dice);
+                                const pVal = Math.floor(stats.plus);
+                                const tpt = stats.tpt || 1;
+                                return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
+                              };
+
                               const acertoValue = calculateAcerto(enemy);
                               const desvioValue = calculateDesvio(enemy);
                               const bloqueioValue = calculateBloqueio(enemy);
@@ -1416,7 +1480,7 @@ export default function CombatLog({
                                     </div>
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
                                       <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Desarmado</span>
-                                      <span className="text-[9px] font-black text-red-500 font-mono">1d{dPAT}</span>
+                                      <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(dStats)}</span>
                                     </div>
                                   </div>
                                   <div className="flex gap-2">
@@ -1611,7 +1675,8 @@ export default function CombatLog({
                                   
                                   const dmgValue = Number(total);
                                   const dNormal = Math.round(dmgValue);
-                                  const dBlocked = Math.round(dmgValue * 0.7);
+                                  const dLightlyBlocked = Math.round(dmgValue * 0.7);
+                                  const dBlocked = Math.round(dmgValue * 0.5);
 
                                   const basePostureDamage = dmgValue / 3;
                                   function roundPostureDamage(pDmg, roundingFunction) {
@@ -1670,6 +1735,13 @@ export default function CombatLog({
                                                 >
                                                   <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Normal</span>
                                                   <span className="text-2xl font-black text-white/40 group-hover/btn:text-white transition-all font-mono">{dNormal}</span>
+                                                </button>
+                                                <button 
+                                                  onClick={() => handleUpdateDamageState(m, { selectedFinal: dLightlyBlocked })}
+                                                  className="flex flex-col items-center group/btn"
+                                                >
+                                                  <span className="text-[7px] font-black text-zinc-600 uppercase tracking-widest mb-1 group-hover/btn:text-white transition-colors">Levemente Bloqueado</span>
+                                                  <span className="text-2xl font-black text-white/40 group-hover/btn:text-white transition-all font-mono">{dLightlyBlocked}</span>
                                                 </button>
                                                 <button 
                                                   onClick={() => handleUpdateDamageState(m, { selectedFinal: dBlocked })}
@@ -2518,6 +2590,48 @@ export default function CombatLog({
           </div>
         </div>
       </form>
+
+      {/* ADD EFFECT MODAL */}
+      {isActingAsMaster && showAddEffect && typeof showAddEffect === 'string' && (
+        <div className="absolute inset-0 z-[100] bg-zinc-950 flex flex-col border-l border-white/10 animate-in slide-in-from-right duration-300">
+          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.4em] italic">Adicionar Efeito</h3>
+            <button onClick={() => setShowAddEffect(null)} className="text-zinc-500 hover:text-white transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="p-4 border-b border-white/5 space-y-2">
+            <label className="text-[8px] font-black text-zinc-500 uppercase tracking-widest">Duração (Turnos)</label>
+            <input
+              type="number"
+              value={effectDuration}
+              onChange={(e) => setEffectDuration(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500/50"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-2">
+            {(() => {
+              const { EFFECTS } = require('../../constants/gameData');
+              return Object.entries(EFFECTS).map(([key, eff]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    const combatant = combatants.find(c => c.id === showAddEffect);
+                    if (combatant) addEffect(combatant, key);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all group"
+                >
+                  <div className="w-10 h-10 shrink-0 flex items-center justify-center bg-black/40 rounded-lg text-xl border border-white/10 group-hover:border-red-500/50 transition-colors leading-none">{eff.emoji}</div>
+                  <div className="flex flex-col items-start min-w-0">
+                    <span className="text-[10px] font-black text-white uppercase tracking-wider truncate w-full">{eff.name}</span>
+                    <span className="text-[8px] text-zinc-500 font-medium line-clamp-2 leading-tight">{eff.description}</span>
+                  </div>
+                </button>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

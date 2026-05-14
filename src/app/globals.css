@@ -226,3 +226,67 @@ select,
   scale: 1.1; /* Slight scale to prevent seeing edges when moving */
   transform-origin: 66% 42%;
 }
+
+/* Custom Range Input (Sound Slider) */
+input[type=range].custom-slider {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: transparent !important;
+  cursor: pointer;
+  height: 16px !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+input[type=range].custom-slider:focus {
+  outline: none !important;
+}
+
+/* Track */
+input[type=range].custom-slider::-webkit-slider-runnable-track {
+  background: #3f3f46 !important; /* zinc-700 */
+  height: 4px !important;
+  border-radius: 2px !important;
+  border: none !important;
+}
+
+input[type=range].custom-slider::-moz-range-track {
+  background: #3f3f46 !important; /* zinc-700 */
+  height: 4px !important;
+  border-radius: 2px !important;
+  border: none !important;
+}
+
+/* Thumb */
+input[type=range].custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  margin-top: -3px !important; /* Center thumb on track (thumb 10px, track 4px -> (10-4)/2 = 3) */
+  background-color: #52525b !important; /* zinc-600 */
+  height: 10px !important;
+  width: 10px !important;
+  border-radius: 1px !important;
+  border: none !important;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 3px rgba(0,0,0,0.5) !important;
+}
+
+input[type=range].custom-slider::-webkit-slider-thumb:hover {
+  background-color: #71717a !important; /* zinc-500 */
+  transform: scale(1.1);
+}
+
+input[type=range].custom-slider::-moz-range-thumb {
+  background-color: #52525b !important; /* zinc-600 */
+  height: 10px !important;
+  width: 10px !important;
+  border: none !important;
+  border-radius: 1px !important;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 3px rgba(0,0,0,0.5) !important;
+}
+
+input[type=range].custom-slider::-moz-range-thumb:hover {
+  background-color: #71717a !important; /* zinc-500 */
+  transform: scale(1.1);
+}

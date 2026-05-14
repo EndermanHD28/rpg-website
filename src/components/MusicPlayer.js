@@ -715,9 +715,8 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
                 step="0.05" 
                 value={sfxVolumeInput}
                 onChange={(e) => setSfxVolumeInput(parseFloat(e.target.value))}
-                className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600 w-24"
+                className="flex-1 custom-slider w-24"
               />
-              <span className="text-[9px] font-mono font-black text-zinc-600 w-8 text-right">{(sfxVolumeInput * 100).toFixed(0)}%</span>
             </div>
           </div>
           <div>
@@ -836,8 +835,8 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       <div className="flex items-center gap-3">
         {url && (
           <div
-            className={`overflow-hidden transition-all duration-500 ease-in-out flex items-center ${
-              showTitle ? 'max-w-[400px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none'
+            className={`transition-all duration-500 ease-in-out flex items-center ${
+              showTitle ? 'max-w-[500px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none overflow-hidden'
             }`}
           >
             <div className="bg-black/80 backdrop-blur-md border border-zinc-800 px-5 py-3 rounded-2xl whitespace-nowrap flex flex-col gap-1 shadow-2xl">
@@ -868,7 +867,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
                     setVolume(newVol);
                     volumeInitializedRef.current = true;
                   }}
-                  className="w-24 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600"
+                  className="w-24 custom-slider"
                 />
                 <span className="text-[10px]">🔊</span>
               </div>

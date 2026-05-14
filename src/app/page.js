@@ -23,6 +23,7 @@ import ReportsTab from '../components/ReportsTab';
 import InvestigationTab from '../components/InvestigationTab';
 import BreathingTab from '../components/BreathingTab';
 import TradersTab from '../components/TradersTab';
+import AlmanaqueTab from '../components/AlmanaqueTab';
 
 export default function Home() {
   // --- UI STATE ---
@@ -1053,6 +1054,26 @@ export default function Home() {
                     setActiveTab('investigation'); 
                   }} 
                 />
+                <NavButton 
+                  active={activeTab === 'almanaque'} 
+                  label="Almanaque" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('almanaque')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('almanaque')}
+                  onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    if (!isActingAsMaster && blockedTabs.includes('almanaque')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('almanaque'); 
+                  }} 
+                />
               </div>
             </div>
 
@@ -1326,9 +1347,8 @@ export default function Home() {
               step="0.05"
               value={volume}
               onChange={(e) => changeVolume(parseFloat(e.target.value))}
-              className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600 hover:accent-red-500"
+              className="flex-1 custom-slider"
             />
-            <span className="text-[9px] font-mono font-black text-zinc-600 w-6 text-right">{(volume * 100).toFixed(0)}%</span>
           </div>
 
           <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5">
@@ -1815,6 +1835,17 @@ export default function Home() {
         {activeTab === 'investigation' && (
           <div className="flex-1 relative">
             <InvestigationTab 
+              user={user}
+              isMaster={isActingAsMaster}
+              showToast={showToast}
+              playSound={playSoundEffect}
+            />
+          </div>
+        )}
+
+        {activeTab === 'almanaque' && (
+          <div className="flex-1 relative">
+            <AlmanaqueTab 
               user={user}
               isMaster={isActingAsMaster}
               showToast={showToast}

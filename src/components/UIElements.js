@@ -534,7 +534,13 @@ export function Modal({ modal, closeModal }) {
                       <div className="space-y-1 flex flex-col justify-end">
                         <span className="text-[8px] text-zinc-500 font-bold uppercase">Ataque Desarmado</span>
                         <div className="bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-yellow-500 text-xs font-bold font-mono">
-                          1d{Math.floor(calculateDisarmedPAT(localData))}
+                          {(() => {
+                            const stats = calculateDisarmedPAT(localData);
+                            const d = Math.floor(stats.dice);
+                            const pVal = Math.floor(stats.plus);
+                            const tpt = stats.tpt || 1;
+                            return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
+                          })()}
                         </div>
                       </div>
                     </div>

@@ -104,8 +104,8 @@ const SecondaryStat = ({ label, value, sub }) => (
 const PatStat = ({ label, value, sub }) => {
   let displayValue = "";
   if (typeof value === 'object') {
-    const d = Math.round(value.dice);
-    const p = Math.round(value.plus);
+    const d = Math.floor(value.dice);
+    const p = Math.floor(value.plus);
     const tpt = value.tpt || 1;
     displayValue = `${tpt}d${d}${p > 0 ? ` + ${p}` : ""}`;
   } else {

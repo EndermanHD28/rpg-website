@@ -412,17 +412,27 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
             onClick={e => e.stopPropagation()}
           >
              {/* LEFT: IMAGE */}
-             <div className="md:w-1/2 h-[40vh] md:h-[80vh] bg-black relative">
+             <div className="md:w-1/2 h-[50vh] md:h-auto bg-black relative flex items-center justify-center overflow-hidden">
                {expandedNPC.image_url ? (
                  <img 
                    src={expandedNPC.image_url} 
                    alt={expandedNPC.name}
-                   className="w-full h-full object-cover md:object-contain"
+                   className="w-full h-full object-contain relative z-10"
                  />
                ) : (
                  <div className="w-full h-full flex items-center justify-center text-zinc-800 text-9xl">👤</div>
                )}
-               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent md:hidden" />
+               {expandedNPC.image_url && (
+                 <div 
+                   className="absolute inset-0 opacity-30 blur-2xl scale-110"
+                   style={{
+                     backgroundImage: `url(${expandedNPC.image_url})`,
+                     backgroundSize: 'cover',
+                     backgroundPosition: 'center'
+                   }}
+                 />
+               )}
+               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent md:hidden z-20" />
              </div>
 
              {/* RIGHT: INFO */}

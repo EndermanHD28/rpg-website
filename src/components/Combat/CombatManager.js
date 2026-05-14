@@ -48,9 +48,7 @@ export default function CombatManager({
       const update = { is_in_combat: !isCurrentlyIn };
       
       if (!isCurrentlyIn) {
-        if (type === 'npc') {
-          update.is_enemy = addAsEnemy;
-        }
+        update.is_enemy = addAsEnemy;
         const derived = calculateDerivedStats(entity);
         update.current_hp = derived.life;
         update.current_posture = derived.posture;
@@ -85,11 +83,6 @@ export default function CombatManager({
   const toggleEnemyStatus = async (entity, type) => {
     try {
       const table = type === 'player' ? 'characters' : 'npcs';
-      // Only NPCs currently have is_enemy column in DB cache, so we skip for players to avoid errors
-      if (type === 'player') {
-        alert("Status de inimigo para jogadores não suportado no banco de dados.");
-        return;
-      }
       await supabase.from(table).update({ is_enemy: !entity.is_enemy }).eq('id', entity.id);
     } catch (err) {
       console.error("Error toggling enemy status:", err);
@@ -283,6 +276,15 @@ export default function CombatManager({
                             </span>
                           )}
                         </button>
+                        {p.is_in_combat && (
+                          <button
+                            onClick={() => toggleEnemyStatus(p, 'player')}
+                            className={`w-8 h-12 flex items-center justify-center rounded-lg border transition-all ${p.is_enemy ? 'bg-red-600/20 border-red-500/40 text-red-500' : 'bg-green-600/10 border-green-500/20 text-green-500'}`}
+                            title={p.is_enemy ? "Inimigo" : "Aliado"}
+                          >
+                            <span className="text-xs">{p.is_enemy ? "💀" : "🛡️"}</span>
+                          </button>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -584,8 +586,8 @@ export default function CombatManager({
 
                                   const formatWeaponBadge = (stats) => {
                                     if (!stats) return "---";
-                                    const d = Math.round(stats.dice);
-                                    const pVal = Math.round(stats.plus);
+                                    const d = Math.floor(stats.dice);
+                                    const pVal = Math.floor(stats.plus);
                                     const tpt = stats.tpt || 1;
                                     return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
                                   };
@@ -607,14 +609,14 @@ export default function CombatManager({
                                 } else {
                                   // Simple NPC Ally/Neutral
                                   const wStats = calculateWeaponPAT(null, p);
-                                  const dPAT = Math.round(calculateDisarmedPAT(p));
+                                  const dStats = calculateDisarmedPAT(p);
                                   const desvioValue = calculateDesvio(p);
                                   
                                   const wValue = typeof wStats === 'object' ? wStats.dice : wStats;
 
                                   return (
                                     <div className="grid grid-cols-2 gap-2">
-                                      <DiceBadge label="Ataque" val={`1d${Math.round(wValue || dPAT)}`} category="combat" />
+                                      <DiceBadge label="Ataque" val={`1d${Math.floor(wValue || dStats.dice)}`} category="combat" />
                                       <DiceBadge label="Desvio" val={`1d${desvioValue}`} category="secondary" />
                                     </div>
                                   );
