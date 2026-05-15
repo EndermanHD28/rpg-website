@@ -1,5 +1,25 @@
 [
   {
+    "id": "1cb4f9d1-fa58-4dbc-9641-50f610de2b04",
+    "name": "A Decaída do Capitalismo",
+    "rarity": "Raro",
+    "value": 312,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "\"A Decaída do Capitalismo\" é um livro que fala sobre como a sociedade ainda era dividida pelo que antes eram posições sociais,\\ndiretamente relacionando o caos e quem morria ou vivia, baseando-se no sistema econômico. \\n livro trata o capitalismo como culpado, e \"nojento\". **Possui alto valor histórico**.",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "item.capitalism_decay",
+    "carga": 1,
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
     "id": "06e4844d-2fb9-4210-9034-02370c051a22",
     "name": "Abridor de Latas Manual",
     "rarity": "Comum",
@@ -16,7 +36,8 @@
     "item_id": "item.abridor_latas",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "af157bc2-a695-4bc8-925d-cc015ce9290d",
@@ -35,7 +56,8 @@
     "item_id": "weapon.rusty_dagger",
     "carga": 1,
     "cargaIncrease": null,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "2aed8720-e54a-4583-8dde-824a0b41b1ea",
@@ -54,7 +76,8 @@
     "item_id": "item.almanaque_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "d715e4e6-ede5-47cb-ac48-bb22daca4d01",
@@ -73,7 +96,8 @@
     "item_id": "item.almofada_velha",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "fa9bfaa8-4b06-420f-93af-f8c82b2630e6",
@@ -92,7 +116,8 @@
     "item_id": "item.alternador_v8",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "18c73ddf-56f6-427e-8ded-dfefb692b23f",
@@ -111,7 +136,48 @@
     "item_id": "item.broken_alternator",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "f0661467-570a-44c5-a30b-920dace426f5",
+    "name": "Aranha Carangueja",
+    "rarity": "Comum",
+    "value": 2,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Simple",
+    "description": "Uma Aranha Carangueja. Está dura, como se estivesse morta... ou se fingindo. Sabe Deus.",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "animal_spider",
+    "carga": 1,
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "93f36961-7887-4946-b273-c475ae8b3e30",
+    "name": "Aranha Caranguejera",
+    "rarity": "Comum",
+    "value": 2,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Uma aranha caranguejeira já dura. Talvez morta, sabe Deus;",
+    "isBackpack": false,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "animal.spider",
+    "carga": 1,
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "54137ec8-3a77-40be-a2a8-653765a54987",
@@ -130,7 +196,8 @@
     "item_id": "item.bandagem",
     "carga": 1,
     "cargaIncrease": null,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "b2284641-6440-46a0-956e-1a3766b21efb",
@@ -149,7 +216,8 @@
     "item_id": "item.baralho_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "479e9169-027a-4e18-8bbf-d549e76785a6",
@@ -168,7 +236,8 @@
     "item_id": "item.celulas_litio",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "79757238-181d-4581-a9b7-8e2a8f0a6f72",
@@ -187,7 +256,28 @@
     "item_id": "item.binoculos_nikon",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "ae21e170-961f-4ce3-9bec-5b7c203fc22f",
+    "name": "Bolsa Leve Escolar",
+    "rarity": "Comum",
+    "value": 21,
+    "category": "",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Equipamento",
+    "description": "Bolsa simples e frágil. É como a que alunos usariam. Bem mais básica do que os soldados esperariam receber.\nAdiciona **+6 Carga**.",
+    "isBackpack": true,
+    "tier": null,
+    "upgrade": 0,
+    "item_id": "equipment.small_bag",
+    "carga": 1,
+    "cargaIncrease": 6,
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "12276b47-1786-498c-82cd-6aa47fe0195c",
@@ -206,7 +296,8 @@
     "item_id": "item.cabo_rede_cat6",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "8ec771f8-c60a-4466-b9ae-a8f50579648e",
@@ -225,7 +316,8 @@
     "item_id": "item.cabo_hdmi",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "e3799398-e676-4a5b-b6a2-78aea9791247",
@@ -244,7 +336,8 @@
     "item_id": "item.cabo_usb_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "e938994c-0567-4fd5-b95f-1b900f60c3cd",
@@ -263,7 +356,8 @@
     "item_id": "item.caderno_moleskine",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "45d21580-375b-495e-8577-0a3ed08f7494",
@@ -282,7 +376,8 @@
     "item_id": "item.calculadora_casio",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "cba30cc0-ab46-4674-bd1b-27fee61b0e2e",
@@ -301,7 +396,8 @@
     "item_id": "item.marcatexto_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "a8b1db9c-7ed3-4ec7-9837-d9d59834f04b",
@@ -320,7 +416,8 @@
     "item_id": "weapon.caneta_tatica",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.92
+    "damage_multi": 0.92,
+    "tpt": 1
   },
   {
     "id": "5a90091d-a14b-42ed-b4dd-b9cb3f164a44",
@@ -339,7 +436,8 @@
     "item_id": "item.cartucho_tinta_vazio",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "0a80a259-dbfb-41cb-9876-57cdeb8fc343",
@@ -358,7 +456,8 @@
     "item_id": "item.cinto_couro",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "91320820-8c79-46b4-a2f6-22ce7f6f720d",
@@ -377,7 +476,8 @@
     "item_id": "item.cobertor_la",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "adc93f39-4eef-4003-b2b9-bedfbc00d7d8",
@@ -396,17 +496,18 @@
     "item_id": "item.ps2_hardware",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "7779386a-eaf2-44d2-94bd-437b93cd717f",
     "name": "Controle Remoto Samsung (Sem Pilhas)",
     "rarity": "Comum",
-    "value": 15,
+    "value": 20,
     "category": "Utilitário",
-    "subtype": null,
+    "subtype": "",
     "hands": "Uma Mão",
-    "damageType": null,
+    "damageType": "Corte",
     "type": "Item",
     "description": "Um pedaço de plástico inútil, a menos que você precise do pequeno circuito impresso e do LED infravermelho dentro dele.",
     "isBackpack": false,
@@ -415,7 +516,8 @@
     "item_id": "item.controle_remoto",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "37df1480-3ddb-4497-96fa-fa04fecf5aa3",
@@ -434,7 +536,8 @@
     "item_id": "item.timer_cozinha",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "12596f4b-fecb-4afb-995e-d2055b78ab7a",
@@ -453,7 +556,8 @@
     "item_id": "weapon.cutelo_tramontina",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.01
+    "damage_multi": 1.01,
+    "tpt": 1
   },
   {
     "id": "5eda88cb-54a7-4723-853d-2787b5e4405e",
@@ -472,7 +576,8 @@
     "item_id": "item.disquete_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "bf1df566-e843-4a88-b6e3-07007978422d",
@@ -491,7 +596,8 @@
     "item_id": "weapon.chiappa_double",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1.045
+    "damage_multi": 1.045,
+    "tpt": 1
   },
   {
     "id": "e21ebdd9-5552-44ac-9f1a-f30cb486fdb1",
@@ -510,7 +616,8 @@
     "item_id": "weapon.chiappa_triple_threat",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1.2
+    "damage_multi": 1.2,
+    "tpt": 1
   },
   {
     "id": "7df0b9d9-e064-40a6-b325-19d64996b2c1",
@@ -518,7 +625,7 @@
     "rarity": "Raro",
     "value": 160,
     "category": "Arma Branca",
-    "subtype": "Espada/Machado Pesado",
+    "subtype": "Espada Leve",
     "hands": "Uma Mão",
     "damageType": "Corte",
     "type": "Equipamento",
@@ -529,7 +636,8 @@
     "item_id": "weapon.medieval_sword",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1.09
+    "damage_multi": 1.09,
+    "tpt": 1
   },
   {
     "id": "b0fd9fb2-7d76-4349-9cea-3ac73bf05e3b",
@@ -548,7 +656,8 @@
     "item_id": "item.espelho_sinalizacao",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "4f6b0b05-a87a-4393-a125-400edbcd1937",
@@ -567,7 +676,8 @@
     "item_id": "item.esponja_aco",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "39b312ee-ee64-4301-9117-ad90b48d3f08",
@@ -586,7 +696,8 @@
     "item_id": "weapon.estilete_aco",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.89
+    "damage_multi": 0.89,
+    "tpt": 1
   },
   {
     "id": "f1daf0e6-2db8-4d9b-a1d2-d05434e706f2",
@@ -605,7 +716,8 @@
     "item_id": "item.extensao_eletrica",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "074ad6f1-7ffd-42c6-8d36-30100f045671",
@@ -624,7 +736,8 @@
     "item_id": "item.extintor_escritorio",
     "carga": 3,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "7a728bbc-6248-4397-9145-9ba08587b2f8",
@@ -643,7 +756,8 @@
     "item_id": "weapon.faca_cozinha",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.07
+    "damage_multi": 1.07,
+    "tpt": 1
   },
   {
     "id": "bb5b001f-1ba1-4967-aeb2-e0f76d052f22",
@@ -662,7 +776,8 @@
     "item_id": "weapon.faca_tramontina",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.03
+    "damage_multi": 1.03,
+    "tpt": 1
   },
   {
     "id": "f461c61c-8038-48a6-a9a3-bbd2b95623c1",
@@ -681,7 +796,8 @@
     "item_id": "weapon.faca_kabar",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.08
+    "damage_multi": 1.08,
+    "tpt": 1
   },
   {
     "id": "39dc11b8-6b8d-4ff0-81ff-fef5079737f2",
@@ -700,17 +816,18 @@
     "item_id": "item.filtro_cafe",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "08262e68-f95a-4b71-bf12-be0e238a7295",
     "name": "Fios de Cobre (Rolo)",
     "rarity": "Comum",
-    "value": 4,
+    "value": 54,
     "category": "Utilitário",
-    "subtype": null,
+    "subtype": "",
     "hands": "Uma Mão",
-    "damageType": null,
+    "damageType": "Corte",
     "type": "Item",
     "description": "Essenciais para reativar a rede elétrica das bases de resistência.",
     "isBackpack": false,
@@ -718,8 +835,9 @@
     "upgrade": 0,
     "item_id": "item.fios_cobre",
     "carga": 1,
-    "cargaIncrease": null,
-    "damage_multi": 1
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "3d9a86c0-03d1-4270-908f-6da807a16c25",
@@ -738,7 +856,8 @@
     "item_id": "item.fone_gamer_sucata",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "c84b9c10-b5c0-4443-b47c-2f52e0bcef8c",
@@ -757,7 +876,8 @@
     "item_id": "item.ibuprofeno",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "499c18fe-aada-4647-8c7b-9c959f770bcf",
@@ -776,7 +896,8 @@
     "item_id": "weapon.garfo_churrasco",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.83
+    "damage_multi": 0.83,
+    "tpt": 1
   },
   {
     "id": "cdece0d2-38f1-46bf-8785-7839f54c804d",
@@ -795,7 +916,8 @@
     "item_id": "item.garrafa_aluminio",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "351401f9-655c-481b-b0d3-2db3b9a29ff6",
@@ -814,7 +936,8 @@
     "item_id": "item.vinagre_frasco",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "4bbc63d1-b367-4591-9ba2-30f0136e4dff",
@@ -833,7 +956,8 @@
     "item_id": "item.whisky_jack",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "324ee70b-8309-4fd0-8aa2-40f974c4cfd6",
@@ -852,7 +976,8 @@
     "item_id": "weapon.grampeador_pesado",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.78
+    "damage_multi": 0.78,
+    "tpt": 1
   },
   {
     "id": "c3b62f79-409f-4603-9f77-ec6dae4c808f",
@@ -871,7 +996,8 @@
     "item_id": "item.isqueiro_bic",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "16e19f51-4d0d-4a04-8629-6ec4d0e2012f",
@@ -890,7 +1016,8 @@
     "item_id": "item.zippo_metal",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "1b181ae7-e512-4e1e-b3d2-c7012b5b834e",
@@ -909,7 +1036,8 @@
     "item_id": "item.kit_socorros_sala",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "fb0c7705-4f29-4c29-964f-1c773f8c9669",
@@ -928,7 +1056,8 @@
     "item_id": "item.kit_sutura",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "3d60433b-ca7c-44f6-b810-4ed6501b3d79",
@@ -947,7 +1076,8 @@
     "item_id": "item.kit_medico",
     "carga": 2,
     "cargaIncrease": null,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "2c7555b4-851c-4da0-9776-565ef370d604",
@@ -966,7 +1096,8 @@
     "item_id": "item.lampada_led",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "f9791870-5712-4b2f-8389-537d85cb177d",
@@ -985,7 +1116,8 @@
     "item_id": "item.lanterna_surefire",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "8f436406-9d25-4373-b70a-73ce1934854a",
@@ -1004,7 +1136,8 @@
     "item_id": "item.laptop_militar",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "a0e8ee42-6aef-47f1-b78a-f8b13f884833",
@@ -1023,7 +1156,8 @@
     "item_id": "item.ar_comprimido",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "87b33f11-6df7-450d-becc-872a07ecf07f",
@@ -1042,7 +1176,8 @@
     "item_id": "item.comida_enlatada",
     "carga": 1,
     "cargaIncrease": null,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "d0cd471f-619e-4bb0-bcfe-2363d7b68985",
@@ -1061,7 +1196,8 @@
     "item_id": "item.luminaria_emergencia",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "7e36bc83-32f1-4ee5-90e3-74c058eeb156",
@@ -1080,7 +1216,8 @@
     "item_id": "item.luminaria_metal",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "fc4407a2-7e9b-4ec9-8fda-cb60901bd1ae",
@@ -1099,7 +1236,8 @@
     "item_id": "item.luva_forno",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "c012852a-1fce-47bf-a51a-dfabfb9d1efc",
@@ -1118,7 +1256,8 @@
     "item_id": "item.mochila_militar",
     "carga": 3,
     "cargaIncrease": 9,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "98b596e5-6afe-4485-9fe6-e8bd61f52d83",
@@ -1137,7 +1276,8 @@
     "item_id": "item.mochila_tatica",
     "carga": 2,
     "cargaIncrease": 7,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "4f23228b-1d72-44b7-bff3-d5a13bddadbd",
@@ -1156,7 +1296,8 @@
     "item_id": "item.modulo_hsm_ibm",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "74c74094-0914-48bd-8a46-268ecf76ee3f",
@@ -1175,7 +1316,8 @@
     "item_id": "item.multimetro_minipa",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "70b499cc-6a55-43cd-881b-dba52c10ef0f",
@@ -1194,7 +1336,8 @@
     "item_id": "item.nobreak_bateria",
     "carga": 3,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "a90ccd39-5bf1-41ff-9c49-b48a520d8f7e",
@@ -1213,7 +1356,8 @@
     "item_id": "item.pilhas_duracell",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "f86779a6-ee35-485f-abee-1d201a1a7fb6",
@@ -1232,7 +1376,8 @@
     "item_id": "item.pano_copa",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "491f4447-d276-4ca4-a4ae-ee0c8e3aefe4",
@@ -1251,7 +1396,28 @@
     "item_id": "item.meias_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "f45c6076-7bfa-435d-aa18-bdea64fd9dcd",
+    "name": "Pedra de Polir Uchigumori Genuína",
+    "rarity": "Épico",
+    "value": 415,
+    "category": "Utilitário",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Uma pedra natural japonesa de granulação finíssima. Utilizada por mestres ferreiros para revelar o hamon e restaurar o fio de lâminas de alta qualidade, garantindo uma precisão cirúrgica. Garante +1 de Upgrade à uma Espada ou Machado leves.",
+    "isBackpack": false,
+    "tier": 0,
+    "upgrade": 0,
+    "item_id": "item.pedra_polir_uchigumori",
+    "carga": 1,
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "f06e52e9-3068-4b24-879c-f2dd85e391e1",
@@ -1270,7 +1436,8 @@
     "item_id": "item.clipes_lixo",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "420e00d9-8a63-4932-bafd-1f24ba5cdc08",
@@ -1289,7 +1456,8 @@
     "item_id": "item.cacos_ceramica",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "492baab5-a257-4d54-8e61-1ee634900362",
@@ -1309,13 +1477,13 @@
     "carga": 1,
     "cargaIncrease": 10,
     "damage_multi": 0.98,
-    "tpt": 2
+    "tpt": 3
   },
   {
     "id": "5039ca82-e6dc-488d-9065-867d03167db2",
     "name": "Pistola Beretta Cheetah",
     "rarity": "Comum",
-    "value": 110,
+    "value": 88,
     "category": "Arma de Fogo",
     "subtype": "Pistola",
     "hands": "Uma Mão",
@@ -1328,8 +1496,8 @@
     "item_id": "weapon.beretta_cheetah",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.88,
-    "tpt": 2
+    "damage_multi": 0.77,
+    "tpt": 4
   },
   {
     "id": "ccb0528f-d503-4e4c-815f-2d7e12c037d9",
@@ -1349,13 +1517,13 @@
     "carga": 1,
     "cargaIncrease": 10,
     "damage_multi": 0.91,
-    "tpt": 2
+    "tpt": 3
   },
   {
     "id": "bdffd73b-5062-46e2-bdc0-b3e011264706",
     "name": "Pistola SIG Sauer P320",
     "rarity": "Raro",
-    "value": 295,
+    "value": 195,
     "category": "Arma de Fogo",
     "subtype": "Pistola",
     "hands": "Uma Mão",
@@ -1368,8 +1536,8 @@
     "item_id": "weapon.sig_p320",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.15,
-    "tpt": 2
+    "damage_multi": 1.07,
+    "tpt": 3
   },
   {
     "id": "c4ef2157-d44e-496a-bce2-c656cdbb4c3b",
@@ -1388,7 +1556,8 @@
     "item_id": "item.placa_logica",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "9ae20d6b-d125-4b55-953d-b9975e1a5037",
@@ -1407,7 +1576,8 @@
     "item_id": "item.laser_verde",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "fd8fdf2d-0bbb-4960-9e23-a80f4c9caa56",
@@ -1426,7 +1596,8 @@
     "item_id": "item.porta_retrato_madeira",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "c2f98ed3-eb24-4c5d-8e69-d80559586108",
@@ -1445,7 +1616,8 @@
     "item_id": "item.pote_plastico",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "10fa7ed7-398d-451e-9b4d-a7f54bf57048",
@@ -1464,7 +1636,8 @@
     "item_id": "item.powerbank_anker",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "65163146-e9c2-4fbd-ae61-59aeabeba866",
@@ -1483,7 +1656,8 @@
     "item_id": "item.radio_baofeng",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "870125e6-8e9a-42fc-bdcc-89c3fbb4608b",
@@ -1502,7 +1676,8 @@
     "item_id": "item.relogio_gshock",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "c8eb86ca-054e-44a4-a291-7602b2d50b79",
@@ -1521,7 +1696,8 @@
     "item_id": "item.relogio_parede",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "79548472-cf42-4673-a3c4-e0bbe6584017",
@@ -1540,7 +1716,8 @@
     "item_id": "item.revista_velha",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "d7821936-025e-4405-822a-c04d5124fa84",
@@ -1559,7 +1736,8 @@
     "item_id": "weapon.nagant_m1895",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.03
+    "damage_multi": 1.03,
+    "tpt": 1
   },
   {
     "id": "9aab8146-e76b-4bd5-b16c-793c65b1f4f0",
@@ -1578,7 +1756,8 @@
     "item_id": "weapon.revolver_sw",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1.1
+    "damage_multi": 1.1,
+    "tpt": 1
   },
   {
     "id": "9b702c44-3743-4a97-86a4-3873c023f76c",
@@ -1597,7 +1776,8 @@
     "item_id": "item.fita_duct_tape",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "ed62749d-e2b8-4b80-9811-2ab9ebc86082",
@@ -1616,7 +1796,8 @@
     "item_id": "weapon.rolo_massa",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 0.93
+    "damage_multi": 0.93,
+    "tpt": 1
   },
   {
     "id": "debf3572-4583-4e58-83ed-f775c2579208",
@@ -1635,7 +1816,8 @@
     "item_id": "item.roteador_asus",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "0192433b-a9d0-4ee5-9d11-9079dedacf62",
@@ -1654,7 +1836,28 @@
     "item_id": "item.spray_pimenta",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "de450dfb-f166-44a9-ad3c-91f3864dd32c",
+    "name": "Supressor Osprey 45 (Poligonal)",
+    "rarity": "Épico",
+    "value": 375,
+    "category": "Utilitário",
+    "subtype": "",
+    "hands": "Uma Mão",
+    "damageType": "Corte",
+    "type": "Item",
+    "description": "Um silenciador tático de elite com design excêntrico. Reduz drasticamente o ruído e elimina o clarão do disparo, essencial para operações furtivas em território infestado.",
+    "isBackpack": false,
+    "tier": 0,
+    "upgrade": 0,
+    "item_id": "item.silenciador_osp_45",
+    "carga": 1,
+    "cargaIncrease": 10,
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "28462b94-9ee9-4616-be6b-0f6805897c1c",
@@ -1673,7 +1876,28 @@
     "item_id": "item.ipad_pro_danificado",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
+  },
+  {
+    "id": "fca5542b-0aae-4a2c-94ea-28da6ad23f53",
+    "name": "Taco de Metal Envelhecido",
+    "rarity": "Comum",
+    "value": 75,
+    "category": "Arma Branca",
+    "subtype": "Machado/Porrete Leve",
+    "hands": "Duas Mãos",
+    "damageType": "Impacto",
+    "type": "Equipamento",
+    "description": "Um taco de liga de alumínio. Parece ter anos de uso... o metal está enferrujado. A estrutura oca permite balanços rápidos, enquanto a dureza do metal garante traumatismos cranianos severos.",
+    "isBackpack": false,
+    "tier": 1,
+    "upgrade": 1,
+    "item_id": "weapon.taco_metal_t1",
+    "carga": 2,
+    "cargaIncrease": 10,
+    "damage_multi": 0.81,
+    "tpt": 1
   },
   {
     "id": "d7e8c777-eb14-4189-aa66-6bc686ccd47b",
@@ -1692,7 +1916,8 @@
     "item_id": "item.tesoura_comum",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "d22280fe-aa69-4977-84d6-93d2a23c95db",
@@ -1711,7 +1936,8 @@
     "item_id": "item.torradeira_sucata",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "e569e00c-e013-41b6-8480-101c3e77532d",
@@ -1730,7 +1956,8 @@
     "item_id": "item.valvula_pressao",
     "carga": 1,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   },
   {
     "id": "7911987b-f8b6-4d53-afd3-c39f7fc11792",
@@ -1749,6 +1976,7 @@
     "item_id": "item.vaso_vidro_lixo",
     "carga": 2,
     "cargaIncrease": 10,
-    "damage_multi": 1
+    "damage_multi": 1,
+    "tpt": 1
   }
 ]

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { MASTER_DISCORD_ID, ANOMALIAS_LIST, ANOMALIAS_DESCRIPTIONS, SKILLS_LIST, SKILLS_DESCRIPTIONS, RARITY_CONFIG } from '../constants/gameData';
 
 import { calculateDerivedStats, getStatBuffs } from '../lib/rpg-math';
+import { useSound } from '../hooks/useSound';
 
 // Static Components (Keep for initial load)
 import { Toast, Modal, TooltipWrapper, CustomSelect } from '../components/UIElements';
