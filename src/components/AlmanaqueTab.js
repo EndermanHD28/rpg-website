@@ -11,6 +11,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingData, setEditingData] = useState(null);
   const [isEditor, setIsEditor] = useState(false);
+  const [almanaqueEditors, setAlmanaqueEditors] = useState("");
   const [openInMenu, setOpenInMenu] = useState(null); // { bIdx, nIdx } or { bIdx }
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverTab, setDragOverTab] = useState(null);
@@ -21,36 +22,68 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     setLoading(true);
     
     // Check if user is an editor
-    if (user && !isMaster) {
-      const { data: globalData } = await supabase.from('global').select('almanaque_editors').eq('id', 1).single();
-      if (globalData?.almanaque_editors?.includes(user.id)) {
-        setIsEditor(true);
-      } else {
-        setIsEditor(false);
+    const { data: globalData } = await supabase.from('global').select('almanaque_editors').eq('id', 1).single();
+    let currentIsEditor = isMaster;
+    
+    if (globalData) {
+      const editorsList = Array.isArray(globalData.almanaque_editors) ? globalData.almanaque_editors : [];
+      setAlmanaqueEditors(editorsList.join(", "));
+
+      if (isMaster) {
+        currentIsEditor = true;
+      } else if (user) {
+        // Fetch discord username of current user
+        const { data: userData } = await supabase.from('characters').select('discord_username').eq('id', user.id).single();
+        if (userData && editorsList.includes(userData.discord_username)) {
+          currentIsEditor = true;
+        } else {
+          currentIsEditor = false;
+        }
       }
-    } else if (isMaster) {
-      setIsEditor(true);
     }
+    setIsEditor(currentIsEditor);
 
     let query = supabase.from('almanaque_entries').select('*').order('order_index', { ascending: true });
-    
-    if (!isMaster && !isEditor) {
-      // For non-masters/non-editors, only show public entries
-      // But we need to handle the case where isEditor might change after fetch
-      // Better to check isEditor inside the effect or pass it as dependency
-    }
-
     const { data, error } = await query;
+    
     if (error) {
       showToast("Erro ao carregar o Almanaque.");
     } else {
-      if (!isMaster && !isEditor) {
+      if (!currentIsEditor) {
         setEntries(data?.filter(e => e.is_public) || []);
       } else {
         setEntries(data || []);
       }
     }
     setLoading(false);
+  };
+
+  const updateAlmanaqueEditors = async () => {
+    playSound('random_button');
+    const editorsArray = almanaqueEditors.split(',').map(s => s.trim()).filter(s => s !== "");
+    
+    const { data: existing } = await supabase.from('global').select('id').eq('id', 1).maybeSingle();
+    
+    let updateOp;
+    if (!existing) {
+      updateOp = supabase.from('global').insert({
+        id: 1,
+        almanaque_editors: editorsArray
+      });
+    } else {
+      updateOp = supabase.from('global')
+        .update({ almanaque_editors: editorsArray })
+        .eq('id', 1);
+    }
+
+    const { error } = await updateOp;
+
+    if (!error) {
+      showToast("Editores do Almanaque atualizados!");
+    } else {
+      console.error("Update almanaque editors error:", error);
+      showToast(`Erro ao atualizar editores: ${error.message}`);
+    }
   };
 
   useEffect(() => {
@@ -454,6 +487,32 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
           )}
         </div>
       </div>
+
+      {isMaster && (
+        <div className="mb-8 bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 backdrop-blur-sm animate-in fade-in slide-in-from-top-4 duration-700">
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest italic">Gerenciar Editores do Almanaque</h4>
+                <p className="text-zinc-500 text-[9px] font-bold uppercase mt-1">Permita que jogadores editem o Almanaque usando seus nomes do Discord.</p>
+              </div>
+              <button
+                onClick={updateAlmanaqueEditors}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full font-black uppercase text-[9px] transition-all shadow-lg active:scale-95"
+              >
+                Salvar Editores
+              </button>
+            </div>
+            <textarea
+              value={almanaqueEditors}
+              onChange={(e) => setAlmanaqueEditors(e.target.value)}
+              placeholder="username1, username2..."
+              className="w-full bg-black/40 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-blue-500/50 h-20 resize-none font-mono"
+            />
+            <p className="text-[8px] text-zinc-600 italic">Separe os nomes por vírgula. O mestre sempre tem permissão.</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex gap-8 overflow-hidden">
         <div className="w-1/3 bg-zinc-900/30 rounded-[2rem] border border-zinc-900/50 overflow-y-auto custom-scrollbar p-4 space-y-3 animate-in fade-in slide-in-from-left-4 duration-700">

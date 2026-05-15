@@ -10,7 +10,6 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
   const [hpStage, setHpStage] = useState({});
   const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
   const [allowedUsers, setAllowedUsers] = useState("");
-  const [almanaqueEditors, setAlmanaqueEditors] = useState("");
   const [blockedTabs, setBlockedTabs] = useState([]);
 
   const LOCKABLE_TABS = [
@@ -26,7 +25,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
 
   // Fetch maintenance and blocked tabs status
   useEffect(() => {
-    supabase.from('global').select('is_maintenance_active, allowed_discord_usernames, blocked_tabs, almanaque_editors').eq('id', 1).single()
+    supabase.from('global').select('is_maintenance_active, allowed_discord_usernames, blocked_tabs').eq('id', 1).single()
       .then(({ data, error }) => {
         if (error) {
           console.error("MasterPanel: Error fetching global settings:", error);
@@ -48,7 +47,6 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
           };
 
           setAllowedUsers(parseList(data.allowed_discord_usernames));
-          setAlmanaqueEditors(parseList(data.almanaque_editors));
           setBlockedTabs(Array.isArray(data.blocked_tabs) ? data.blocked_tabs : []);
         }
       });
@@ -139,34 +137,6 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
     } else {
       console.error("Update allowed users error:", error);
       showToast(`Erro ao atualizar lista: ${error.message}`);
-    }
-  };
-
-  const updateAlmanaqueEditors = async () => {
-    playSound('random_button');
-    const editorsArray = almanaqueEditors.split(',').map(s => s.trim()).filter(s => s !== "");
-    
-    const { data: existing } = await supabase.from('global').select('id').eq('id', 1).maybeSingle();
-    
-    let updateOp;
-    if (!existing) {
-      updateOp = supabase.from('global').insert({
-        id: 1,
-        almanaque_editors: editorsArray
-      });
-    } else {
-      updateOp = supabase.from('global')
-        .update({ almanaque_editors: editorsArray })
-        .eq('id', 1);
-    }
-
-    const { error } = await updateOp;
-
-    if (!error) {
-      showToast("Editores do Almanaque atualizados!");
-    } else {
-      console.error("Update almanaque editors error:", error);
-      showToast(`Erro ao atualizar editores: ${error.message}`);
     }
   };
 
@@ -418,28 +388,6 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
             >
               SALVAR LISTA
             </button>
-
-            {/* ALMANAQUE EDITORS */}
-            <div className="mt-8 pt-8 border-t border-white/5 space-y-4">
-              <h4 className="text-[9px] font-black text-blue-600 uppercase tracking-widest ml-2 italic">Editores do Almanaque</h4>
-              <p className="text-zinc-500 text-[9px] mb-4 font-bold uppercase px-2">Permita que jogadores editem o Almanaque.</p>
-              <div className="space-y-2">
-                <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest ml-2">IDs dos Jogadores (Auth ID)</label>
-                <textarea
-                  value={almanaqueEditors}
-                  onChange={(e) => setAlmanaqueEditors(e.target.value)}
-                  placeholder="ID1, ID2..."
-                  className="w-full bg-black/40 border border-zinc-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-blue-500/50 h-24 resize-none font-mono"
-                />
-                <p className="text-[8px] text-zinc-600 italic px-2">Separe os IDs por vírgula. Use o ID de autenticação do Supabase.</p>
-              </div>
-              <button
-                onClick={updateAlmanaqueEditors}
-                className="w-full py-3 rounded-xl font-black uppercase tracking-widest text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-all"
-              >
-                SALVAR EDITORES
-              </button>
-            </div>
 
             {/* TAB LOCKER */}
             <div className="mt-8 pt-8 border-t border-white/5 space-y-4">

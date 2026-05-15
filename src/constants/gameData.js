@@ -49,9 +49,9 @@ export const LINHAGEM_DESCRIPTIONS = {
   // Épicos
   "Soyama": "+15% **Força** e **Agilidade**.\nPermite re-rolar dados de desvio (1x) se lutando desarmado",
   "Rengoku": "+15% **Dano Total** contra alvos com <🔥 Queimando>.\n+15% **Precisão** se a Respiração for {Incandescente}.\n+8% em **todos os outros Status**",
-  "Kanroji": "+25% **Força**, +10% **Carisma**, -15% **Inteligência**",
-  "Uzui (Tengen)": "+10% **Agilidade** se a Respiração for {Mecânica}\nOmitir sons próprios e tornar-se <✴️ Indetectável> nas sombras\n+20% **Força**\nImunidade a **Venenos**",
-  "Tokito": "Torna-se <✴️ Indetectável> usando Respirações: {Brisa}, {Vento} ou {Névoa}\n+20% **Ganho de Pontos Status**",
+  "Kanroji": "+25% **Força**, +15% **Resistência**, +10% **Carisma**, -15% **Inteligência**",
+  "Uzui (Tengen)": "+10% **Agilidade** e +20% **Força** se a Respiração for {Mecânica}\nPermitir omitir sons próprios.\nImunidade a **Venenos**",
+  "Tokito": "Torna-se <✴️ Indetectável> usando Respiração da Brisa, Vento ou Névoa\n+15% **Ganho de Pontos Status**",
   "Kamado": "+15% **Força** se a Respiração for **💥 Hinokami Kagura**.\nPermite aprender a **💥 Hinokami Kagura**",
   "Lireou (Douma)": "+50% **Dano Total** contra alvos com <🧊 Congelado>.\n+25% **Dano Total** contra alvos com <❄️ Resfriamento>.\n+15% **Carisma**",
 
@@ -143,6 +143,7 @@ export const LINHAGENS_DATA = {
   "Kanroji": {
     stat_boosts: [
       { stat: "strength", amount: 0.25 },
+      { stat: "resistance", amount: 0.15 },
       { stat: "charisma", amount: 0.10 },
       { stat: "intelligence", amount: -0.15 }
     ]
@@ -150,7 +151,7 @@ export const LINHAGENS_DATA = {
   "Uzui (Tengen)": {
     stat_boosts: [
       { stat: "agility", amount: 0.10, condition: { type: "breathing_keyword", value: "Mecânica" } },
-      { stat: "strength", amount: 0.20 }
+      { stat: "strength", amount: 0.20, condition: { type: "breathing_keyword", value: "Mecânica" } }
     ]
   },
   "Kamado": {
