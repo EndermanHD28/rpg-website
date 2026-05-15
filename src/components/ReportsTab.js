@@ -112,7 +112,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
 
   const updateField = async (field, value) => {
     if (!editingReport) return;
-    if (field === 'description' && value.length > 1500) return;
+    if (field === 'description' && value.length > 2500) return;
     const updated = { ...editingReport, [field]: value };
     setEditingReport(updated);
     setActiveReport(updated);
@@ -346,7 +346,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                   <div className="relative min-h-[600px] bg-white/20 p-4 rounded border border-zinc-200">
                     {isEditingThis ? (
                       <textarea 
-                        maxLength={1500}
+                        maxLength={2500}
                         value={editingReport.description} 
                         onChange={(e) => updateField('description', e.target.value)} 
                         className={`w-full bg-transparent outline-none min-h-[600px] resize-none ${playerTextClass}`} 
@@ -368,7 +368,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                   </div>
                   {activeReport.status !== 'accepted' && (
                     <div className="text-[10px] text-right text-zinc-500 font-mono mt-1 font-bold">
-                      {activeReport.description?.length || 0} / 1500 CARACTERES
+                      {activeReport.description?.length || 0} / 2500 CARACTERES
                     </div>
                   )}
                 </div>

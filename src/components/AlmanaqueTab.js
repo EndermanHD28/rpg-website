@@ -10,13 +10,16 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingData, setEditingData] = useState(null);
+  const [openInMenu, setOpenInMenu] = useState(null); // { bIdx, nIdx } or { bIdx }
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [dragOverTab, setDragOverTab] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
 
   // Fetch data
   const fetchEntries = async () => {
     setLoading(true);
     let query = supabase.from('almanaque_entries').select('*').order('order_index', { ascending: true });
     
-    // Players only see public entries (enforced by RLS anyway, but good to be explicit)
     if (!isMaster) {
       query = query.eq('is_public', true);
     }
@@ -99,22 +102,301 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     }
   };
 
-  // Helper to add blocks
-  const addBlock = (type, parentContent = null, setParentContent = null) => {
+  const addBlock = (type, parentArray = null) => {
     const newBlock = type === 'text' ? { type: 'text', value: '', size: 'normal' } :
-                     type === 'image' ? { type: 'image', url: '', caption: '' } :
-                     type === 'tabs' ? { type: 'tabs', items: [{ title: 'Tab 1', content: [] }] } : null;
+                     type === 'image' ? { type: 'image', url: '', caption: '', size: 'medium' } :
+                     type === 'tabs' ? { type: 'tabs', items: [{ title: 'Nova Aba', content: [] }] } : null;
     
-    if (parentContent) {
-      setParentContent([...parentContent, newBlock]);
+    if (parentArray) {
+      parentArray.push(newBlock);
+      setEditingData({ ...editingData });
     } else {
       setEditingData({ ...editingData, content: [...editingData.content, newBlock] });
     }
   };
 
+  const moveBlock = (arr, from, to) => {
+    if (to < 0 || to >= arr.length) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    setEditingData({ ...editingData });
+  };
+
+  const moveBlockToTab = (fromArr, fromIdx, targetTabItem) => {
+    if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
+    const [moved] = fromArr.splice(fromIdx, 1);
+    targetTabItem.content.push(moved);
+    setOpenInMenu(null);
+    setEditingData({ ...editingData });
+  };
+
+  const moveBlockOutOfTab = (fromArr, fromIdx, toArr) => {
+    const [moved] = fromArr.splice(fromIdx, 1);
+    toArr.push(moved);
+    setEditingData({ ...editingData });
+  };
+
+  const moveTabToTab = (fromArr, fromIdx, targetTabItem) => {
+    if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
+    const [moved] = fromArr.splice(fromIdx, 1);
+    targetTabItem.content.push({ type: 'tabs', items: [moved] });
+    setOpenInMenu(null);
+    setEditingData({ ...editingData });
+  };
+
+  const onDragStart = (e, block, idx, parentArray) => {
+    setDraggedItem({ block, idx, parentArray });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const onDragOver = (e, targetId = null) => {
+    e.preventDefault();
+    if (targetId) setDragOverTab(targetId);
+  };
+
+  const onDrop = (e, targetArray, targetTabItem = null, targetIdx = null) => {
+    e.preventDefault();
+    setDragOverTab(null);
+    setDragOverIdx(null);
+    if (!draggedItem) return;
+
+    const { idx: fromIdx, parentArray: fromArray } = draggedItem;
+
+    // Case 1: Dropping into a tab
+    if (targetTabItem) {
+      if (fromArray === targetTabItem.content) {
+        // Reordering inside the same tab
+        if (targetIdx !== null) moveBlock(fromArray, fromIdx, targetIdx);
+        return;
+      }
+      moveBlockToTab(fromArray, fromIdx, targetTabItem);
+    } 
+    // Case 2: Dropping onto the root container (not on a specific block)
+    else if (targetIdx === null) {
+      if (targetArray === editingData.content && fromArray !== editingData.content) {
+        moveBlockOutOfTab(fromArray, fromIdx, editingData.content);
+      }
+    }
+    // Case 3: Dropping onto a specific block (reordering)
+    else if (targetArray === fromArray) {
+      moveBlock(fromArray, fromIdx, targetIdx);
+    }
+    // Case 4: Dropping onto a block in a different array (move and insert)
+    else {
+      const [moved] = fromArray.splice(fromIdx, 1);
+      targetArray.splice(targetIdx, 0, moved);
+      setEditingData({ ...editingData });
+    }
+
+    setDraggedItem(null);
+  };
+
+  const renderAddBlockButtons = (targetArray, isNested = false) => (
+    <div className={`flex gap-4 p-6 bg-zinc-900/50 rounded-[2.5rem] border border-dashed border-zinc-800 justify-center ${isNested ? 'p-4 rounded-2xl gap-2' : ''}`}>
+       <button onClick={() => addBlock('text', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+          <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>📝</div>
+          <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Texto</span>
+       </button>
+       <button onClick={() => addBlock('image', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+          <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>🖼️</div>
+          <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Imagem</span>
+       </button>
+       <button onClick={() => addBlock('tabs', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+          <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>📑</div>
+          <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Abas</span>
+       </button>
+    </div>
+  );
+
+  const renderBlockEditor = (block, idx, parentArray, isNested = false) => {
+    const blockId = `${isNested ? 'nested' : 'root'}-${idx}`;
+    return (
+      <div 
+        key={idx} 
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (draggedItem?.block !== block) setDragOverIdx(blockId);
+        }}
+        onDragLeave={() => setDragOverIdx(null)}
+        onDrop={(e) => {
+          e.stopPropagation();
+          onDrop(e, parentArray, null, idx);
+        }}
+        className={`relative group/block p-6 rounded-3xl border transition-all ${
+          draggedItem?.block === block ? 'opacity-40 border-dashed border-zinc-500 scale-[0.98] bg-white/5' : 
+          dragOverIdx === blockId ? 'border-red-600 bg-red-600/5 scale-[1.01]' : 'border-white/5 bg-white/5'
+        }`}
+      >
+        <div className="absolute -left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-all flex flex-col gap-1 z-20">
+          <div 
+            draggable 
+            onDragStart={(e) => onDragStart(e, block, idx, parentArray)}
+            onDragEnd={() => setDraggedItem(null)}
+            className="bg-zinc-700 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[10px] flex items-center justify-center shadow-lg border border-white/10"
+            title="Segure para arrastar e soltar em uma aba ou fora dela"
+          >
+            ⣿
+          </div>
+          <button onClick={() => moveBlock(parentArray, idx, idx - 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▲</button>
+          <button onClick={() => moveBlock(parentArray, idx, idx + 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▼</button>
+        </div>
+
+        <button 
+          onClick={() => {
+            parentArray.splice(idx, 1);
+            setEditingData({...editingData});
+          }}
+          className="absolute -right-3 -top-3 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs opacity-0 group-hover/block:opacity-100 transition-all z-10"
+        >
+          ×
+        </button>
+
+        {block.type === 'text' && (
+          <div className="space-y-4">
+            <div className="flex gap-2 mb-2">
+              {['normal', 'Title', 'Subtitle'].map(s => (
+                <button 
+                  key={s}
+                  onClick={() => {
+                    block.size = s;
+                    setEditingData({...editingData});
+                  }}
+                  className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={block.value}
+              onChange={(e) => {
+                block.value = e.target.value;
+                setEditingData({...editingData});
+              }}
+              className={`w-full bg-transparent border-none outline-none text-zinc-200 placeholder:text-zinc-700 resize-none overflow-hidden ${
+                block.size === 'Title' ? 'text-3xl font-black italic uppercase tracking-tighter text-white' : 
+                block.size === 'Subtitle' ? 'text-xl font-bold italic text-zinc-300' : 'text-sm leading-relaxed text-zinc-400'
+              }`}
+              placeholder="Digite o conteúdo..."
+              rows={block.value.split('\n').length || 1}
+            />
+          </div>
+        )}
+
+        {block.type === 'image' && (
+          <div className="space-y-4">
+            <div className="flex gap-2 mb-2">
+              {['small', 'medium', 'large', 'full'].map(s => (
+                <button 
+                  key={s}
+                  onClick={() => {
+                    block.size = s;
+                    setEditingData({...editingData});
+                  }}
+                  className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <input
+              value={block.url}
+              onChange={(e) => {
+                block.url = e.target.value;
+                setEditingData({...editingData});
+              }}
+              className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-400 outline-none"
+              placeholder="Link da Imagem (URL)..."
+            />
+            {block.url && (
+              <div className={`relative aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 mx-auto ${
+                block.size === 'small' ? 'max-w-xs' : 
+                block.size === 'medium' ? 'max-w-md' : 
+                block.size === 'large' ? 'max-w-2xl' : 'w-full'
+              }`}>
+                <img src={block.url} className="w-full h-full object-contain" alt="Preview" />
+              </div>
+            )}
+            <input
+              value={block.caption}
+              onChange={(e) => {
+                block.caption = e.target.value;
+                setEditingData({...editingData});
+              }}
+              className="w-full bg-transparent border-none text-[10px] text-zinc-500 italic outline-none text-center"
+              placeholder="Legenda da imagem (opcional)"
+            />
+          </div>
+        )}
+
+        {block.type === 'tabs' && (
+          <div className="space-y-6">
+            <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-4">Abas Expansíveis</p>
+            {block.items.map((item, tIdx) => (
+              <div 
+                key={tIdx} 
+                onDragOver={(e) => onDragOver(e, `${idx}-${tIdx}`)}
+                onDragLeave={() => setDragOverTab(null)}
+                onDrop={(e) => onDrop(e, item.content, item)}
+                className={`p-6 rounded-2xl border transition-all space-y-4 ${dragOverTab === `${idx}-${tIdx}` ? 'bg-red-600/20 border-red-600 shadow-lg scale-[1.01]' : 'bg-black/40 border-white/5'}`}
+              >
+                <div className="flex justify-between items-center">
+                  <input 
+                    value={item.title}
+                    onChange={(e) => {
+                      item.title = e.target.value;
+                      setEditingData({...editingData});
+                    }}
+                    className="bg-transparent border-none text-sm font-black uppercase text-zinc-300 outline-none w-1/2"
+                    placeholder="Título da Aba"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => moveBlock(block.items, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
+                    <button onClick={() => moveBlock(block.items, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
+                    <button 
+                      onClick={() => {
+                        block.items.splice(tIdx, 1);
+                        setEditingData({...editingData});
+                      }}
+                      className="text-red-900 hover:text-red-600 text-xs font-black uppercase tracking-widest ml-4"
+                    >
+                      Remover Aba
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-4 pt-4 border-t border-white/5">
+                  {!Array.isArray(item.content) && (
+                    <div className="text-[10px] text-zinc-600 italic p-2 border border-zinc-800 rounded bg-black/20 mb-4">
+                      Conteúdo antigo detectado. Adicione novos blocos para converter.
+                    </div>
+                  )}
+                  {Array.isArray(item.content) && item.content.map((nestedBlock, nIdx) => (
+                    renderBlockEditor(nestedBlock, nIdx, item.content, true)
+                  ))}
+                  
+                  {renderAddBlockButtons(item.content, true)}
+                </div>
+              </div>
+            ))}
+            <button 
+              onClick={() => {
+                block.items.push({ title: 'Nova Aba', content: [] });
+                setEditingData({...editingData});
+              }}
+              className="w-full py-3 border-2 border-dashed border-zinc-800 rounded-2xl text-[10px] font-black text-zinc-600 hover:border-zinc-700 hover:text-zinc-400 transition-all uppercase"
+            >
+              + Adicionar Aba
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="h-full flex flex-col p-8 bg-zinc-950 overflow-hidden relative">
-      {/* HEADER */}
+    <div className="h-full flex flex-col p-8 bg-zinc-950 overflow-hidden relative" onClick={() => setOpenInMenu(null)}>
       <div className="flex justify-between items-center mb-8 bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 backdrop-blur-sm z-10 animate-in fade-in slide-in-from-top-4 duration-700">
         <div>
           <h2 className="text-4xl font-black italic text-red-600 uppercase tracking-tighter">Almanaque</h2>
@@ -145,7 +427,6 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       </div>
 
       <div className="flex-1 flex gap-8 overflow-hidden">
-        {/* LIST */}
         <div className="w-1/3 bg-zinc-900/30 rounded-[2rem] border border-zinc-900/50 overflow-y-auto custom-scrollbar p-4 space-y-3 animate-in fade-in slide-in-from-left-4 duration-700">
           {loading ? (
             <div className="flex items-center justify-center h-full text-zinc-600 font-black italic animate-pulse uppercase text-xs tracking-widest">Sincronizando...</div>
@@ -172,16 +453,12 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                 )}
                 <h3 className={`font-black uppercase text-sm tracking-tight transition-colors ${selectedEntry?.id === entry.id ? 'text-red-500' : 'text-zinc-200 group-hover:text-white'}`}>{entry.title}</h3>
                 <p className="text-[10px] text-zinc-500 font-medium line-clamp-2 mt-1 leading-relaxed">{entry.description || "Sem descrição."}</p>
-                
-                {selectedEntry?.id === entry.id && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600" />
-                )}
+                {selectedEntry?.id === entry.id && ( <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600" /> )}
               </div>
             ))
           )}
         </div>
 
-        {/* DETAIL / EDIT AREA */}
         <div className="flex-1 bg-zinc-900/30 rounded-[2rem] border border-zinc-900/50 overflow-hidden flex flex-col relative animate-in fade-in slide-in-from-right-4 duration-700">
           {!selectedEntry && !editingData ? (
             <div className="flex-1 flex items-center justify-center text-zinc-800 flex-col gap-4">
@@ -190,11 +467,10 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             </div>
           ) : (
             <div className="flex-1 flex flex-col h-full overflow-hidden">
-              {/* DETAIL HEADER */}
               <div className="p-8 border-b border-white/5 flex justify-between items-start bg-zinc-900/20">
                 <div className="flex-1">
                    {isEditing ? (
-                     <div className="space-y-4">
+                     <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
                         <input
                           value={editingData.title}
                           onChange={(e) => setEditingData({...editingData, title: e.target.value})}
@@ -209,30 +485,19 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                         />
                         <div className="flex items-center gap-4">
                            <label className="flex items-center gap-2 cursor-pointer group">
-                              <input 
-                                type="checkbox" 
-                                checked={editingData.is_public}
-                                onChange={(e) => setEditingData({...editingData, is_public: e.target.checked})}
-                                className="hidden"
-                              />
+                              <input type="checkbox" checked={editingData.is_public} onChange={(e) => setEditingData({...editingData, is_public: e.target.checked})} className="hidden" />
                               <div className={`w-10 h-5 rounded-full p-1 transition-all ${editingData.is_public ? 'bg-green-600' : 'bg-zinc-800'}`}>
                                  <div className={`w-3 h-3 bg-white rounded-full transition-all ${editingData.is_public ? 'translate-x-5' : 'translate-x-0'}`} />
                               </div>
-                              <span className="text-[10px] font-black uppercase text-zinc-500 group-hover:text-zinc-300 transition-colors">
-                                {editingData.is_public ? 'Público' : 'Privado'}
-                              </span>
+                              <span className="text-[10px] font-black uppercase text-zinc-500 group-hover:text-zinc-300 transition-colors">{editingData.is_public ? 'Público' : 'Privado'}</span>
                            </label>
                         </div>
                      </div>
                    ) : (
                      <>
                         <div className="flex items-center gap-3 mb-2">
-                           <h3 className="text-5xl font-black italic text-red-600 uppercase tracking-tighter">
-                             {selectedEntry.title}
-                           </h3>
-                           {!selectedEntry.is_public && (
-                             <span className="px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[8px] font-black uppercase rounded tracking-widest">Privado</span>
-                           )}
+                           <h3 className="text-5xl font-black italic text-red-600 uppercase tracking-tighter">{selectedEntry.title}</h3>
+                           {!selectedEntry.is_public && ( <span className="px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[8px] font-black uppercase rounded tracking-widest">Privado</span> )}
                         </div>
                         <p className="text-zinc-500 font-medium italic text-sm max-w-2xl">{selectedEntry.description}</p>
                      </>
@@ -243,305 +508,36 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                   <div className="flex gap-2 shrink-0 ml-4">
                     {isEditing ? (
                       <>
-                        <button 
-                          onClick={handleSave}
-                          className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-full font-black uppercase text-[10px] transition-all shadow-lg active:scale-95"
-                        >
-                          Salvar
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setIsEditing(false);
-                            if (!selectedEntry) setEditingData(null);
-                          }}
-                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-6 py-2 rounded-full font-black uppercase text-[10px] transition-all"
-                        >
-                          Cancelar
-                        </button>
+                        <button onClick={handleSave} className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-full font-black uppercase text-[10px] transition-all shadow-lg active:scale-95">Salvar</button>
+                        <button onClick={() => { setIsEditing(false); if (!selectedEntry) setEditingData(null); }} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-6 py-2 rounded-full font-black uppercase text-[10px] transition-all">Cancelar</button>
                       </>
                     ) : (
                       <>
-                        <button 
-                          onClick={() => {
-                            setEditingData(selectedEntry);
-                            setIsEditing(true);
-                          }}
-                          className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-full font-black uppercase text-[10px] transition-all flex items-center gap-2 border border-white/5"
-                        >
-                          <span>✎</span> Editar
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(selectedEntry.id)}
-                          className="bg-zinc-950 hover:bg-red-950 text-red-900 hover:text-red-500 px-4 py-2 rounded-full font-black uppercase text-[10px] transition-all border border-red-900/20"
-                        >
-                          Excluir
-                        </button>
+                        <button onClick={() => { setEditingData(selectedEntry); setIsEditing(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-full font-black uppercase text-[10px] transition-all flex items-center gap-2 border border-white/5"><span>✎</span> Editar</button>
+                        <button onClick={() => handleDelete(selectedEntry.id)} className="bg-zinc-950 hover:bg-red-950 text-red-900 hover:text-red-500 px-4 py-2 rounded-full font-black uppercase text-[10px] transition-all border border-red-900/20">Excluir</button>
                       </>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* CONTENT AREA */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-zinc-950/20">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-zinc-950/20" onClick={(e) => { e.stopPropagation(); setOpenInMenu(null); }}>
                  <div className="max-w-4xl mx-auto space-y-8 pb-20">
                     {isEditing ? (
-                      <div className="space-y-6">
+                      <div 
+                        className={`space-y-6 min-h-[400px] transition-all rounded-3xl p-4 ${draggedItem && draggedItem.parentArray !== editingData.content ? 'bg-white/5 border-2 border-dashed border-zinc-800' : ''}`}
+                        onDragOver={(e) => onDragOver(e)}
+                        onDrop={(e) => onDrop(e, editingData.content)}
+                      >
                         {editingData.content?.map((block, bIdx) => (
-                          <div key={bIdx} className="relative group/block bg-white/5 p-6 rounded-3xl border border-white/5">
-                             <div className="absolute -left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-all flex flex-col gap-1">
-                                <button onClick={() => {
-                                   const newContent = [...editingData.content];
-                                   if (bIdx > 0) {
-                                      const temp = newContent[bIdx];
-                                      newContent[bIdx] = newContent[bIdx-1];
-                                      newContent[bIdx-1] = temp;
-                                      setEditingData({...editingData, content: newContent});
-                                   }
-                                }} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▲</button>
-                                <button onClick={() => {
-                                   const newContent = [...editingData.content];
-                                   if (bIdx < newContent.length - 1) {
-                                      const temp = newContent[bIdx];
-                                      newContent[bIdx] = newContent[bIdx+1];
-                                      newContent[bIdx+1] = temp;
-                                      setEditingData({...editingData, content: newContent});
-                                   }
-                                }} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▼</button>
-                             </div>
-
-                             <button 
-                               onClick={() => {
-                                 const newContent = editingData.content.filter((_, i) => i !== bIdx);
-                                 setEditingData({...editingData, content: newContent});
-                               }}
-                               className="absolute -right-3 -top-3 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs opacity-0 group-hover/block:opacity-100 transition-all"
-                             >
-                               ×
-                             </button>
-
-                             {block.type === 'text' && (
-                               <div className="space-y-4">
-                                  <div className="flex gap-2 mb-2">
-                                     {['normal', 'Title', 'Subtitle'].map(s => (
-                                       <button 
-                                          key={s}
-                                          onClick={() => {
-                                            const newContent = [...editingData.content];
-                                            newContent[bIdx].size = s;
-                                            setEditingData({...editingData, content: newContent});
-                                          }}
-                                          className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
-                                       >
-                                         {s}
-                                       </button>
-                                     ))}
-                                  </div>
-                                  <textarea
-                                    value={block.value}
-                                    onChange={(e) => {
-                                      const newContent = [...editingData.content];
-                                      newContent[bIdx].value = e.target.value;
-                                      setEditingData({...editingData, content: newContent});
-                                    }}
-                                    className={`w-full bg-transparent border-none outline-none text-zinc-200 placeholder:text-zinc-700 resize-none overflow-hidden ${
-                                      block.size === 'Title' ? 'text-3xl font-black italic uppercase tracking-tighter text-white' : 
-                                      block.size === 'Subtitle' ? 'text-xl font-bold italic text-zinc-300' : 'text-sm leading-relaxed text-zinc-400'
-                                    }`}
-                                    placeholder="Digite o conteúdo..."
-                                    rows={block.value.split('\n').length || 1}
-                                  />
-                               </div>
-                             )}
-
-                             {block.type === 'image' && (
-                               <div className="space-y-4">
-                                  <div className="flex gap-2 mb-2">
-                                     {['small', 'medium', 'large', 'full'].map(s => (
-                                       <button 
-                                          key={s}
-                                          onClick={() => {
-                                            const newContent = [...editingData.content];
-                                            newContent[bIdx].size = s;
-                                            setEditingData({...editingData, content: newContent});
-                                          }}
-                                          className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
-                                       >
-                                         {s}
-                                       </button>
-                                     ))}
-                                  </div>
-                                  <input
-                                    value={block.url}
-                                    onChange={(e) => {
-                                      const newContent = [...editingData.content];
-                                      newContent[bIdx].url = e.target.value;
-                                      setEditingData({...editingData, content: newContent});
-                                    }}
-                                    className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-400 outline-none"
-                                    placeholder="Link da Imagem (URL)..."
-                                  />
-                                  {block.url && (
-                                    <div className={`relative aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 mx-auto ${
-                                      block.size === 'small' ? 'max-w-xs' : 
-                                      block.size === 'medium' ? 'max-w-md' : 
-                                      block.size === 'large' ? 'max-w-2xl' : 'w-full'
-                                    }`}>
-                                      <img src={block.url} className="w-full h-full object-contain" alt="Preview" />
-                                    </div>
-                                  )}
-                                  <input
-                                    value={block.caption}
-                                    onChange={(e) => {
-                                      const newContent = [...editingData.content];
-                                      newContent[bIdx].caption = e.target.value;
-                                      setEditingData({...editingData, content: newContent});
-                                    }}
-                                    className="w-full bg-transparent border-none text-[10px] text-zinc-500 italic outline-none text-center"
-                                    placeholder="Legenda da imagem (opcional)"
-                                  />
-                               </div>
-                             )}
-
-                             {block.type === 'tabs' && (
-                               <div className="space-y-6">
-                                  <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-4">Abas Expansíveis</p>
-                                  {block.items.map((item, tIdx) => (
-                                    <div key={tIdx} className="bg-black/40 p-6 rounded-2xl border border-white/5 space-y-4">
-                                       <div className="flex justify-between items-center">
-                                          <input 
-                                            value={item.title}
-                                            onChange={(e) => {
-                                              const newContent = [...editingData.content];
-                                              newContent[bIdx].items[tIdx].title = e.target.value;
-                                              setEditingData({...editingData, content: newContent});
-                                            }}
-                                            className="bg-transparent border-none text-sm font-black uppercase text-zinc-300 outline-none w-1/2"
-                                          />
-                                          <button 
-                                            onClick={() => {
-                                              const newContent = [...editingData.content];
-                                              newContent[bIdx].items = newContent[bIdx].items.filter((_, i) => i !== tIdx);
-                                              if (newContent[bIdx].items.length === 0) {
-                                                editingData.content.splice(bIdx, 1);
-                                              }
-                                              setEditingData({...editingData, content: newContent});
-                                            }}
-                                            className="text-red-900 hover:text-red-600 text-xs font-black uppercase tracking-widest"
-                                          >
-                                            Remover Aba
-                                          </button>
-                                       </div>
-                                       
-                                       {/* NESTED BLOCKS IN TABS */}
-                                       <div className="space-y-4 pt-4 border-t border-white/5">
-                                          {Array.isArray(item.content) ? (
-                                            item.content.map((nestedBlock, nIdx) => (
-                                              <div key={nIdx} className="relative group/nested bg-white/5 p-4 rounded-xl border border-white/5">
-                                                 <button 
-                                                   onClick={() => {
-                                                     const newContent = [...editingData.content];
-                                                     newContent[bIdx].items[tIdx].content = item.content.filter((_, i) => i !== nIdx);
-                                                     setEditingData({...editingData, content: newContent});
-                                                   }}
-                                                   className="absolute -right-2 -top-2 bg-red-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] opacity-0 group-hover/nested:opacity-100 transition-all"
-                                                 >
-                                                   ×
-                                                 </button>
-
-                                                 {nestedBlock.type === 'text' && (
-                                                   <textarea
-                                                     value={nestedBlock.value}
-                                                     onChange={(e) => {
-                                                       const newContent = [...editingData.content];
-                                                       newContent[bIdx].items[tIdx].content[nIdx].value = e.target.value;
-                                                       setEditingData({...editingData, content: newContent});
-                                                     }}
-                                                     className="w-full bg-transparent border-none outline-none text-zinc-300 text-xs leading-relaxed resize-none overflow-hidden"
-                                                     placeholder="Texto da aba..."
-                                                     rows={nestedBlock.value.split('\n').length || 1}
-                                                   />
-                                                 )}
-
-                                                 {nestedBlock.type === 'image' && (
-                                                   <div className="space-y-2">
-                                                      <input
-                                                        value={nestedBlock.url}
-                                                        onChange={(e) => {
-                                                          const newContent = [...editingData.content];
-                                                          newContent[bIdx].items[tIdx].content[nIdx].url = e.target.value;
-                                                          setEditingData({...editingData, content: newContent});
-                                                        }}
-                                                        className="w-full bg-zinc-950/50 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-500 outline-none"
-                                                        placeholder="Link da Imagem..."
-                                                      />
-                                                      {nestedBlock.url && <img src={nestedBlock.url} className="w-full h-auto rounded-lg max-h-40 object-contain" alt="nested preview" />}
-                                                   </div>
-                                                 )}
-                                              </div>
-                                            ))
-                                          ) : (
-                                            <div className="text-[10px] text-zinc-600 italic p-2 border border-zinc-800 rounded bg-black/20">
-                                              Conteúdo de texto detectado. Clique em +Texto para converter ou começar a adicionar blocos.
-                                            </div>
-                                          )}
-                                          
-                                          <div className="flex gap-2">
-                                             <button 
-                                               onClick={() => {
-                                                 const newContent = [...editingData.content];
-                                                 if (!newContent[bIdx].items[tIdx].content) newContent[bIdx].items[tIdx].content = [];
-                                                 newContent[bIdx].items[tIdx].content.push({ type: 'text', value: '' });
-                                                 setEditingData({...editingData, content: newContent});
-                                               }}
-                                               className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-3 py-1 rounded text-[9px] font-black uppercase"
-                                             >
-                                               + Texto
-                                             </button>
-                                             <button 
-                                               onClick={() => {
-                                                 const newContent = [...editingData.content];
-                                                 if (!newContent[bIdx].items[tIdx].content) newContent[bIdx].items[tIdx].content = [];
-                                                 newContent[bIdx].items[tIdx].content.push({ type: 'image', url: '' });
-                                                 setEditingData({...editingData, content: newContent});
-                                               }}
-                                               className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-3 py-1 rounded text-[9px] font-black uppercase"
-                                             >
-                                               + Imagem
-                                             </button>
-                                          </div>
-                                       </div>
-                                    </div>
-                                  ))}
-                                  <button 
-                                    onClick={() => {
-                                      const newContent = [...editingData.content];
-                                      newContent[bIdx].items.push({ title: 'Nova Aba', content: '' });
-                                      setEditingData({...editingData, content: newContent});
-                                    }}
-                                    className="w-full py-3 border-2 border-dashed border-zinc-800 rounded-2xl text-[10px] font-black text-zinc-600 hover:border-zinc-700 hover:text-zinc-400 transition-all uppercase"
-                                  >
-                                    + Adicionar Aba
-                                  </button>
-                               </div>
-                             )}
-                          </div>
+                          renderBlockEditor(block, bIdx, editingData.content)
                         ))}
-
-                        <div className="flex gap-4 p-8 bg-zinc-900/50 rounded-[2.5rem] border border-dashed border-zinc-800 justify-center">
-                           <button onClick={() => addBlock('text')} className="flex flex-col items-center gap-2 group">
-                              <div className="w-12 h-12 bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-red-600 transition-all group-hover:scale-110">📝</div>
-                              <span className="text-[8px] font-black uppercase text-zinc-600 group-hover:text-zinc-300 tracking-widest">Texto</span>
-                           </button>
-                           <button onClick={() => addBlock('image')} className="flex flex-col items-center gap-2 group">
-                              <div className="w-12 h-12 bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-red-600 transition-all group-hover:scale-110">🖼️</div>
-                              <span className="text-[8px] font-black uppercase text-zinc-600 group-hover:text-zinc-300 tracking-widest">Imagem</span>
-                           </button>
-                           <button onClick={() => addBlock('tabs')} className="flex flex-col items-center gap-2 group">
-                              <div className="w-12 h-12 bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover:border-red-600 transition-all group-hover:scale-110">📑</div>
-                              <span className="text-[8px] font-black uppercase text-zinc-600 group-hover:text-zinc-300 tracking-widest">Abas</span>
-                           </button>
-                        </div>
+                        {renderAddBlockButtons(editingData.content)}
+                        {draggedItem && draggedItem.parentArray !== editingData.content && (
+                          <div className="text-center py-4 text-[10px] font-black uppercase text-zinc-600 animate-pulse">
+                            Solte aqui para mover para fora da aba
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
@@ -555,7 +551,6 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                                   {formatText(block.value)}
                                 </div>
                               )}
-
                               {block.type === 'image' && (
                                 <div className="my-10 space-y-3">
                                   <div className={`rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl bg-zinc-900/50 mx-auto ${
@@ -565,15 +560,10 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                                   }`}>
                                      <img src={block.url} className="w-full h-auto max-h-[800px] object-contain" alt={block.caption} />
                                   </div>
-                                  {block.caption && (
-                                    <p className="text-center text-[10px] font-black uppercase italic tracking-[0.2em] text-zinc-600">{block.caption}</p>
-                                  )}
+                                  {block.caption && ( <p className="text-center text-[10px] font-black uppercase italic tracking-[0.2em] text-zinc-600">{block.caption}</p> )}
                                 </div>
                               )}
-
-                              {block.type === 'tabs' && (
-                                <ExpandableSections items={block.items} playSound={playSound} />
-                              )}
+                              {block.type === 'tabs' && ( <ExpandableSections items={block.items} playSound={playSound} /> )}
                            </div>
                         ))}
                       </div>
@@ -607,20 +597,33 @@ function ExpandableSections({ items, playSound }) {
               {openIdx === idx ? '−' : '+'}
             </span>
           </button>
-          <div 
-            className={`transition-all duration-500 ease-in-out overflow-hidden ${openIdx === idx ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
-          >
+          <div className={`transition-all duration-500 ease-in-out overflow-hidden ${openIdx === idx ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}`}>
             <div className="p-8 bg-zinc-900/20 text-zinc-400 text-sm leading-relaxed font-medium border-t border-white/5 space-y-6">
               {Array.isArray(item.content) ? (
                 item.content.map((nested, nIdx) => (
                   <div key={nIdx}>
                     {nested.type === 'text' && (
-                      <div className="whitespace-pre-wrap">{formatText(nested.value)}</div>
+                      <div className={`whitespace-pre-wrap ${
+                        nested.size === 'Title' ? 'text-2xl font-black italic uppercase tracking-tighter text-white border-l-3 border-red-600 pl-4 my-4' : 
+                        nested.size === 'Subtitle' ? 'text-lg font-bold italic text-red-500/80 mb-2' : ''
+                      }`}>
+                        {formatText(nested.value)}
+                      </div>
                     )}
                     {nested.type === 'image' && (
-                      <div className="rounded-2xl overflow-hidden border border-white/5 max-w-sm mx-auto my-4">
-                        <img src={nested.url} className="w-full h-auto" alt="tab content" />
+                      <div className="my-6 space-y-2">
+                        <div className={`rounded-2xl overflow-hidden border border-white/5 mx-auto ${
+                          nested.size === 'small' ? 'max-w-xs' : 
+                          nested.size === 'medium' ? 'max-w-md' : 
+                          nested.size === 'large' ? 'max-w-xl' : 'w-full'
+                        }`}>
+                          <img src={nested.url} className="w-full h-auto" alt={nested.caption} />
+                        </div>
+                        {nested.caption && ( <p className="text-center text-[9px] font-black uppercase italic text-zinc-600">{nested.caption}</p> )}
                       </div>
+                    )}
+                    {nested.type === 'tabs' && (
+                      <ExpandableSections items={nested.items} playSound={playSound} />
                     )}
                   </div>
                 ))
@@ -635,25 +638,12 @@ function ExpandableSections({ items, playSound }) {
   );
 }
 
-// Simple text formatter for bold, underline
 function formatText(text) {
   if (!text) return "";
-  
-  // Basic markdown-ish formatting
-  let parts = [text];
-  
-  // Bold: **text**
   const boldRegex = /\*\*(.*?)\*\*/g;
-  // Underline: __text__
   const underlineRegex = /__(.*?)__/g;
-
-  // This is a simplified version. For a real app, use a proper parser.
-  // We'll just use dangerousSetInnerHTML for simplicity since it's an internal RPG tool
-  // but let's try to be a bit safer.
-  
   const html = text
     .replace(boldRegex, '<strong class="text-white font-black">$1</strong>')
     .replace(underlineRegex, '<u class="decoration-red-600/50 underline-offset-4">$1</u>');
-
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
