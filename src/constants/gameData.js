@@ -58,7 +58,7 @@ export const LINHAGEM_DESCRIPTIONS = {
   // Lendários
   "Shinazugawa (Genya)": "+25% **Dano com Escopetas**.\nGarante a anomalia [🩸🍽️ Devorador de Onis]",
   "Himejima": "Ao adquirir: Role 1d10 (5-) para receber a anomalia [🕶️ Cego].\n+30% **Força** se a Respiração for {Impacto}.\n+30% **Resistência**",
-  "Kamado (Tanjiro)": "+25% **Precisão**, +15% **Agilidade** se a Respiração for {Fluxo}\n+25% **Força**, +15% **Resistência** se a Respiração for {Incandescente}\n+10% em **todos os Status** e +10% **Ganho de Pontos de Status**",
+  "Kamado (Tanjiro)": "+25% **Precisão**, +15% **Agilidade** se a Respiração for {Fluxo}\n+25% **Força**, +15% **Resistência** se a Respiração for {Incandescente}\n+5% em **todos os Status** e +10% **Ganho de Pontos de Status**",
   "Tsugikuni": "+20% **Resistência e Agilidade** se a Respiração for {Celeste}\n+25% **Força e Resistência** se a Respiração for {Incandescente}\n+15% em **Todos os Status**"
 };
 
@@ -176,7 +176,7 @@ export const LINHAGENS_DATA = {
       { stat: "agility", amount: 0.15, condition: { type: "breathing_keyword", value: "Fluxo" } },
       { stat: "strength", amount: 0.25, condition: { type: "breathing_keyword", value: "Incandescente" } },
       { stat: "resistance", amount: 0.15, condition: { type: "breathing_keyword", value: "Incandescente" } },
-      { stat: "all", amount: 0.10 }
+      { stat: "all", amount: 0.05 }
     ]
   },
   "Tsugikuni": {

@@ -16,6 +16,8 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverTab, setDragOverTab] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const broadcastRef = useRef(null);
+  const isRemoteUpdate = useRef(false);
 
   // Fetch data
   const fetchEntries = async () => {
@@ -50,8 +52,10 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       showToast("Erro ao carregar o Almanaque.");
     } else {
       if (!currentIsEditor) {
+        // If not an editor, filter to show only public entries
         setEntries(data?.filter(e => e.is_public) || []);
       } else {
+        // Master and Editors see everything
         setEntries(data || []);
       }
     }
@@ -101,11 +105,58 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       })
       .subscribe();
 
+    // Collaborative editing channel
+    const collabChannel = supabase.channel('almanaque_collab')
+      .on('broadcast', { event: 'editing' }, ({ payload }) => {
+        if (!payload) return;
+        const { id, data, senderId } = payload;
+        if (senderId === user?.id) return;
+
+        isRemoteUpdate.current = true;
+        
+        // If we are editing the same entry, update editingData
+        setEditingData(prev => {
+           if (prev && prev.id === id) {
+             return { ...data };
+           }
+           return prev;
+        });
+
+        // If we are viewing the same entry, update selectedEntry
+        setSelectedEntry(prev => {
+          if (prev && prev.id === id) {
+            return { ...data };
+          }
+          return prev;
+        });
+
+        setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+      })
+      .subscribe();
+      
+    broadcastRef.current = collabChannel;
+
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(globalChannel);
+      supabase.removeChannel(collabChannel);
     };
   }, [isMaster, user?.id]);
+
+  // Broadcast changes when editingData changes
+  useEffect(() => {
+    if (editingData && !isRemoteUpdate.current && broadcastRef.current) {
+      broadcastRef.current.send({
+        type: 'broadcast',
+        event: 'editing',
+        payload: {
+          id: editingData.id,
+          data: editingData,
+          senderId: user?.id
+        }
+      });
+    }
+  }, [editingData]);
 
   const filteredEntries = entries.filter(entry => 
     entry.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -167,11 +218,11 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                      type === 'image' ? { type: 'image', url: '', caption: '', size: 'medium' } :
                      type === 'tabs' ? { type: 'tabs', items: [{ title: 'Nova Aba', content: [] }] } : null;
     
-    if (parentArray) {
+    if (parentArray && Array.isArray(parentArray)) {
       parentArray.push(newBlock);
       setEditingData({ ...editingData });
     } else {
-      setEditingData({ ...editingData, content: [...editingData.content, newBlock] });
+      setEditingData({ ...editingData, content: [...(editingData.content || []), newBlock] });
     }
   };
 
@@ -218,36 +269,33 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     e.preventDefault();
     setDragOverTab(null);
     setDragOverIdx(null);
-    if (!draggedItem) return;
+    if (!draggedItem || !Array.isArray(targetArray)) return;
 
     const { idx: fromIdx, parentArray: fromArray } = draggedItem;
+    if (!Array.isArray(fromArray) || fromIdx < 0 || fromIdx >= fromArray.length) return;
+
+    const [moved] = fromArray.splice(fromIdx, 1);
+    if (!moved) {
+      setEditingData({ ...editingData });
+      setDraggedItem(null);
+      return;
+    }
 
     // Case 1: Dropping into a tab
     if (targetTabItem) {
-      if (fromArray === targetTabItem.content) {
-        // Reordering inside the same tab
-        if (targetIdx !== null) moveBlock(fromArray, fromIdx, targetIdx);
-        return;
-      }
-      moveBlockToTab(fromArray, fromIdx, targetTabItem);
+      if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
+      targetTabItem.content.push(moved);
     } 
     // Case 2: Dropping onto the root container (not on a specific block)
     else if (targetIdx === null) {
-      if (targetArray === editingData.content && fromArray !== editingData.content) {
-        moveBlockOutOfTab(fromArray, fromIdx, editingData.content);
-      }
+      targetArray.push(moved);
     }
     // Case 3: Dropping onto a specific block (reordering)
-    else if (targetArray === fromArray) {
-      moveBlock(fromArray, fromIdx, targetIdx);
-    }
-    // Case 4: Dropping onto a block in a different array (move and insert)
     else {
-      const [moved] = fromArray.splice(fromIdx, 1);
-      targetArray.splice(targetIdx || 0, 0, moved);
-      setEditingData({ ...editingData });
+      targetArray.splice(targetIdx, 0, moved);
     }
 
+    setEditingData({ ...editingData });
     setDraggedItem(null);
   };
 
@@ -269,6 +317,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   );
 
   const renderBlockEditor = (block, idx, parentArray, isNested = false) => {
+    if (!block) return null;
     const blockId = `${isNested ? 'nested' : 'root'}-${idx}`;
     return (
       <div 
