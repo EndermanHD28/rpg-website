@@ -453,15 +453,26 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                 className={`p-6 rounded-2xl border transition-all space-y-4 ${dragOverTab === `${idx}-${tIdx}` ? 'bg-red-600/20 border-red-600 shadow-lg scale-[1.01]' : 'bg-black/40 border-white/5'}`}
               >
                 <div className="flex justify-between items-center">
-                  <input 
-                    value={item.title}
-                    onChange={(e) => {
-                      item.title = e.target.value;
-                      setEditingData({...editingData});
-                    }}
-                    className="bg-transparent border-none text-sm font-black uppercase text-zinc-300 outline-none w-1/2"
-                    placeholder="Título da Aba"
-                  />
+                  <div className="flex items-center gap-3 w-1/2">
+                    <div 
+                      draggable 
+                      onDragStart={(e) => handleDragStart(e, item, tIdx, block.items)}
+                      onDragEnd={() => { setDraggedItem(null); setDragOverIdx(null); }}
+                      className="bg-zinc-800 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[8px] flex items-center justify-center border border-white/5"
+                      title="Segure para reordenar esta aba"
+                    >
+                      ⣿
+                    </div>
+                    <input 
+                      value={item.title}
+                      onChange={(e) => {
+                        item.title = e.target.value;
+                        setEditingData({...editingData});
+                      }}
+                      className="bg-transparent border-none text-sm font-black uppercase text-zinc-300 outline-none w-full"
+                      placeholder="Título da Aba"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => moveBlock(block.items, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
                     <button onClick={() => moveBlock(block.items, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
@@ -780,7 +791,7 @@ function formatText(text) {
   const boldRegex = /\*\*(.*?)\*\*/g;
   const underlineRegex = /__(.*?)__/g;
   const html = text
-    .replace(boldRegex, '<strong class="text-white font-black">$1</strong>')
-    .replace(underlineRegex, '<u class="decoration-red-600/50 underline-offset-4">$1</u>');
+    .replace(underlineRegex, '<u class="decoration-gray-200 text-white/80 underline-offset-4 decoration-2">$1</u>')
+    .replace(boldRegex, '<strong class="text-white font-black">$1</strong>');
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
