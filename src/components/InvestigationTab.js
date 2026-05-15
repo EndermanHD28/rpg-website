@@ -117,13 +117,13 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
           if (payload.eventType === 'INSERT') {
               setCategories(prev => [...prev, payload.new].sort((a, b) => a.display_order - b.display_order));
           } else if (payload.eventType === 'UPDATE') {
-              setCategories(prev => prev.map(c => c.id === payload.new.id ? payload.new : c).sort((a, b) => a.display_order - b.display_order));
-              if (selectedCategoryId === payload.new.id) {
+              setCategories(prev => prev.map(c => String(c.id) === String(payload.new.id) ? payload.new : c).sort((a, b) => a.display_order - b.display_order));
+              if (String(selectedCategoryId) === String(payload.new.id)) {
                   setMaxCards(payload.new.max_cards);
               }
           } else if (payload.eventType === 'DELETE') {
-              setCategories(prev => prev.filter(c => c.id !== payload.old.id));
-              if (selectedCategoryId === payload.old.id) {
+              setCategories(prev => prev.filter(c => String(c.id) !== String(payload.old.id)));
+              if (String(selectedCategoryId) === String(payload.old.id)) {
                   setSelectedCategoryId(null);
               }
           }
@@ -131,7 +131,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'investigation_cards' }, (payload) => {
         if (payload.eventType === 'INSERT') {
             setCards(prev => {
-                if (prev.find(c => c.id === payload.new.id)) return prev;
+                if (prev.find(c => String(c.id) === String(payload.new.id))) return prev;
                 return [...prev, payload.new];
             });
         } else if (payload.eventType === 'UPDATE') {
@@ -139,25 +139,30 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             const isSelected = selectedCardIdsRef.current.includes(payload.new.id);
             const isEditing = String(editingCardIdRef.current) === String(payload.new.id);
             
-            if ((isDragging && isSelected) || isEditing) return;
+            // Only skip update if the current user is the one actively dragging THIS card
+            if ((isDragging && isSelected && String(draggingCardRef.current?.id) === String(payload.new.id)) || isEditing) return;
             
             setCards(prev => prev.map(c => String(c.id) === String(payload.new.id) ? { ...c, ...payload.new } : c));
         } else if (payload.eventType === 'DELETE') {
-            setCards(prev => prev.filter(c => c.id !== payload.old.id));
-            setSelectedCardIds(prev => prev.filter(id => id !== payload.old.id));
+            setCards(prev => prev.filter(c => String(c.id) !== String(payload.old.id)));
+            setSelectedCardIds(prev => prev.filter(id => String(id) !== String(payload.old.id)));
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'investigation_pins' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setPins(prev => {
-            if (prev.find(p => p.id === payload.new.id)) return prev;
+            if (prev.find(p => String(p.id) === String(payload.new.id))) return prev;
             return [...prev, payload.new];
           });
         } else if (payload.eventType === 'DELETE') {
-          setPins(prev => prev.filter(p => p.id !== payload.old.id));
+          setPins(prev => prev.filter(p => String(p.id) !== String(payload.old.id)));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+              console.log("Investigation Realtime Subscribed");
+          }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -322,20 +327,39 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     } else {
       const fromId = pinningFrom;
       setPinningFrom(null);
-      if (fromId === cardId) return;
+      if (String(fromId) === String(cardId)) return;
 
       const exists = pins.find(p => 
-        (p.from_card_id === fromId && p.to_card_id === cardId) ||
-        (p.from_card_id === cardId && p.to_card_id === fromId)
+        (String(p.from_card_id) === String(fromId) && String(p.to_card_id) === String(cardId)) ||
+        (String(p.from_card_id) === String(cardId) && String(p.to_card_id) === String(fromId))
       );
 
       if (exists) {
-        await supabase.from('investigation_pins').delete().match({ id: exists.id });
+        // Optimistic Delete
+        setPins(prev => prev.filter(p => String(p.id) !== String(exists.id)));
+        const { error } = await supabase.from('investigation_pins').delete().match({ id: exists.id });
+        if (error) {
+            showToast("Erro ao remover conexão.");
+            // Rollback
+            setPins(prev => [...prev, exists]);
+        }
       } else {
-        await supabase.from('investigation_pins').insert({
+        // Optimistic Insert
+        const tempId = 'temp-' + Date.now();
+        const newPin = { id: tempId, from_card_id: fromId, to_card_id: cardId };
+        setPins(prev => [...prev, newPin]);
+        
+        const { data, error } = await supabase.from('investigation_pins').insert({
           from_card_id: fromId,
           to_card_id: cardId
-        });
+        }).select().single();
+
+        if (error) {
+            showToast("Erro ao criar conexão.");
+            setPins(prev => prev.filter(p => String(p.id) !== String(tempId)));
+        } else if (data) {
+            setPins(prev => prev.map(p => String(p.id) === String(tempId) ? data : p));
+        }
       }
     }
   };
@@ -596,8 +620,8 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
 
   const renderLines = () => {
     return pins.map(pin => {
-      const from = currentCategoryCards.find(c => c.id === pin.from_card_id);
-      const to = currentCategoryCards.find(c => c.id === pin.to_card_id);
+      const from = currentCategoryCards.find(c => String(c.id) === String(pin.from_card_id));
+      const to = currentCategoryCards.find(c => String(c.id) === String(pin.to_card_id));
       if (!from || !to) return null;
 
       const fromIsImage = from.type === 'image';

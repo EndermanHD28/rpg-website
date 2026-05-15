@@ -1,30 +1,32 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '../lib/supabase';
 import { MASTER_DISCORD_ID, ANOMALIAS_LIST, ANOMALIAS_DESCRIPTIONS, SKILLS_LIST, SKILLS_DESCRIPTIONS, RARITY_CONFIG } from '../constants/gameData';
 
 import { calculateDerivedStats, getStatBuffs } from '../lib/rpg-math';
 
-// Components
-import Inventory from '../components/InventoryTemp';
-import LootTableEditorModal from '../components/LootTableEditorModal';
-import MasterPanel from '../components/MasterPanel';
-import BioGrid from '../components/BioGrid';
-import DicePanel from '../components/DicePanel';
-import NPCEditor from '../components/NPCEditor';
+// Static Components (Keep for initial load)
 import { Toast, Modal, TooltipWrapper, CustomSelect } from '../components/UIElements';
 import Celebration from '../components/Celebration';
-import CombatTab from '../components/CombatTab';
-import { useSound } from '../hooks/useSound';
-import MusicPlayer from '../components/MusicPlayer';
-import NotificationSystem from '../components/NotificationSystem';
-import ItemsListGeneratorModal from '../components/ItemsListGeneratorModal';
-import ReportsTab from '../components/ReportsTab';
-import InvestigationTab from '../components/InvestigationTab';
-import BreathingTab from '../components/BreathingTab';
-import TradersTab from '../components/TradersTab';
-import AlmanaqueTab from '../components/AlmanaqueTab';
-import SlotMachineTab from '../components/SlotMachineTab';
+import BioGrid from '../components/BioGrid';
+import DicePanel from '../components/DicePanel';
+import Inventory from '../components/InventoryTemp';
+
+// Dynamic Components (Load on demand)
+const LootTableEditorModal = dynamic(() => import('../components/LootTableEditorModal'));
+const MasterPanel = dynamic(() => import('../components/MasterPanel'));
+const NPCEditor = dynamic(() => import('../components/NPCEditor'));
+const CombatTab = dynamic(() => import('../components/CombatTab'));
+const MusicPlayer = dynamic(() => import('../components/MusicPlayer'));
+const NotificationSystem = dynamic(() => import('../components/NotificationSystem'));
+const ItemsListGeneratorModal = dynamic(() => import('../components/ItemsListGeneratorModal'));
+const ReportsTab = dynamic(() => import('../components/ReportsTab'));
+const InvestigationTab = dynamic(() => import('../components/InvestigationTab'));
+const BreathingTab = dynamic(() => import('../components/BreathingTab'));
+const TradersTab = dynamic(() => import('../components/TradersTab'));
+const AlmanaqueTab = dynamic(() => import('../components/AlmanaqueTab'));
+const SlotMachineTab = dynamic(() => import('../components/SlotMachineTab'));
 
 export default function Home() {
   // --- UI STATE ---
