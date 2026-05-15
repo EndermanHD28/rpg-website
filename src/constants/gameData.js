@@ -27,7 +27,7 @@ export const LINHAGEM_DESCRIPTIONS = {
   "Nenhuma": "Sem linhagem definida.",
   // Comuns
   "Mitoka": "+10% **Precisão**",
-  "Tamayo": "+100% **Inteligência** ao produzir misturas (exceto Inibidores).\nCaso contrário: +10% **Inteligência**",
+  "Tamayo": "+90% **Inteligência** ao produzir misturas (exceto Inibidores).\n+10% **Inteligência**",
   "Lireou": "+20% **Carisma**",
   "Kuwajima": "Imunidade à <⚡️ Eletrificação>",
   "Kazan": "Imunidade à **qualquer temperatura**",
@@ -36,11 +36,11 @@ export const LINHAGEM_DESCRIPTIONS = {
   "Concentração": "+10% **Resistência**",
   
   // Raros
-  "Shinomiya": "+100% **Inteligência** ao produzir Inibidores.\nCaso contrário: +15% **Agilidade**",
+  "Shinomiya": "+100% **Inteligência** ao produzir Inibidores.\n+15% **Agilidade**",
   "Kochou": "+15% **Agilidade** se a Respiração for {Natural}.\nChance de envenenar com lâminas envenenadas é **100%**.\nImunidade a **Venenos**",
-  "Shinazugawa (Sanemi)": "+20% **Força**\n+10% **Agilidade** se a Respiração for {Natural}\n**100%** de chance de receber a anomalia [⭐🩸 Marechi]",
+  "Shinazugawa (Sanemi)": "+20% **Força**|+10% **Agilidade** se a Respiração for {Natural}\n**100%** de chance de receber a anomalia [⭐🩸 Marechi]",
   "Uzui": "Permite **omitir efeitos sonoros** fora de combate\nImunidade a **Venenos**",
-  "Agatsuma": "+20% **Agilidade**\n+10% **Força** se a Respiração for {Energia}\nAnomalia [⚡ Despertar] torna-se [⚡💤 Despertar Agatsuma]",
+  "Agatsuma": "+15% **Agilidade**|+10% **Força** se a Respiração for {Energia}\n+15% **Agilidade**\nAnomalia [⚡ Despertar] torna-se [⚡💤 Despertar Agatsuma]",
   "Hashibira": "+25% **Força** se a Respiração for {Brutal}\nTentativas de causar <🩸 Sangramento>, ao invés disso, causam <🩸🔺 Sangramento Intenso>",
   "Urokodaki": "+20% **Precisão** se a Respiração for {Fluxo}.\nAtaques físicos de Respirações {Fluxo} causam <🩸 Sangramento>",
   "Tsuyuri": "Ao adquirir: Role 1d10 (8+) para receber [👁‍🗨 Olho Superior].\n+15% **Precisão**",
@@ -95,13 +95,14 @@ export const LINHAGENS_DATA = {
   },
   "Shinazugawa (Sanemi)": {
     stat_boosts: [
-      { stat: "strength", amount: 0.20 },
+      { stat: "strength", amount: 0.20, condition: { type: "breathing_keyword", value: "Natural" } },
       { stat: "agility", amount: 0.10, condition: { type: "breathing_keyword", value: "Natural" } }
     ]
   },
   "Agatsuma": {
     stat_boosts: [
-      { stat: "agility", amount: 0.20 },
+      { stat: "agility", amount: 0.15 },
+      { stat: "agility", amount: 0.15, condition: { type: "breathing_keyword", value: "Energia" } },
       { stat: "strength", amount: 0.10, condition: { type: "breathing_keyword", value: "Energia" } }
     ]
   },

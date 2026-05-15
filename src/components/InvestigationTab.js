@@ -36,11 +36,13 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
   const draggingCardRef = useRef(null);
   const editingCardIdRef = useRef(null);
   const selectedCardIdsRef = useRef([]);
+  const selectedCategoryIdRef = useRef(null);
   const mouseOffset = useRef({ x: 0, y: 0 });
 
   useEffect(() => { draggingCardRef.current = draggingCard; }, [draggingCard]);
   useEffect(() => { editingCardIdRef.current = editingCardId; }, [editingCardId]);
   useEffect(() => { selectedCardIdsRef.current = selectedCardIds; }, [selectedCardIds]);
+  useEffect(() => { selectedCategoryIdRef.current = selectedCategoryId; }, [selectedCategoryId]);
 
   // Constants
   const BOARD_WIDTH = 5200;
@@ -118,12 +120,12 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
               setCategories(prev => [...prev, payload.new].sort((a, b) => a.display_order - b.display_order));
           } else if (payload.eventType === 'UPDATE') {
               setCategories(prev => prev.map(c => String(c.id) === String(payload.new.id) ? payload.new : c).sort((a, b) => a.display_order - b.display_order));
-              if (String(selectedCategoryId) === String(payload.new.id)) {
+              if (String(selectedCategoryIdRef.current) === String(payload.new.id)) {
                   setMaxCards(payload.new.max_cards);
               }
           } else if (payload.eventType === 'DELETE') {
               setCategories(prev => prev.filter(c => String(c.id) !== String(payload.old.id)));
-              if (String(selectedCategoryId) === String(payload.old.id)) {
+              if (String(selectedCategoryIdRef.current) === String(payload.old.id)) {
                   setSelectedCategoryId(null);
               }
           }
@@ -136,11 +138,13 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
             });
         } else if (payload.eventType === 'UPDATE') {
             const isDragging = !!draggingCardRef.current;
-            const isSelected = selectedCardIdsRef.current.includes(payload.new.id);
+            const isSelected = (selectedCardIdsRef.current || []).some(id => String(id) === String(payload.new.id));
             const isEditing = String(editingCardIdRef.current) === String(payload.new.id);
             
-            // Only skip update if the current user is the one actively dragging THIS card
-            if ((isDragging && isSelected && String(draggingCardRef.current?.id) === String(payload.new.id)) || isEditing) return;
+            // Only skip update if the current user is the one actively dragging or editing THIS card
+            if ((isDragging && isSelected && String(draggingCardRef.current?.id) === String(payload.new.id)) || isEditing) {
+                return;
+            }
             
             setCards(prev => prev.map(c => String(c.id) === String(payload.new.id) ? { ...c, ...payload.new } : c));
         } else if (payload.eventType === 'DELETE') {
@@ -169,7 +173,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
     };
   }, []);
 
-  const currentCategoryCards = cards.filter(c => c.category_id === selectedCategoryId);
+  const currentCategoryCards = cards.filter(c => String(c.category_id) === String(selectedCategoryId));
 
   const updateMaxCards = async (catId, val) => {
       const num = parseInt(val) || 0;
@@ -432,7 +436,7 @@ export default function InvestigationTab({ user, isMaster, showToast, playSound 
       const dy = currentY - draggingCardRef.current.y_pos;
       if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
           setCards(prev => prev.map(c => {
-            if (selectedCardIdsRef.current.includes(c.id)) {
+            if ((selectedCardIdsRef.current || []).some(id => String(id) === String(c.id))) {
               let nx = c.x_pos + dx;
               let ny = c.y_pos + dy;
               const isImage = c.type === 'image';

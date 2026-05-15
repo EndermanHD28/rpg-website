@@ -10,6 +10,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingData, setEditingData] = useState(null);
+  const [isEditor, setIsEditor] = useState(false);
   const [openInMenu, setOpenInMenu] = useState(null); // { bIdx, nIdx } or { bIdx }
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverTab, setDragOverTab] = useState(null);
@@ -18,17 +19,36 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   // Fetch data
   const fetchEntries = async () => {
     setLoading(true);
+    
+    // Check if user is an editor
+    if (user && !isMaster) {
+      const { data: globalData } = await supabase.from('global').select('almanaque_editors').eq('id', 1).single();
+      if (globalData?.almanaque_editors?.includes(user.id)) {
+        setIsEditor(true);
+      } else {
+        setIsEditor(false);
+      }
+    } else if (isMaster) {
+      setIsEditor(true);
+    }
+
     let query = supabase.from('almanaque_entries').select('*').order('order_index', { ascending: true });
     
-    if (!isMaster) {
-      query = query.eq('is_public', true);
+    if (!isMaster && !isEditor) {
+      // For non-masters/non-editors, only show public entries
+      // But we need to handle the case where isEditor might change after fetch
+      // Better to check isEditor inside the effect or pass it as dependency
     }
 
     const { data, error } = await query;
     if (error) {
       showToast("Erro ao carregar o Almanaque.");
     } else {
-      setEntries(data || []);
+      if (!isMaster && !isEditor) {
+        setEntries(data?.filter(e => e.is_public) || []);
+      } else {
+        setEntries(data || []);
+      }
     }
     setLoading(false);
   };
@@ -42,10 +62,17 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       })
       .subscribe();
 
+    const globalChannel = supabase.channel('global_changes_almanaque')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global', filter: 'id=eq.1' }, () => {
+        fetchEntries();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(globalChannel);
     };
-  }, [isMaster]);
+  }, [isMaster, user?.id]);
 
   const filteredEntries = entries.filter(entry => 
     entry.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -417,7 +444,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
               <span className="absolute right-4 top-1/2 -translate-y-1/2 opacity-30">🔍</span>
           </div>
           
-          {isMaster && (
+          {isEditor && (
             <button
               onClick={handleCreate}
               className="bg-red-600 hover:bg-red-500 text-white px-6 py-2.5 rounded-full font-black uppercase text-[10px] transition-all shadow-lg active:scale-95 flex items-center gap-2"
@@ -450,7 +477,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                 }`}
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
-                {!entry.is_public && isMaster && (
+                {!entry.is_public && isEditor && (
                    <span className="absolute top-2 right-4 text-[8px] font-black text-yellow-500/50 uppercase tracking-tighter">Privado</span>
                 )}
                 <h3 className={`font-black uppercase text-sm tracking-tight transition-colors ${selectedEntry?.id === entry.id ? 'text-red-500' : 'text-zinc-200 group-hover:text-white'}`}>{entry.title}</h3>
@@ -506,7 +533,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                    )}
                 </div>
 
-                {isMaster && (
+                {isEditor && (
                   <div className="flex gap-2 shrink-0 ml-4">
                     {isEditing ? (
                       <>
