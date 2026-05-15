@@ -7,6 +7,9 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
   const [activeReport, setActiveReport] = useState(null);
   const [editingReport, setEditingReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const descriptionRef = useRef(null);
+  const [descFontSize, setDescFontSize] = useState(18);
+  const [isTruncated, setIsTruncated] = useState(false);
 
   // Fetch reports
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
 
   const updateField = async (field, value) => {
     if (!editingReport) return;
+    if (field === 'description' && value.length > 1500) return;
     const updated = { ...editingReport, [field]: value };
     setEditingReport(updated);
     setActiveReport(updated);
@@ -170,13 +174,57 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
     }
   };
 
-  const playerTextClass = "font-serif text-lg text-zinc-800 tracking-tight leading-relaxed";
+  const playerTextClass = "font-serif text-[18px] text-zinc-800 tracking-tight leading-relaxed break-words";
   const handwrittenBtnClass = "text-xs font-black uppercase tracking-widest hover:scale-105 transition-all opacity-70 hover:opacity-100 underline decoration-2 underline-offset-4";
 
   const isEditingThis = editingReport && activeReport && editingReport.id === activeReport.id;
 
+  useEffect(() => {
+    if (!activeReport?.description || isEditingThis) {
+      setDescFontSize(18);
+      setIsTruncated(false);
+      return;
+    }
+    
+    const checkOverflow = () => {
+      const el = descriptionRef.current;
+      if (!el) return;
+      
+      // Available height inside the box
+      const targetHeight = 580;
+      
+      // Reset for accurate measurement
+      el.style.fontSize = '18px';
+      el.style.maxHeight = 'none';
+      
+      let currentHeight = el.scrollHeight;
+      
+      if (currentHeight <= targetHeight) {
+        setDescFontSize(18);
+        setIsTruncated(false);
+        el.style.maxHeight = `${targetHeight}px`;
+        return;
+      }
+
+      // Shrink until it fits or reaches 12px
+      let size = 18;
+      while (currentHeight > targetHeight && size > 12) {
+        size -= 0.5;
+        el.style.fontSize = `${size}px`;
+        currentHeight = el.scrollHeight;
+      }
+      
+      setDescFontSize(size);
+      setIsTruncated(currentHeight > targetHeight);
+      el.style.maxHeight = `${targetHeight}px`;
+    };
+
+    const timer = setTimeout(checkOverflow, 200);
+    return () => clearTimeout(timer);
+  }, [activeReport?.description, isEditingThis]);
+
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 h-full">
+    <div className="p-8 max-w-[1280px] mx-auto space-y-8 h-full">
       <div className="flex justify-between items-center bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 shrink-0">
         <div>
           <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter text-shadow-glow">Relatórios de Missão</h2>
@@ -262,7 +310,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                       {isEditingThis ? (
                         <input type="text" value={editingReport.mission_date} onChange={(e) => updateField('mission_date', e.target.value)} className={`w-full bg-transparent outline-none ${playerTextClass}`} placeholder="" />
                       ) : (
-                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.mission_date || "[ DADOS AUSENTES ]"}</p>
+                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.mission_date || ""}</p>
                       )}
                     </div>
                     <div className="border-b border-zinc-400 pb-1">
@@ -270,7 +318,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                       {isEditingThis ? (
                         <input type="text" value={editingReport.mission_id} onChange={(e) => updateField('mission_id', e.target.value)} className={`w-full bg-transparent outline-none ${playerTextClass}`} placeholder="" />
                       ) : (
-                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.mission_id || "[ DADOS AUSENTES ]"}</p>
+                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.mission_id || ""}</p>
                       )}
                     </div>
                   </div>
@@ -280,7 +328,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                       {isEditingThis ? (
                         <input type="text" value={editingReport.author_name} onChange={(e) => updateField('author_name', e.target.value)} className={`w-full bg-transparent outline-none ${playerTextClass}`} placeholder="" />
                       ) : (
-                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.author_name || "[ DADOS AUSENTES ]"}</p>
+                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.author_name || ""}</p>
                       )}
                     </div>
                     <div className="border-b border-zinc-400 pb-1">
@@ -288,7 +336,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                       {isEditingThis ? (
                         <input type="text" value={editingReport.unit_id} onChange={(e) => updateField('unit_id', e.target.value)} className={`w-full bg-transparent outline-none ${playerTextClass}`} placeholder="" />
                       ) : (
-                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.unit_id || "[ DADOS AUSENTES ]"}</p>
+                        <p className={`${playerTextClass} min-h-[1.5rem]`}>{activeReport.unit_id || ""}</p>
                       )}
                     </div>
                   </div>
@@ -296,13 +344,34 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
 
                 <div className="space-y-2 mt-8">
                   <label className="text-[10px] font-black uppercase text-zinc-500 block mb-2">Descrição Breve dos Eventos</label>
-                  <div className="relative min-h-[400px] bg-white/20 p-4 rounded border border-zinc-200">
+                  <div className="relative min-h-[600px] bg-white/20 p-4 rounded border border-zinc-200">
                     {isEditingThis ? (
-                      <textarea value={editingReport.description} onChange={(e) => updateField('description', e.target.value)} className={`w-full bg-transparent outline-none min-h-[400px] resize-none ${playerTextClass}`} placeholder="" />
+                      <textarea 
+                        maxLength={1500}
+                        value={editingReport.description} 
+                        onChange={(e) => updateField('description', e.target.value)} 
+                        className={`w-full bg-transparent outline-none min-h-[600px] resize-none ${playerTextClass}`} 
+                        style={{ fontSize: '18px' }}
+                        placeholder="" 
+                      />
                     ) : (
-                      <p className={`${playerTextClass} whitespace-pre-wrap min-h-[400px]`}>{activeReport.description || "[ DADOS AUSENTES ]"}</p>
+                      <div className="min-h-[560px]">
+                        <p 
+                          ref={descriptionRef}
+                          className={`${playerTextClass} whitespace-pre-wrap break-words overflow-hidden m-0 p-0`}
+                          style={{ fontSize: `${descFontSize}px`, maxHeight: '580px' }}
+                        >
+                          {activeReport.description || ""}
+                          {isTruncated && " ..."}
+                        </p>
+                      </div>
                     )}
                   </div>
+                  {activeReport.status !== 'accepted' && (
+                    <div className="text-[10px] text-right text-zinc-500 font-mono mt-1 font-bold">
+                      {activeReport.description?.length || 0} / 1500 CARACTERES
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-12 pt-8 border-t border-zinc-400 flex justify-between items-end">
