@@ -144,17 +144,17 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     setEditingData({ ...editingData });
   };
 
-  const onDragStart = (e, block, idx, parentArray) => {
+  const handleDragStart = (e, block, idx, parentArray) => {
     setDraggedItem({ block, idx, parentArray });
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const onDragOver = (e, targetId = null) => {
+  const handleDragOver = (e, targetId = null) => {
     e.preventDefault();
     if (targetId) setDragOverTab(targetId);
   };
 
-  const onDrop = (e, targetArray, targetTabItem = null, targetIdx = null) => {
+  const handleDrop = (e, targetArray, targetTabItem = null, targetIdx = null) => {
     e.preventDefault();
     setDragOverTab(null);
     setDragOverIdx(null);
@@ -184,7 +184,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     // Case 4: Dropping onto a block in a different array (move and insert)
     else {
       const [moved] = fromArray.splice(fromIdx, 1);
-      targetArray.splice(targetIdx, 0, moved);
+      targetArray.splice(targetIdx || 0, 0, moved);
       setEditingData({ ...editingData });
     }
 
@@ -216,23 +216,25 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (draggedItem?.block !== block) setDragOverIdx(blockId);
+          if (draggedItem && draggedItem.block !== block) {
+            setDragOverIdx(blockId);
+          }
         }}
         onDragLeave={() => setDragOverIdx(null)}
         onDrop={(e) => {
           e.stopPropagation();
-          onDrop(e, parentArray, null, idx);
+          handleDrop(e, parentArray, null, idx);
         }}
         className={`relative group/block p-6 rounded-3xl border transition-all ${
           draggedItem?.block === block ? 'opacity-40 border-dashed border-zinc-500 scale-[0.98] bg-white/5' : 
-          dragOverIdx === blockId ? 'border-red-600 bg-red-600/5 scale-[1.01]' : 'border-white/5 bg-white/5'
+          dragOverIdx === blockId ? 'border-red-600 bg-red-600/10 scale-[1.02] shadow-[0_0_20px_rgba(220,38,38,0.1)] z-10' : 'border-white/5 bg-white/5'
         }`}
       >
         <div className="absolute -left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-all flex flex-col gap-1 z-20">
           <div 
             draggable 
-            onDragStart={(e) => onDragStart(e, block, idx, parentArray)}
-            onDragEnd={() => setDraggedItem(null)}
+            onDragStart={(e) => handleDragStart(e, block, idx, parentArray)}
+            onDragEnd={() => { setDraggedItem(null); setDragOverIdx(null); }}
             className="bg-zinc-700 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[10px] flex items-center justify-center shadow-lg border border-white/10"
             title="Segure para arrastar e soltar em uma aba ou fora dela"
           >
@@ -336,9 +338,9 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             {block.items.map((item, tIdx) => (
               <div 
                 key={tIdx} 
-                onDragOver={(e) => onDragOver(e, `${idx}-${tIdx}`)}
+                onDragOver={(e) => handleDragOver(e, `${idx}-${tIdx}`)}
                 onDragLeave={() => setDragOverTab(null)}
-                onDrop={(e) => onDrop(e, item.content, item)}
+                onDrop={(e) => handleDrop(e, item.content, item)}
                 className={`p-6 rounded-2xl border transition-all space-y-4 ${dragOverTab === `${idx}-${tIdx}` ? 'bg-red-600/20 border-red-600 shadow-lg scale-[1.01]' : 'bg-black/40 border-white/5'}`}
               >
                 <div className="flex justify-between items-center">
@@ -526,8 +528,8 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                     {isEditing ? (
                       <div 
                         className={`space-y-6 min-h-[400px] transition-all rounded-3xl p-4 ${draggedItem && draggedItem.parentArray !== editingData.content ? 'bg-white/5 border-2 border-dashed border-zinc-800' : ''}`}
-                        onDragOver={(e) => onDragOver(e)}
-                        onDrop={(e) => onDrop(e, editingData.content)}
+                        onDragOver={(e) => handleDragOver(e)}
+                        onDrop={(e) => handleDrop(e, editingData.content)}
                       >
                         {editingData.content?.map((block, bIdx) => (
                           renderBlockEditor(block, bIdx, editingData.content)

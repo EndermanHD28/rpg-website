@@ -24,6 +24,7 @@ import InvestigationTab from '../components/InvestigationTab';
 import BreathingTab from '../components/BreathingTab';
 import TradersTab from '../components/TradersTab';
 import AlmanaqueTab from '../components/AlmanaqueTab';
+import SlotMachineTab from '../components/SlotMachineTab';
 
 export default function Home() {
   // --- UI STATE ---
@@ -1074,6 +1075,26 @@ export default function Home() {
                     setActiveTab('almanaque'); 
                   }} 
                 />
+                <NavButton 
+                  active={activeTab === 'slots'} 
+                  label="Roleta" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('slots')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('slots')}
+                  onClick={() => { 
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    if (!isActingAsMaster && blockedTabs.includes('slots')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change'); 
+                    setActiveTab('slots'); 
+                  }} 
+                />
               </div>
             </div>
 
@@ -1848,6 +1869,18 @@ export default function Home() {
             <AlmanaqueTab 
               user={user}
               isMaster={isActingAsMaster}
+              showToast={showToast}
+              playSound={playSoundEffect}
+            />
+          </div>
+        )}
+
+        {activeTab === 'slots' && (
+          <div className="flex-1 relative">
+            <SlotMachineTab 
+              user={user}
+              isMaster={isActingAsMaster}
+              allPlayers={allPlayers}
               showToast={showToast}
               playSound={playSoundEffect}
             />

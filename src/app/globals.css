@@ -124,6 +124,14 @@ select,
   --tw-enter-translate-y: -1rem !important;
 }
 
+.slide-in-from-bottom-full {
+  --tw-enter-translate-y: 100% !important;
+}
+
+.zoom-in {
+  --tw-enter-scale: 0 !important;
+}
+
 .duration-150 {
   animation-duration: 150ms !important;
 }
