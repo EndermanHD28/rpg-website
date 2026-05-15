@@ -145,10 +145,9 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
 
   const handleAcceptReject = async (reportId, status) => {
     if (status === 'rejected') {
-      const { error } = await supabase.from('reports').delete().eq('id', reportId);
+      const { error } = await supabase.from('reports').update({ status: 'rejected' }).eq('id', reportId);
       if (!error) {
-        showToast("Relatório rejeitado e excluído.");
-        setActiveReport(null);
+        showToast("Relatório rejeitado.");
       }
     } else {
       const { error } = await supabase.from('reports').update({ 
@@ -267,7 +266,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                         r.status === 'rejected' ? 'bg-red-500/20 text-red-500' :
                         'bg-yellow-500/20 text-yellow-500'
                       }`}>
-                        {r.status === 'accepted' ? 'Aprovado' : r.status === 'draft' ? 'Rascunho' : 'Pendente'}
+                        {r.status === 'accepted' ? 'Aprovado' : r.status === 'rejected' ? 'Rejeitado' : r.status === 'draft' ? 'Rascunho' : 'Pendente'}
                       </span>
                     </div>
                     <p className="text-xs font-black uppercase text-white truncate">{r.mission_date || 'Data não definida'}</p>
@@ -430,7 +429,7 @@ export default function ReportsTab({ user, isMaster, showToast, playSound }) {
                     </>
                   ) : (
                     <>
-                      {!activeReport.editing_by && (isMaster || activeReport.status === 'draft') && (
+                      {!activeReport.editing_by && (isMaster || activeReport.status === 'draft' || activeReport.status === 'rejected') && (
                         <button onClick={() => startEditing(activeReport)} className={handwrittenBtnClass}>Editar Documento</button>
                       )}
                       {isMaster && activeReport.status === 'pending' && (
