@@ -15,6 +15,20 @@ export const STAT_LABELS = {
   charisma: 'Carisma'
 };
 
+export const LINHAGENS_RARITIES = {
+  "Mitoka": "Comum", "Tamayo": "Comum", "Lireou": "Comum", "Kuwajima": "Comum", "Kazan": "Comum", "Akiko": "Comum", "Tomioka": "Comum",
+  "Shinomiya": "Raro", "Kochou": "Raro", "Shinazugawa (Sanemi)": "Raro", "Uzui": "Raro", "Agatsuma": "Raro", "Hashibira": "Raro", "Urokodaki": "Raro", "Tsuyuri": "Raro", "Iguro": "Raro",
+  "Soyama": "Épico", "Rengoku": "Épico", "Kanroji": "Épico", "Uzui (Tengen)": "Épico", "Tokito": "Épico", "Kamado": "Épico", "Lireou (Douma)": "Épico",
+  "Shinazugawa (Genya)": "Lendário", "Himejima": "Lendário", "Kamado (Tanjiro)": "Lendário", "Tsugikuni": "Lendário"
+};
+
+export const SLOT_MACHINE_RARITY_PERCENTAGES = {
+  "Comum": 60,
+  "Raro": 25,
+  "Épico": 12,
+  "Lendário": 3
+};
+
 export const LINHAGENS = [
   "Nenhuma", 
   "Mitoka", "Tamayo", "Lireou", "Kuwajima", "Kazan", "Akiko", "Tomioka",

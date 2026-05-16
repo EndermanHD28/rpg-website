@@ -18,6 +18,77 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const broadcastRef = useRef(null);
   const isRemoteUpdate = useRef(false);
+  const lastBroadcastedData = useRef(null);
+
+  // Helper for immutable nested state updates
+  const updateStateDeep = (updater) => {
+    setEditingData(prev => {
+      if (!prev) return prev;
+      const clone = JSON.parse(JSON.stringify(prev));
+      updater(clone);
+      return clone;
+    });
+  };
+
+  const ensureIds = (content) => {
+    if (!content || !Array.isArray(content)) return;
+    content.forEach(block => {
+      if (!block._id) block._id = Math.random().toString(36).substr(2, 9);
+      if (block.type === 'tabs' && block.items) {
+        block.items.forEach(item => {
+          if (!item._id) item._id = Math.random().toString(36).substr(2, 9);
+          ensureIds(item.content);
+        });
+      }
+    });
+  };
+
+  // Find an array by its container block/item ID
+  const findArrayById = (root, targetId) => {
+    if (!root || !root.content) return null;
+    if (targetId === 'root') return root.content;
+    
+    const search = (blocks) => {
+      for (const block of blocks) {
+        if (block._id === targetId) {
+           // If target is a tabs block, we usually want its items? No, content.
+           // Actually targetId for containers is either 'root' or a Tab Item ID.
+           return null; 
+        }
+        if (block.type === 'tabs' && block.items) {
+          for (const item of block.items) {
+            if (item._id === targetId) {
+              if (!Array.isArray(item.content)) item.content = [];
+              return item.content;
+            }
+            const found = search(item.content);
+            if (found) return found;
+          }
+        }
+      }
+      return null;
+    };
+    
+    return search(root.content);
+  };
+
+  // Find a specific block by ID
+  const findBlockById = (root, blockId) => {
+    if (!root || !root.content) return null;
+    const search = (blocks) => {
+      for (const block of blocks) {
+        if (block._id === blockId) return block;
+        if (block.type === 'tabs' && block.items) {
+          for (const item of block.items) {
+            const found = search(item.content);
+            if (found) return found;
+          }
+        }
+      }
+      return null;
+    };
+    return search(root.content);
+  };
 
   // Fetch data
   const fetchEntries = async () => {
@@ -114,23 +185,34 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
 
         isRemoteUpdate.current = true;
         
-        // If we are editing the same entry, update editingData
+        // Update editingData if we are editing the same entry
         setEditingData(prev => {
            if (prev && prev.id === id) {
-             return { ...data };
+             // Only update if data is actually different to avoid unnecessary renders
+             if (JSON.stringify(prev) !== JSON.stringify(data)) {
+               return { ...data };
+             }
            }
            return prev;
         });
 
-        // If we are viewing the same entry, update selectedEntry
+        // Update selectedEntry if we are viewing the same entry
         setSelectedEntry(prev => {
           if (prev && prev.id === id) {
-            return { ...data };
+            if (JSON.stringify(prev) !== JSON.stringify(data)) {
+              return { ...data };
+            }
           }
           return prev;
         });
 
         setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+      })
+      .on('broadcast', { event: 'saved' }, ({ payload }) => {
+        if (!payload) return;
+        const { id, senderId } = payload;
+        if (senderId === user?.id) return;
+        fetchEntries();
       })
       .subscribe();
       
@@ -143,18 +225,29 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     };
   }, [isMaster, user?.id]);
 
+  // Ensure IDs on content change
+  useEffect(() => {
+    if (editingData) {
+      ensureIds(editingData.content);
+    }
+  }, [editingData?.content]);
+
   // Broadcast changes when editingData changes
   useEffect(() => {
     if (editingData && !isRemoteUpdate.current && broadcastRef.current) {
-      broadcastRef.current.send({
-        type: 'broadcast',
-        event: 'editing',
-        payload: {
-          id: editingData.id,
-          data: editingData,
-          senderId: user?.id
-        }
-      });
+      const dataStr = JSON.stringify(editingData);
+      if (dataStr !== lastBroadcastedData.current) {
+        broadcastRef.current.send({
+          type: 'broadcast',
+          event: 'editing',
+          payload: {
+            id: editingData.id,
+            data: editingData,
+            senderId: user?.id
+          }
+        });
+        lastBroadcastedData.current = dataStr;
+      }
     }
   }, [editingData]);
 
@@ -180,6 +273,19 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       showToast("Erro ao salvar.");
     } else {
       showToast("Salvo com sucesso!");
+      
+      // Broadcast save event
+      if (broadcastRef.current) {
+        broadcastRef.current.send({
+          type: 'broadcast',
+          event: 'saved',
+          payload: {
+            id: editingData.id,
+            senderId: user?.id
+          }
+        });
+      }
+
       setIsEditing(false);
       setEditingData(null);
       if (selectedEntry?.id === editingData.id) {
@@ -194,7 +300,8 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       description: "Pequena descrição...",
       content: [],
       is_public: false,
-      order_index: entries.length
+      order_index: entries.length,
+      _id: 'root'
     };
     setEditingData(newEntry);
     setIsEditing(true);
@@ -213,50 +320,45 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     }
   };
 
-  const addBlock = (type, parentArray = null) => {
-    const newBlock = type === 'text' ? { type: 'text', value: '', size: 'normal' } :
-                     type === 'image' ? { type: 'image', url: '', caption: '', size: 'medium' } :
-                     type === 'tabs' ? { type: 'tabs', items: [{ title: 'Nova Aba', content: [] }] } : null;
+  const addBlock = (type, parentId = 'root') => {
+    const newBlock = type === 'text' ? { type: 'text', value: '', size: 'normal', _id: Math.random().toString(36).substr(2, 9) } :
+                     type === 'image' ? { type: 'image', url: '', caption: '', size: 'medium', _id: Math.random().toString(36).substr(2, 9) } :
+                     type === 'tabs' ? { type: 'tabs', items: [{ title: 'Nova Aba', content: [], _id: Math.random().toString(36).substr(2, 9) }], _id: Math.random().toString(36).substr(2, 9) } : null;
     
-    if (parentArray && Array.isArray(parentArray)) {
-      parentArray.push(newBlock);
-      setEditingData({ ...editingData });
-    } else {
-      setEditingData({ ...editingData, content: [...(editingData.content || []), newBlock] });
-    }
+    updateStateDeep(clone => {
+      if (parentId === 'root') {
+        if (!clone.content) clone.content = [];
+        clone.content.push(newBlock);
+      } else {
+        const arr = findArrayById(clone, parentId);
+        if (arr) arr.push(newBlock);
+      }
+    });
   };
 
-  const moveBlock = (arr, from, to) => {
-    if (to < 0 || to >= arr.length) return;
-    const [moved] = arr.splice(from, 1);
-    arr.splice(to, 0, moved);
-    setEditingData({ ...editingData });
+  const moveBlock = (parentId, from, to) => {
+    updateStateDeep(clone => {
+      let arr;
+      if (parentId === 'root') {
+        arr = clone.content;
+      } else {
+        // ParentId could be a Tab Block ID (for reordering tabs) or a Tab Item ID (for reordering nested blocks)
+        const parent = findBlockById(clone, parentId);
+        if (parent && parent.type === 'tabs') {
+          arr = parent.items;
+        } else {
+          arr = findArrayById(clone, parentId);
+        }
+      }
+      
+      if (!arr || to < 0 || to >= arr.length) return;
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+    });
   };
 
-  const moveBlockToTab = (fromArr, fromIdx, targetTabItem) => {
-    if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
-    const [moved] = fromArr.splice(fromIdx, 1);
-    targetTabItem.content.push(moved);
-    setOpenInMenu(null);
-    setEditingData({ ...editingData });
-  };
-
-  const moveBlockOutOfTab = (fromArr, fromIdx, toArr) => {
-    const [moved] = fromArr.splice(fromIdx, 1);
-    toArr.push(moved);
-    setEditingData({ ...editingData });
-  };
-
-  const moveTabToTab = (fromArr, fromIdx, targetTabItem) => {
-    if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
-    const [moved] = fromArr.splice(fromIdx, 1);
-    targetTabItem.content.push({ type: 'tabs', items: [moved] });
-    setOpenInMenu(null);
-    setEditingData({ ...editingData });
-  };
-
-  const handleDragStart = (e, block, idx, parentArray) => {
-    setDraggedItem({ block, idx, parentArray });
+  const handleDragStart = (e, block, idx, parentId) => {
+    setDraggedItem({ blockId: block._id, index: idx, parentId });
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -265,98 +367,93 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
     if (targetId) setDragOverTab(targetId);
   };
 
-  const handleDrop = (e, targetArray, targetTabItem = null, targetIdx = null) => {
+  const handleDrop = (e, targetId, targetIdx = null) => {
     e.preventDefault();
     setDragOverTab(null);
     setDragOverIdx(null);
-    if (!draggedItem || !Array.isArray(targetArray)) return;
+    if (!draggedItem) return;
 
-    const { idx: fromIdx, parentArray: fromArray } = draggedItem;
-    if (!Array.isArray(fromArray) || fromIdx < 0 || fromIdx >= fromArray.length) return;
+    const { blockId, index: fromIdx, parentId: fromId } = draggedItem;
 
-    const [moved] = fromArray.splice(fromIdx, 1);
-    if (!moved) {
-      setEditingData({ ...editingData });
-      setDraggedItem(null);
-      return;
-    }
+    updateStateDeep(clone => {
+      const fromArr = fromId === 'root' ? clone.content : (findBlockById(clone, fromId)?.items || findArrayById(clone, fromId));
+      const targetArr = targetId === 'root' ? clone.content : (findBlockById(clone, targetId)?.items || findArrayById(clone, targetId));
+      
+      if (!fromArr || !targetArr) return;
 
-    // Case 1: Dropping into a tab
-    if (targetTabItem) {
-      if (!Array.isArray(targetTabItem.content)) targetTabItem.content = [];
-      targetTabItem.content.push(moved);
-    } 
-    // Case 2: Dropping onto the root container (not on a specific block)
-    else if (targetIdx === null) {
-      targetArray.push(moved);
-    }
-    // Case 3: Dropping onto a specific block (reordering)
-    else {
-      targetArray.splice(targetIdx, 0, moved);
-    }
+      const [moved] = fromArr.splice(fromIdx, 1);
+      if (!moved) return;
 
-    setEditingData({ ...editingData });
+      if (targetIdx === null) {
+        targetArr.push(moved);
+      } else {
+        targetArr.splice(targetIdx, 0, moved);
+      }
+    });
+
     setDraggedItem(null);
   };
 
-  const renderAddBlockButtons = (targetArray, isNested = false) => (
+  const renderAddBlockButtons = (parentId = 'root', isNested = false) => (
     <div className={`flex gap-4 p-6 bg-zinc-900/50 rounded-[2.5rem] border border-dashed border-zinc-800 justify-center ${isNested ? 'p-4 rounded-2xl gap-2' : ''}`}>
-       <button onClick={() => addBlock('text', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+       <button onClick={() => addBlock('text', parentId)} className="flex flex-col items-center gap-2 group/btn">
           <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>📝</div>
           <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Texto</span>
        </button>
-       <button onClick={() => addBlock('image', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+       <button onClick={() => addBlock('image', parentId)} className="flex flex-col items-center gap-2 group/btn">
           <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>🖼️</div>
           <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Imagem</span>
        </button>
-       <button onClick={() => addBlock('tabs', targetArray)} className="flex flex-col items-center gap-2 group/btn">
+       <button onClick={() => addBlock('tabs', parentId)} className="flex flex-col items-center gap-2 group/btn">
           <div className={`${isNested ? 'w-10 h-10' : 'w-12 h-12'} bg-zinc-950 rounded-2xl flex items-center justify-center border border-zinc-800 group-hover/btn:border-red-600 transition-all group-hover/btn:scale-110`}>📑</div>
           <span className={`${isNested ? 'text-[7px]' : 'text-[8px]'} font-black uppercase text-zinc-600 group-hover/btn:text-zinc-300 tracking-widest`}>Abas</span>
        </button>
     </div>
   );
 
-  const renderBlockEditor = (block, idx, parentArray, isNested = false) => {
+  const renderBlockEditor = (block, idx, parentId = 'root', isNested = false) => {
     if (!block) return null;
-    const blockId = `${isNested ? 'nested' : 'root'}-${idx}`;
+    const blockRefId = `${isNested ? 'nested' : 'root'}-${idx}`;
     return (
       <div 
-        key={idx} 
+        key={block._id || idx} 
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (draggedItem && draggedItem.block !== block) {
-            setDragOverIdx(blockId);
+          if (draggedItem && draggedItem.blockId !== block._id) {
+            setDragOverIdx(blockRefId);
           }
         }}
         onDragLeave={() => setDragOverIdx(null)}
         onDrop={(e) => {
           e.stopPropagation();
-          handleDrop(e, parentArray, null, idx);
+          handleDrop(e, parentId, idx);
         }}
         className={`relative group/block p-6 rounded-3xl border transition-all ${
-          draggedItem?.block === block ? 'opacity-40 border-dashed border-zinc-500 scale-[0.98] bg-white/5' : 
-          dragOverIdx === blockId ? 'border-red-600 bg-red-600/10 scale-[1.02] shadow-[0_0_20px_rgba(220,38,38,0.1)] z-10' : 'border-white/5 bg-white/5'
+          draggedItem?.blockId === block._id ? 'opacity-40 border-dashed border-zinc-500 scale-[0.98] bg-white/5' : 
+          dragOverIdx === blockRefId ? 'border-red-600 bg-red-600/10 scale-[1.02] shadow-[0_0_20px_rgba(220,38,38,0.1)] z-10' : 'border-white/5 bg-white/5'
         }`}
       >
         <div className="absolute -left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-all flex flex-col gap-1 z-20">
           <div 
             draggable 
-            onDragStart={(e) => handleDragStart(e, block, idx, parentArray)}
+            onDragStart={(e) => handleDragStart(e, block, idx, parentId)}
             onDragEnd={() => { setDraggedItem(null); setDragOverIdx(null); }}
             className="bg-zinc-700 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[10px] flex items-center justify-center shadow-lg border border-white/10"
             title="Segure para arrastar e soltar em uma aba ou fora dela"
           >
             ⣿
           </div>
-          <button onClick={() => moveBlock(parentArray, idx, idx - 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▲</button>
-          <button onClick={() => moveBlock(parentArray, idx, idx + 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▼</button>
+          <button onClick={() => moveBlock(parentId, idx, idx - 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▲</button>
+          <button onClick={() => moveBlock(parentId, idx, idx + 1)} className="bg-zinc-800 p-1 rounded hover:bg-red-600 text-[10px]">▼</button>
         </div>
 
         <button 
           onClick={() => {
-            parentArray.splice(idx, 1);
-            setEditingData({...editingData});
+            updateStateDeep(clone => {
+              const arr = parentId === 'root' ? clone.content : findArrayById(clone, parentId);
+              if (arr) arr.splice(idx, 1);
+            });
           }}
           className="absolute -right-3 -top-3 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs opacity-0 group-hover/block:opacity-100 transition-all z-10"
         >
@@ -370,8 +467,10 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                 <button 
                   key={s}
                   onClick={() => {
-                    block.size = s;
-                    setEditingData({...editingData});
+                    updateStateDeep(clone => {
+                      const b = findBlockById(clone, block._id);
+                      if (b) b.size = s;
+                    });
                   }}
                   className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
                 >
@@ -382,8 +481,11 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             <textarea
               value={block.value}
               onChange={(e) => {
-                block.value = e.target.value;
-                setEditingData({...editingData});
+                const val = e.target.value;
+                updateStateDeep(clone => {
+                   const b = findBlockById(clone, block._id);
+                   if (b) b.value = val;
+                });
               }}
               className={`w-full bg-transparent border-none outline-none text-zinc-200 placeholder:text-zinc-700 resize-none overflow-hidden ${
                 block.size === 'Title' ? 'text-3xl font-black italic uppercase tracking-tighter text-white' : 
@@ -402,8 +504,10 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                 <button 
                   key={s}
                   onClick={() => {
-                    block.size = s;
-                    setEditingData({...editingData});
+                    updateStateDeep(clone => {
+                      const b = findBlockById(clone, block._id);
+                      if (b) b.size = s;
+                    });
                   }}
                   className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border transition-all ${block.size === s ? 'bg-red-600 border-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}
                 >
@@ -414,8 +518,11 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             <input
               value={block.url}
               onChange={(e) => {
-                block.url = e.target.value;
-                setEditingData({...editingData});
+                const val = e.target.value;
+                updateStateDeep(clone => {
+                   const b = findBlockById(clone, block._id);
+                   if (b) b.url = val;
+                });
               }}
               className="w-full bg-zinc-950/50 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-400 outline-none"
               placeholder="Link da Imagem (URL)..."
@@ -432,8 +539,11 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             <input
               value={block.caption}
               onChange={(e) => {
-                block.caption = e.target.value;
-                setEditingData({...editingData});
+                const val = e.target.value;
+                updateStateDeep(clone => {
+                   const b = findBlockById(clone, block._id);
+                   if (b) b.caption = val;
+                });
               }}
               className="w-full bg-transparent border-none text-[10px] text-zinc-500 italic outline-none text-center"
               placeholder="Legenda da imagem (opcional)"
@@ -446,19 +556,35 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
             <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-4">Abas Expansíveis</p>
             {block.items.map((item, tIdx) => (
               <div 
-                key={tIdx} 
-                onDragOver={(e) => handleDragOver(e, `${idx}-${tIdx}`)}
-                onDragLeave={() => setDragOverTab(null)}
-                onDrop={(e) => handleDrop(e, item.content, item)}
-                className={`p-6 rounded-2xl border transition-all space-y-4 ${dragOverTab === `${idx}-${tIdx}` ? 'bg-red-600/20 border-red-600 shadow-lg scale-[1.01]' : 'bg-black/40 border-white/5'}`}
+                key={item._id || tIdx} 
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (draggedItem && draggedItem.parentId === block._id && draggedItem.blockId !== item._id) {
+                    setDragOverIdx(`tab-${block._id}-${tIdx}`);
+                  }
+                }}
+                onDragLeave={() => setDragOverIdx(null)}
+                onDrop={(e) => {
+                  e.stopPropagation();
+                  if (draggedItem?.parentId === block._id) {
+                    moveBlock(block._id, draggedItem.index, tIdx);
+                  } else {
+                    handleDrop(e, item._id, null);
+                  }
+                }}
+                className={`p-6 rounded-2xl border transition-all space-y-4 ${
+                  dragOverIdx === `tab-${block._id}-${tIdx}` ? 'border-red-600 bg-red-600/10 scale-[1.01]' : 
+                  draggedItem?.blockId === item._id ? 'opacity-40 border-dashed border-zinc-500' : 'bg-black/40 border-white/5'
+                }`}
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3 w-1/2">
                     <div 
                       draggable 
-                      onDragStart={(e) => handleDragStart(e, item, tIdx, block.items)}
+                      onDragStart={(e) => handleDragStart(e, item, tIdx, block._id)}
                       onDragEnd={() => { setDraggedItem(null); setDragOverIdx(null); }}
-                      className="bg-zinc-800 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[8px] flex items-center justify-center border border-white/5"
+                      className="bg-zinc-800 p-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-red-600 text-[8px] flex items-center justify-center border border-white/10 shadow-lg"
                       title="Segure para reordenar esta aba"
                     >
                       ⣿
@@ -466,20 +592,25 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                     <input 
                       value={item.title}
                       onChange={(e) => {
-                        item.title = e.target.value;
-                        setEditingData({...editingData});
+                        const val = e.target.value;
+                        updateStateDeep(clone => {
+                           const parent = findBlockById(clone, block._id);
+                           if (parent && parent.items[tIdx]) parent.items[tIdx].title = val;
+                        });
                       }}
                       className="bg-transparent border-none text-sm font-black uppercase text-zinc-300 outline-none w-full"
                       placeholder="Título da Aba"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => moveBlock(block.items, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
-                    <button onClick={() => moveBlock(block.items, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
+                    <button onClick={() => moveBlock(block._id, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
+                    <button onClick={() => moveBlock(block._id, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
                     <button 
                       onClick={() => {
-                        block.items.splice(tIdx, 1);
-                        setEditingData({...editingData});
+                        updateStateDeep(clone => {
+                          const parent = findBlockById(clone, block._id);
+                          if (parent && parent.items) parent.items.splice(tIdx, 1);
+                        });
                       }}
                       className="text-red-900 hover:text-red-600 text-xs font-black uppercase tracking-widest ml-4"
                     >
@@ -488,24 +619,42 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                   </div>
                 </div>
                 
-                <div className="space-y-4 pt-4 border-t border-white/5">
+                <div 
+                  className={`space-y-4 pt-4 border-t border-white/5 min-h-[50px] transition-all ${dragOverTab === `${block._id}-${tIdx}` ? 'bg-red-600/20 rounded-xl p-2' : ''}`}
+                  onDragOver={(e) => {
+                    if (draggedItem && draggedItem.parentId !== block._id) {
+                      handleDragOver(e, `${block._id}-${tIdx}`);
+                    }
+                  }}
+                  onDragLeave={() => setDragOverTab(null)}
+                  onDrop={(e) => {
+                    e.stopPropagation();
+                    if (draggedItem?.parentId !== block._id) {
+                      handleDrop(e, item._id, null);
+                    }
+                  }}
+                >
                   {!Array.isArray(item.content) && (
                     <div className="text-[10px] text-zinc-600 italic p-2 border border-zinc-800 rounded bg-black/20 mb-4">
                       Conteúdo antigo detectado. Adicione novos blocos para converter.
                     </div>
                   )}
                   {Array.isArray(item.content) && item.content.map((nestedBlock, nIdx) => (
-                    renderBlockEditor(nestedBlock, nIdx, item.content, true)
+                    renderBlockEditor(nestedBlock, nIdx, item._id, true)
                   ))}
                   
-                  {renderAddBlockButtons(item.content, true)}
+                  {renderAddBlockButtons(item._id, true)}
                 </div>
               </div>
             ))}
             <button 
               onClick={() => {
-                block.items.push({ title: 'Nova Aba', content: [] });
-                setEditingData({...editingData});
+                updateStateDeep(clone => {
+                  const parent = findBlockById(clone, block._id);
+                  if (parent && parent.items) {
+                    parent.items.push({ title: 'Nova Aba', content: [], _id: Math.random().toString(36).substr(2, 9) });
+                  }
+                });
               }}
               className="w-full py-3 border-2 border-dashed border-zinc-800 rounded-2xl text-[10px] font-black text-zinc-600 hover:border-zinc-700 hover:text-zinc-400 transition-all uppercase"
             >
@@ -673,15 +822,15 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                  <div className="max-w-4xl mx-auto space-y-8 pb-20">
                     {isEditing ? (
                       <div 
-                        className={`space-y-6 min-h-[400px] transition-all rounded-3xl p-4 ${draggedItem && draggedItem.parentArray !== editingData.content ? 'bg-white/5 border-2 border-dashed border-zinc-800' : ''}`}
+                        className={`space-y-6 min-h-[400px] transition-all rounded-3xl p-4 ${draggedItem && draggedItem.parentId !== 'root' ? 'bg-white/5 border-2 border-dashed border-zinc-800' : ''}`}
                         onDragOver={(e) => handleDragOver(e)}
-                        onDrop={(e) => handleDrop(e, editingData.content)}
+                        onDrop={(e) => handleDrop(e, 'root')}
                       >
                         {editingData.content?.map((block, bIdx) => (
-                          renderBlockEditor(block, bIdx, editingData.content)
+                          renderBlockEditor(block, bIdx, 'root')
                         ))}
-                        {renderAddBlockButtons(editingData.content)}
-                        {draggedItem && draggedItem.parentArray !== editingData.content && (
+                        {renderAddBlockButtons('root')}
+                        {draggedItem && draggedItem.parentId !== 'root' && (
                           <div className="text-center py-4 text-[10px] font-black uppercase text-zinc-600 animate-pulse">
                             Solte aqui para mover para fora da aba
                           </div>

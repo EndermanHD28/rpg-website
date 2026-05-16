@@ -1,13 +1,19 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { LINHAGENS, RESPIRACOES, CORES } from '../constants/gameData';
+import { LINHAGENS, RESPIRACOES, CORES, LINHAGENS_RARITIES, SLOT_MACHINE_RARITY_PERCENTAGES, RARITY_CONFIG } from '../constants/gameData';
 
 export default function SlotMachineTab({ user, isMaster, allPlayers, showToast, playSound }) {
   const [targetType, setTargetType] = useState('Linhagens');
   const [playerNameInput, setPlayerNameInput] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isSpinning, setIsSpinning] = useState(false);
+  const isSpinningRef = useRef(false);
+
+  const updateSpinning = (val) => {
+    setIsSpinning(val);
+    isSpinningRef.current = val;
+  };
   const [isAnimating, setIsAnimating] = useState(false);
   const [reel, setReel] = useState([]);
   const [offset, setOffset] = useState(0);
@@ -47,16 +53,14 @@ export default function SlotMachineTab({ user, isMaster, allPlayers, showToast, 
     const channel = supabase.channel('slot_machine_realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'global', filter: 'id=eq.1' }, (payload) => {
         const newData = payload.new;
-        const oldData = payload.old;
         setGlobalState(newData);
 
-        if (newData.slot_machine_is_spinning && !oldData?.slot_machine_is_spinning) {
+        if (newData.slot_machine_is_spinning && !isSpinningRef.current) {
           prepareAndStartAnimation(newData.slot_machine_result, newData.slot_machine_target);
         }
 
-        // Quando o sorteio para no banco, ajustamos a roleta para mostrar os 3 itens
-        if (!newData.slot_machine_is_spinning && oldData?.slot_machine_is_spinning) {
-          setIsSpinning(false);
+        if (!newData.slot_machine_is_spinning) {
+          updateSpinning(false);
           setIsAnimating(false);
           const windowReel = getResultWindow(newData.slot_machine_result, newData.slot_machine_target);
           setReel(windowReel);
@@ -69,31 +73,50 @@ export default function SlotMachineTab({ user, isMaster, allPlayers, showToast, 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
- const prepareAndStartAnimation = (finalResult, type) => {
-  const options = TARGET_OPTIONS[type] || [];
-  if (options.length === 0) return;
+  const prepareAndStartAnimation = (finalResult, type) => {
+    const options = TARGET_OPTIONS[type] || [];
+    if (options.length === 0) return;
 
-  setIsSpinning(true);
-  setIsAnimating(false);
-  setOffset(0);
-  setWinnerIndex(null);
+    updateSpinning(true);
+    setIsAnimating(false);
+    setOffset(0);
+    setWinnerIndex(null);
 
-  let fullList = [];
-  const loopsCount = 8; 
-  for (let i = 0; i < loopsCount; i++) {
-    fullList = [...fullList, ...[...options].sort(() => Math.random() - 0.5)];
-  }
+    let fullList = [];
+    const loopsCount = 8; 
+    for (let i = 0; i < loopsCount; i++) {
+      if (type === 'Linhagens') {
+        const biasedSample = [];
+        for (let j = 0; j < options.length; j++) {
+          const roll = Math.random() * 100;
+          let selectedRarity = 'Comum';
+          let cumulative = 0;
+          for (const [rarity, percentage] of Object.entries(SLOT_MACHINE_RARITY_PERCENTAGES)) {
+            cumulative += percentage;
+            if (roll <= cumulative) {
+              selectedRarity = rarity;
+              break;
+            }
+          }
+          const rarityOptions = options.filter(opt => LINHAGENS_RARITIES[opt] === selectedRarity);
+          biasedSample.push(rarityOptions[Math.floor(Math.random() * rarityOptions.length)] || options[0]);
+        }
+        fullList = [...fullList, ...biasedSample];
+      } else {
+        fullList = [...fullList, ...[...options].sort(() => Math.random() - 0.5)];
+      }
+    }
 
-  const stopSegmentStart = fullList.length;
+    const stopSegmentStart = fullList.length;
 
-  // AJUSTE AQUI: Adicionamos a lista original + os primeiros 5 itens dela novamente
-  // Isso garante que sempre haja conteúdo visual "abaixo" do último item
-  fullList = [...fullList, ...options, ...options.slice(0, 5)];
-  
-  const resultIdxInOptions = options.indexOf(finalResult);
-  const targetIdx = stopSegmentStart + resultIdxInOptions;
-  
-  setReel(fullList);
+    // RANDOMIZE FINAL SEGMENT TO AVOID SEQUENTIAL RARITY
+    const shuffledOptions = [...options].sort(() => Math.random() - 0.5);
+    fullList = [...fullList, ...shuffledOptions, ...shuffledOptions.slice(0, 5)];
+    
+    const resultIdxInOptions = shuffledOptions.indexOf(finalResult);
+    const targetIdx = stopSegmentStart + resultIdxInOptions;
+    
+    setReel(fullList);
 
   setTimeout(() => {
     setIsAnimating(true);
@@ -115,7 +138,33 @@ export default function SlotMachineTab({ user, isMaster, allPlayers, showToast, 
     if (!isMaster || isSpinning || !selectedPlayer) return;
 
     const options = TARGET_OPTIONS[targetType];
-    const finalResult = options[Math.floor(Math.random() * options.length)];
+    let finalResult;
+
+    if (targetType === 'Linhagens') {
+      const roll = Math.random() * 100;
+      let selectedRarity = 'Comum';
+      let cumulative = 0;
+      
+      // Sorted entries to ensure consistent cumulative calculation
+      const entries = Object.entries(SLOT_MACHINE_RARITY_PERCENTAGES);
+      for (const [rarity, percentage] of entries) {
+        cumulative += percentage;
+        if (roll <= cumulative) {
+          selectedRarity = rarity;
+          break;
+        }
+      }
+
+      const rarityOptions = options.filter(opt => LINHAGENS_RARITIES[opt] === selectedRarity);
+      // Fallback in case filter fails for some reason (shouldn't happen)
+      if (rarityOptions.length > 0) {
+        finalResult = rarityOptions[Math.floor(Math.random() * rarityOptions.length)];
+      } else {
+        finalResult = options[Math.floor(Math.random() * options.length)];
+      }
+    } else {
+      finalResult = options[Math.floor(Math.random() * options.length)];
+    }
 
     playSound('random_button');
 
@@ -194,18 +243,24 @@ export default function SlotMachineTab({ user, isMaster, allPlayers, showToast, 
             >
               {reel.map((item, i) => {
                 const isWinner = i === winnerIndex;
-                // MUDANÇA AQUI: Brilha se for o vencedor e a animação de movimento parou
                 const showHighlight = isWinner && !isAnimating;
+                
+                const itemRarity = targetType === 'Linhagens' ? LINHAGENS_RARITIES[item] : null;
+                const rarityColor = itemRarity ? RARITY_CONFIG[itemRarity]?.color : (showHighlight ? 'text-white' : 'text-zinc-500');
 
                 return (
-                  <div key={i} className="flex items-center justify-center w-full shrink-0 h-[100px]">
+                  <div key={i} className="flex flex-col items-center justify-center w-full shrink-0 h-[100px]">
                     <span className={`uppercase italic font-black text-4xl transition-all duration-700 
-  ${showHighlight
-                        ? 'text-white scale-125 drop-shadow-[0_0_15px_rgba(255,255,255,0.6)] opacity-100'
-                        : 'text-zinc-500 scale-90 opacity-50'} 
-  ${isAnimating ? 'blur-[1px]' : 'blur-0'}`}>
+                      ${showHighlight ? 'scale-125 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] opacity-100' : 'scale-90 opacity-50'} 
+                      ${isAnimating ? 'blur-[1px]' : 'blur-0'}
+                      ${rarityColor}`}>
                       {item}
                     </span>
+                    {showHighlight && itemRarity && (
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] animate-in fade-in slide-in-from-top-1 duration-700 ${rarityColor}`}>
+                        {itemRarity}
+                      </span>
+                    )}
                   </div>
                 );
               })}
