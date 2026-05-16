@@ -343,17 +343,35 @@ export const EFFECTS = {
     description: "Reduz a vida em 10% por turno. Reduz a Precisão em 15%.",
     modifiers: { hpReductionTurn: 0.10, precision: 0.85 }
   },
-  "eletrification": {
+  "electrification": {
     name: "Eletrificação",
     emoji: "⚡",
     description: "Ao atingir 40% do HP ou menos, torna-se Eletrificação Avançada por 2 turnos. Reduz a vida em 5% por turno.",
-    modifiers: { hpReductionTurn: 0.05, triggerAdvancedEletrification: 0.40 }
+    modifiers: { hpReductionTurn: 0.05, triggerAdvancedelectrification: 0.40 }
   },
-  "advanced-eletrification": {
+  "advanced-electrification": {
     name: "Eletrificação Avançada",
     emoji: "⚡🔺",
     description: "Todo desvio falho ou acerto sucedido reduz a vida em 10%. Reduz a vida em 10% por turno.",
-    modifiers: { hpReductionTurn: 0.10, eventLifeReduction: 0.10 }
+    modifiers: { hpReductionTurn: 0.10 }
+  },
+  "stunned": {
+    name: "Atordoado",
+    emoji: "💤",
+    description: "Todo ataque com o usuário como alvo é garantido. O usuário perde seu turno.",
+    modifiers: { }
+  },
+  "fury": {
+    name: "Fúria",
+    emoji: "💢",
+    description: "Reduz o Dado de Acerto e o Dado de Desvio em 15%. Aumenta o Dado Final em 25%. Reduz o Dado Tomado em 25%.",
+    modifiers: { acerto: 0.85, desvio: 0.85, damage: 1.25, damageTaken: 0.75 }
+  },
+  "inspiration": {
+    name: "Inspiração",
+    emoji: "✨",
+    description: "Aumenta o Dado de Acerto em 10%. Aumenta a Vida e a Vida Máxima em 15%. Aumenta o Foco Máximo em 15%. Aumenta o Foco em 25.",
+    modifiers: { acerto: 1.1, maxLife: 1.15, hpRegen: 0.15, maxFocus: 1.15, fixedFocusRegen: 25 }
   }
 };
 
@@ -387,11 +405,11 @@ export const EFFECT_ALIASES = {
   "queimadura": "burning",
   "fogo": "burning",
   "fire": "burning",
-  "eletrification": "eletrification",
-  "eletrificacao": "eletrification",
-  "eletricidade": "eletrification",
-  "choque": "eletrification",
-  "shock": "eletrification",
-  "advanced-eletrification": "advanced-eletrification",
-  "eletrificacao-avancada": "advanced-eletrification"
+  "electrification": "electrification",
+  "eletrificacao": "electrification",
+  "eletricidade": "electrification",
+  "choque": "electrification",
+  "shock": "electrification",
+  "advanced-electrification": "advanced-electrification",
+  "eletrificacao-avancada": "advanced-electrification"
 };

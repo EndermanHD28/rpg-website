@@ -12,6 +12,7 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
   const [editingData, setEditingData] = useState(null);
   const [isEditor, setIsEditor] = useState(false);
   const [almanaqueEditors, setAlmanaqueEditors] = useState("");
+  const [expandedEditorTabs, setExpandedEditorTabs] = useState({}); // { tabId: boolean }
   const [openInMenu, setOpenInMenu] = useState(null); // { bIdx, nIdx } or { bIdx }
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverTab, setDragOverTab] = useState(null);
@@ -262,14 +263,18 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
       return;
     }
 
+    // Clean up data for Supabase - remove _id and other potential non-db fields
+    const { _id, ...saveData } = editingData;
+
     const { error } = await supabase
       .from('almanaque_entries')
       .upsert({
-        ...editingData,
+        ...saveData,
         updated_at: new Date().toISOString()
       });
 
     if (error) {
+      console.error("Save almanaque entry error:", error);
       showToast("Erro ao salvar.");
     } else {
       showToast("Salvo com sucesso!");
@@ -554,7 +559,9 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
         {block.type === 'tabs' && (
           <div className="space-y-6">
             <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-4">Abas Expansíveis</p>
-            {block.items.map((item, tIdx) => (
+            {block.items.map((item, tIdx) => {
+              const isExpanded = !!expandedEditorTabs[item._id];
+              return (
               <div 
                 key={item._id || tIdx} 
                 onDragOver={(e) => {
@@ -602,9 +609,22 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                       placeholder="Título da Aba"
                     />
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => moveBlock(block._id, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
-                    <button onClick={() => moveBlock(block._id, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => {
+                        setExpandedEditorTabs(prev => ({
+                          ...prev,
+                          [item._id]: !isExpanded
+                        }));
+                      }}
+                      className={`text-[9px] font-black uppercase px-3 py-1 rounded-full border transition-all ${isExpanded ? 'bg-red-600 border-red-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                      {isExpanded ? 'Shrink' : 'Expand'}
+                    </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => moveBlock(block._id, tIdx, tIdx - 1)} className="text-zinc-600 hover:text-white text-[10px]">▲</button>
+                      <button onClick={() => moveBlock(block._id, tIdx, tIdx + 1)} className="text-zinc-600 hover:text-white text-[10px]">▼</button>
+                    </div>
                     <button 
                       onClick={() => {
                         updateStateDeep(clone => {
@@ -619,34 +639,36 @@ export default function AlmanaqueTab({ user, isMaster, showToast, playSound }) {
                   </div>
                 </div>
                 
-                <div 
-                  className={`space-y-4 pt-4 border-t border-white/5 min-h-[50px] transition-all ${dragOverTab === `${block._id}-${tIdx}` ? 'bg-red-600/20 rounded-xl p-2' : ''}`}
-                  onDragOver={(e) => {
-                    if (draggedItem && draggedItem.parentId !== block._id) {
-                      handleDragOver(e, `${block._id}-${tIdx}`);
-                    }
-                  }}
-                  onDragLeave={() => setDragOverTab(null)}
-                  onDrop={(e) => {
-                    e.stopPropagation();
-                    if (draggedItem?.parentId !== block._id) {
-                      handleDrop(e, item._id, null);
-                    }
-                  }}
-                >
-                  {!Array.isArray(item.content) && (
-                    <div className="text-[10px] text-zinc-600 italic p-2 border border-zinc-800 rounded bg-black/20 mb-4">
-                      Conteúdo antigo detectado. Adicione novos blocos para converter.
-                    </div>
-                  )}
-                  {Array.isArray(item.content) && item.content.map((nestedBlock, nIdx) => (
-                    renderBlockEditor(nestedBlock, nIdx, item._id, true)
-                  ))}
-                  
-                  {renderAddBlockButtons(item._id, true)}
-                </div>
+                {isExpanded && (
+                  <div 
+                    className={`space-y-4 pt-4 border-t border-white/5 min-h-[50px] transition-all ${dragOverTab === `${block._id}-${tIdx}` ? 'bg-red-600/20 rounded-xl p-2' : ''}`}
+                    onDragOver={(e) => {
+                      if (draggedItem && draggedItem.parentId !== block._id) {
+                        handleDragOver(e, `${block._id}-${tIdx}`);
+                      }
+                    }}
+                    onDragLeave={() => setDragOverTab(null)}
+                    onDrop={(e) => {
+                      e.stopPropagation();
+                      if (draggedItem?.parentId !== block._id) {
+                        handleDrop(e, item._id, null);
+                      }
+                    }}
+                  >
+                    {!Array.isArray(item.content) && (
+                      <div className="text-[10px] text-zinc-600 italic p-2 border border-zinc-800 rounded bg-black/20 mb-4">
+                        Conteúdo antigo detectado. Adicione novos blocos para converter.
+                      </div>
+                    )}
+                    {Array.isArray(item.content) && item.content.map((nestedBlock, nIdx) => (
+                      renderBlockEditor(nestedBlock, nIdx, item._id, true)
+                    ))}
+                    
+                    {renderAddBlockButtons(item._id, true)}
+                  </div>
+                )}
               </div>
-            ))}
+            );})}
             <button 
               onClick={() => {
                 updateStateDeep(clone => {

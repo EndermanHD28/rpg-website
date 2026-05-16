@@ -99,24 +99,25 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         // 2. Send the Breathing Move layout card NOW
         await supabase.from('messages').insert({
           player_name: "SISTEMA",
-          content: `BREATHING_MOVE|${skillId}|${skillName}|${cost}|${targetingRoll.input}|${effectDesc}|0|${rollerChar.char_name || rollerChar.name}|none`,
+          content: `BREATHING_MOVE|${skillId}|${skillName}|${cost}|${targetingRoll.input}|${effectDesc}|${diceResult.total}|${rollerChar.char_name || rollerChar.name}|${targetPlayer ? targetPlayer.id : 'none'}`,
           is_system: true
         });
 
-        // 3. Apply status effects if hit
-        if (diceResult.status !== 'Desastre') {
-          const targetChar = targetPlayer;
-          if (targetChar) {
-            const { EFFECTS } = await import('../constants/gameData');
-            const currentEffects = Array.isArray(targetChar.effects) ? targetChar.effects : [];
-            let effectToAdd = null;
-            
-            
-            if (effectToAdd) {
-              const newEffects = [...currentEffects, effectToAdd];
-              await supabase.from(targetChar.is_npc ? 'npcs' : 'characters').update({ effects: newEffects }).eq('id', targetChar.is_npc ? targetChar.dbId : targetChar.id);
-            }
-          }
+        // 3. Apply post-roll logic from skill if exists
+        const { BREATHING_TREES, EFFECTS } = await import('../constants/gameData');
+        const tree = BREATHING_TREES[rollerChar.breathing_style];
+        const skill = tree?.skills.find(s => s.id === skillId);
+
+        if (skill?.logic?.postRoll) {
+          await skill.logic.postRoll({ 
+            result: diceResult, 
+            rollerChar, 
+            targetChar: targetPlayer, 
+            supabase, 
+            calculateDerivedStats, 
+            showToast, 
+            EFFECTS 
+          });
         }
       }
     }

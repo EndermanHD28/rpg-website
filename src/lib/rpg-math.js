@@ -543,14 +543,21 @@ export function rollDice(expression, charContext = null) {
       total *= focusBuff;
     }
     
-    // Skill 2a: Furacão Elétrico (+25% + 3% per Lvl after 1)
-    const effects = Array.isArray(charContext.effects) ? charContext.effects : [];
-    const has2a = Array.isArray(charContext.breathing_skills) && charContext.breathing_skills.includes('skill_2a');
-    const isElectrified = effects.some(e => e.name === 'Eletrificação' || e.name === 'Eletrificação Avançada');
-    if (has2a && isElectrified) {
-        const bLvl = charContext.breathing_lvl || 1;
-        const extraDmg = 0.25 + (Math.max(0, bLvl - 1) * 0.03);
-        total *= (1 + extraDmg);
+    // Apply Breathing Tree Passive Logic for Damage
+    if (charContext.breathing_style && BREATHING_TREES[charContext.breathing_style]) {
+        const tree = BREATHING_TREES[charContext.breathing_style];
+        const learnedSkills = Array.isArray(charContext.breathing_skills) ? charContext.breathing_skills : [];
+        const bLvlBonus = Math.max(0, (charContext.breathing_lvl || 1) - 1);
+        
+        learnedSkills.forEach(skillId => {
+            const skill = tree.skills.find(s => s.id === skillId);
+            if (skill?.logic?.passiveBuffs) {
+                const buffs = skill.logic.passiveBuffs(charContext, bLvlBonus);
+                if (buffs?.damageBonus) {
+                    total *= (1 + buffs.damageBonus);
+                }
+            }
+        });
     }
   }
 

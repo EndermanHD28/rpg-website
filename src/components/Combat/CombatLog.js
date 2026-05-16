@@ -659,6 +659,22 @@ export default function CombatLog({
     setShowLootSelector(false);
   };
 
+  const parseDiceExpr = (expr, char) => {
+    if (!expr) return "1d20";
+    const bLvl = char?.breathing_lvl || 0;
+    const bLvlBonus = Math.max(0, bLvl - 1);
+    const acerto = calculateAcerto(char);
+
+    if (typeof expr === 'string') {
+        return expr
+          .replace('{acerto}', acerto)
+          .replace('{acertoBonus2}', acerto + (bLvlBonus * 2))
+          .replace('{acertoBonus8Plus3}', acerto + 8 + (bLvlBonus * 3))
+          .replace('{15+bLvlBonus3}', 15 + (bLvlBonus * 3));
+    }
+    return expr;
+  };
+
   const handleBreathingRoll = async (msgId) => {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return;
@@ -685,27 +701,12 @@ export default function CombatLog({
     await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
 
     // --- BREATHING SKILL POST-ROLL EFFECTS ---
-    if (skillId === 'skill_2b' && result.total >= 12) {
-        const { maxFocus } = calculateDerivedStats(rollerChar);
-        
-        // Electrification Effect
-        const electrification = {
-            name: "Eletrificação",
-            emoji: "⚡",
-            description: "Focus ao máximo e buffs de Tempestade.",
-            duration: 3,
-            modifiers: { damage: 1.25, damageTaken: 0.85 }
-        };
+    const { BREATHING_TREES, EFFECTS } = require('../../constants/gameData');
+    const tree = BREATHING_TREES[rollerChar.breathing_style];
+    const skill = tree?.skills.find(s => s.id === skillId);
 
-        const currentEffects = Array.isArray(rollerChar.effects) ? rollerChar.effects : [];
-        const newEffects = [...currentEffects.filter(e => e.name !== "Eletrificação"), electrification];
-
-        await supabase.from('characters').update({
-            current_focus: maxFocus,
-            effects: newEffects
-        }).eq('id', rollerChar.id);
-
-        showToast("Despertar Corrosivo Ativado!");
+    if (skill?.logic?.postRoll) {
+        await skill.logic.postRoll({ result, rollerChar, supabase, calculateDerivedStats, showToast, EFFECTS });
     }
   };
 
@@ -742,17 +743,16 @@ export default function CombatLog({
       return;
     }
 
-    // Dice Expression
+    // Dice Expression and Target handling via new Logic system
     let diceExpr = "1d20";
-    const bLvl = rollerChar?.breathing_lvl || 0;
-    const bLvlBonus = Math.max(0, bLvl - 1);
+    let needsTarget = false;
 
-    if (skill.id === 'skill_2b') diceExpr = "1d20";
-    else if (skill.id === 'skill_1a') diceExpr = `1d${calculateAcerto(rollerChar) + (bLvlBonus * 2)}`;
-    else if (skill.id === 'skill_3a') diceExpr = `1d${calculateAcerto(rollerChar) + 8 + (bLvlBonus * 3)}`;
-    else if (skill.id === 'skill_2c') diceExpr = `1d${calculateAcerto(rollerChar)}`;
-
-    const needsTarget = ['skill_1a', 'skill_2c', 'skill_3a', 'skill_2d'].includes(skill.id);
+    if (skill.logic) {
+      if (skill.logic.diceExpr) {
+        diceExpr = parseDiceExpr(skill.logic.diceExpr, rollerChar);
+      }
+      needsTarget = !!skill.logic.needsTarget;
+    }
     
     if (needsTarget) {
       const diceResult = rollDice(diceExpr, rollerChar);
@@ -1541,6 +1541,10 @@ export default function CombatLog({
                       {group.messages.map((m, mi) => {
                         if (m.content.startsWith('BREATHING_MOVE|')) {
                           const [, skillId, skillName, cost, diceExpr, effectDesc, rollResult, rollerName, targetId] = m.content.split('|');
+                          const { BREATHING_TREES } = require('../../constants/gameData');
+                          const tree = BREATHING_TREES[sender?.breathing_style || 'Tempestade'];
+                          const skill = tree?.skills.find(s => s.id === skillId);
+
                           return (
                             <div key={m.id || `${i}-${mi}`} className="bg-cyan-950/20 border border-cyan-500/30 rounded-2xl p-6 my-2 shadow-[0_0_30px_rgba(6,182,212,0.1)] relative overflow-hidden group/breathing group/message">
                               {isMaster && (
@@ -1569,7 +1573,7 @@ export default function CombatLog({
                                 <p className="text-zinc-300 text-xs leading-relaxed italic" dangerouslySetInnerHTML={{ __html: effectDesc.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400">$1</strong>') }} />
                               </div>
 
-                              {skillId === 'skill_2b' && rollResult === '0' && (
+                              {skill?.logic?.diceExpr && rollResult === '0' && (
                                   <div className="flex flex-col items-center gap-4 py-4 bg-cyan-500/5 border border-cyan-500/10 rounded-2xl mb-4">
                                       <div className="w-full flex items-center justify-center gap-3 px-6">
                                           <input
@@ -1673,7 +1677,38 @@ export default function CombatLog({
                                   let dState = {};
                                   try { dState = JSON.parse(dStateRaw); } catch(e) {}
                                   
-                                  const dmgValue = Number(total);
+                                  const targetId = parts[10];
+                                  const target = combatants.find(c => c.id === targetId);
+                                  let dmgValue = Number(total);
+
+                                  // Passive Breathing Buffs (Generic)
+                                  if (target && target.breathing_style) {
+                                      const { BREATHING_TREES } = require('../../constants/gameData');
+                                      const tree = BREATHING_TREES[target.breathing_style];
+                                      const learnedSkills = Array.isArray(target.breathing_skills) ? target.breathing_skills : [];
+                                      const bLvlBonus = Math.max(0, (target.breathing_lvl || 1) - 1);
+                                      
+                                      learnedSkills.forEach(skillId => {
+                                          const skill = tree?.skills.find(s => s.id === skillId);
+                                          if (skill?.logic?.passiveBuffs) {
+                                              const buffs = skill.logic.passiveBuffs(target, bLvlBonus);
+                                              if (buffs?.damageReduction) {
+                                                  dmgValue *= (1 - buffs.damageReduction);
+                                              }
+                                          }
+                                      });
+                                  }
+
+                                  // Global damageTaken modifier from effects
+                                  if (target) {
+                                      const targetEffects = Array.isArray(target.effects) ? target.effects : [];
+                                      targetEffects.forEach(eff => {
+                                          if (eff.modifiers?.damageTaken) {
+                                              dmgValue *= eff.modifiers.damageTaken;
+                                          }
+                                      });
+                                  }
+
                                   const dNormal = Math.round(dmgValue);
                                   const dLightlyBlocked = Math.round(dmgValue * 0.7);
                                   const dBlocked = Math.round(dmgValue * 0.5);
@@ -2405,10 +2440,15 @@ export default function CombatLog({
                         if (selected) rollerChar = selected;
                       }
 
-                      const bLvl = rollerChar?.breathing_lvl || 1;
-                      const bLvlBonus = Math.max(0, bLvl - 1);
-                      if (rollerChar?.breathing_skills?.includes('skill_1b') && rollerChar.breathing_style === 'Tempestade') {
-                          const diceExpr = `1d10+${15 + (bLvlBonus * 3)}`;
+                      if (!rollerChar?.breathing_style) return null;
+                      const { BREATHING_TREES } = require('../../constants/gameData');
+                      const tree = BREATHING_TREES[rollerChar.breathing_style];
+                      const learnedSkills = Array.isArray(rollerChar.breathing_skills) ? rollerChar.breathing_skills : [];
+                      
+                      const focusDiceSkill = tree?.skills.find(s => learnedSkills.includes(s.id) && s.logic?.isFocusDice);
+                      
+                      if (focusDiceSkill) {
+                          const diceExpr = parseDiceExpr(focusDiceSkill.logic.diceExpr, rollerChar);
                           return (
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-[8px] font-black text-cyan-500 uppercase tracking-tighter ml-1">Dado de Foco</label>
