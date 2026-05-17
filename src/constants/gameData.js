@@ -250,7 +250,7 @@ export const ANOMALIAS_DESCRIPTIONS = {
 };
 
 export const CLASSES_LIST = ["Vanguarda", "Artista", "Atirador", "Assaltante", "Infiltrador"];
-export const SKILLS_LIST = ["Computação", "Programação", "Eletrônica", "Mecânica", "Medicina", "Química"];
+export const SKILLS_LIST = ["Computação Avançada", "Programação Avançada", "Eletrônica Avançada", "Mecânica Avançada", "Medicina Avançada", "Química Avançada", "Ferraria Avançada"];
 
 export const SKILLS_DESCRIPTIONS = {
   "Computação": "Sem descrição.",
