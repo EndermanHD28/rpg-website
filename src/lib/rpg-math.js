@@ -178,7 +178,7 @@ export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
 
 export function calculateLootDie(luckPerc) {
   const p = parseFloat(luckPerc) || 0;
-  return Math.round(15 + (5 * Math.pow(p / 15, 0.8)));
+  return Math.round(15 + (5 * Math.pow(p / 10, 0.7)));
 }
 
 export function calculateDerivedStats(char) {

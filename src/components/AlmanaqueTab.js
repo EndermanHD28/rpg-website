@@ -909,7 +909,7 @@ function ExpandableSections({ items, playSound }) {
               playSound('random_button');
               setOpenIdx(openIdx === idx ? null : idx);
             }}
-            className={`w-full px-8 py-5 flex justify-between items-center transition-all ${openIdx === idx ? 'bg-red-600 text-white shadow-lg' : 'bg-zinc-900/50 text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}
+            className={`w-full px-8 py-5 flex justify-between items-center transition-all ${openIdx === idx ? 'bg-zinc-800 text-white shadow-lg' : 'bg-zinc-900/50 text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}
           >
             <span className="font-black uppercase text-xs tracking-widest italic">{item.title}</span>
             <span className={`transform transition-transform duration-300 font-black ${openIdx === idx ? 'rotate-180' : ''}`}>
@@ -959,10 +959,15 @@ function ExpandableSections({ items, playSound }) {
 
 function formatText(text) {
   if (!text) return "";
+
   const boldRegex = /\*\*(.*?)\*\*/g;
   const underlineRegex = /__(.*?)__/g;
+  const italicRegex = /\/\/(.*?)\/\//g; // New regex for //text//
+
   const html = text
     .replace(underlineRegex, '<u class="decoration-gray-200 text-white/80 underline-offset-4 decoration-2">$1</u>')
-    .replace(boldRegex, '<strong class="text-white font-black">$1</strong>');
+    .replace(boldRegex, '<strong class="text-white font-black">$1</strong>')
+    .replace(italicRegex, '<em class="italic text-white/90">$1</em>'); // New replacement
+
   return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }
