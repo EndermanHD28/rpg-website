@@ -128,10 +128,10 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
       life: s + (r * 7) + (c * 3),
       presence: s + r + a + ag + p + c,
       posture: 2 * (r * 1.2) + (a * 3.4) + (c * 2),
-      disarmed_pat: `1d${dDice}${dPlus > 0 ? ` + ${dPlus}` : ''}`,
-      acerto: `1d${calculateAcerto(npc)}`,
-      desvio: `1d${calculateDesvio(npc)}`,
-      bloqueio: `1d${calculateBloqueio(npc)}`
+      disarmed_pat: `${dDice > 0 ? `1d${dDice}` : ''}${dPlus > 0 ? (dDice > 0 ? ' + ' : '') + dPlus : ''}`,
+      acerto: `${calculateAcerto(npc)}`,
+      desvio: `${calculateDesvio(npc)}`,
+      bloqueio: `${calculateBloqueio(npc)}`
     };
   };
 
@@ -227,9 +227,14 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                         precision: Number(npc.precision) || 1,
                         concentration: Number(npc.concentration) || 0,
                         armed_pat: npc.armed_pat || '0',
+                        sec_armed_pat: npc.sec_armed_pat || '0',
                         image_url: npc.image_url || null,
                         rank: npc.rank || (npc.category === 'Human' ? 'E - Recruta' : null),
-                        is_visible: !!npc.is_visible
+                        is_visible: !!npc.is_visible,
+                        weapon_type: npc.weapon_type || null,
+                        weapon_subtype: npc.weapon_subtype || null,
+                        sec_weapon_type: npc.sec_weapon_type || null,
+                        sec_weapon_subtype: npc.sec_weapon_subtype || null
                       }));
 
                       const { error } = await supabase.from('npcs').insert(preparedNPCs);
@@ -360,7 +365,19 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                   </div>
                   <div className="flex-1 bg-black/40 p-2 rounded-xl border border-white/5 flex flex-col items-center justify-center min-h-[50px]">
                     <span className="text-[8px] font-black text-zinc-500 uppercase">Ataque (Armado)</span>
-                    <span className="text-xs font-bold text-orange-500">{npc.armed_pat ? (npc.armed_pat.toString().startsWith('1d') ? npc.armed_pat : `1d${npc.armed_pat}`) : '0'}</span>
+                    <span className="text-xs font-bold text-orange-500">{npc.armed_pat || '0'}</span>
+                    {npc.weapon_type && (
+                      <div className="flex flex-col items-center mt-1 w-full text-[7px] text-zinc-400 font-medium border-t border-white/5 pt-1 gap-0.5">
+                        <span className="truncate max-w-full text-center" title={`${npc.weapon_type}: ${npc.weapon_subtype || 'Nenhum'}`}>
+                          W1: {npc.weapon_subtype || npc.weapon_type}
+                        </span>
+                        {npc.sec_weapon_type && (
+                          <span className="truncate max-w-full text-center" title={`${npc.sec_weapon_type}: ${npc.sec_weapon_subtype || 'Nenhum'}`}>
+                            W2: {npc.sec_weapon_subtype || npc.sec_weapon_type}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -490,7 +507,15 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                         </div>
                         <div className="flex-1 bg-black/40 p-5 rounded-3xl border border-white/5 flex flex-col items-center gap-1">
                           <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Dano Armado</span>
-                          <span className="text-2xl font-black text-orange-500">{expandedNPC.armed_pat ? (expandedNPC.armed_pat.toString().startsWith('1d') ? expandedNPC.armed_pat : `1d${expandedNPC.armed_pat}`) : '0'}</span>
+                          <span className="text-2xl font-black text-orange-500">{expandedNPC.armed_pat || '0'}</span>
+                          {expandedNPC.weapon_type && (
+                            <div className="flex flex-col items-center mt-1 w-full text-[10px] text-zinc-400 font-medium gap-0.5">
+                              <span>W1: {expandedNPC.weapon_type}{expandedNPC.weapon_subtype ? ` (${expandedNPC.weapon_subtype})` : ''}</span>
+                              {expandedNPC.sec_weapon_type && (
+                                <span>W2: {expandedNPC.sec_weapon_type}{expandedNPC.sec_weapon_subtype ? ` (${expandedNPC.sec_weapon_subtype})` : ''}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 

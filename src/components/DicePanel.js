@@ -29,7 +29,33 @@ export default function DicePanel({
   const desvioValue = calculateDesvio(activeChar);
   const bloqueioValue = calculateBloqueio(activeChar);
 
-  const equippedWeapons = activeChar?.inventory?.filter(i => i.equipped && i.subtype && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+  let equippedWeapons = activeChar?.inventory?.filter(i => i.equipped && i.subtype && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+  if (activeChar?.type === 'Simple' && activeChar.weapon_type) {
+    equippedWeapons = [
+      {
+        name: 'Armado #1',
+        category: activeChar.weapon_type,
+        subtype: activeChar.weapon_subtype || (activeChar.weapon_type === 'Arma de Fogo' ? 'Pistola' : 'Lâmina Curta'),
+        tier: 1,
+        upgrade: 0,
+        tpt: 1,
+        damage_multi: 1.0,
+        equipped: true
+      }
+    ];
+    if (activeChar.sec_weapon_type) {
+      equippedWeapons.push({
+        name: 'Armado #2',
+        category: activeChar.sec_weapon_type,
+        subtype: activeChar.sec_weapon_subtype || (activeChar.sec_weapon_type === 'Arma de Fogo' ? 'Pistola' : 'Lâmina Curta'),
+        tier: 1,
+        upgrade: 0,
+        tpt: 1,
+        damage_multi: 1.0,
+        equipped: true
+      });
+    }
+  }
   const disarmedPat = calculateDisarmedPAT(activeChar);
 
   const bLvl = Number(activeChar?.breathing_lvl) || 0;

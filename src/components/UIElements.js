@@ -325,6 +325,11 @@ export function Modal({ modal, closeModal }) {
         precision: modal.initialData?.precision !== undefined ? modal.initialData.precision : 1,
         concentration: modal.initialData?.concentration !== undefined ? modal.initialData.concentration : 0,
         armed_pat: modal.initialData?.armed_pat !== undefined ? String(modal.initialData.armed_pat) : '0',
+        sec_armed_pat: modal.initialData?.sec_armed_pat !== undefined ? String(modal.initialData.sec_armed_pat) : '0',
+        weapon_type: modal.initialData?.weapon_type || null,
+        weapon_subtype: modal.initialData?.weapon_subtype || null,
+        sec_weapon_type: modal.initialData?.sec_weapon_type || null,
+        sec_weapon_subtype: modal.initialData?.sec_weapon_subtype || null,
         image_url: modal.initialData?.image_url || '',
         rank: modal.initialData?.rank || (modal.npcFields && (modal.initialData?.category === 'Human' || !modal.initialData?.category) ? 'E - Recruta' : ''),
         is_visible: modal.initialData?.is_visible || false,
@@ -485,65 +490,145 @@ export function Modal({ modal, closeModal }) {
 
                 {localData.type === 'Simple' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-5 gap-1">
-                      {[
-                        { label: 'FOR', key: 'strength' },
-                        { label: 'RES', key: 'resistance' },
-                        { label: 'APT', key: 'aptitude' },
-                        { label: 'AGI', key: 'agility' },
-                        { label: 'PRE', key: 'precision' },
-                        { label: 'CON', key: 'concentration' }
-                      ].map(s => (
-                        <div key={s.key} className="space-y-1 text-center">
-                          <span className="text-[7px] text-zinc-500 font-bold uppercase">{s.label}</span>
-                          <input
-                            type="number"
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-1 py-2 text-center text-white text-xs outline-none focus:border-red-500"
-                            value={localData[s.key] || 0}
-                            onChange={(e) => setLocalData({ ...localData, [s.key]: parseInt(e.target.value) || 0 })}
-                          />
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-5 gap-1">
+                          {[
+                            { label: 'FOR', key: 'strength' },
+                            { label: 'RES', key: 'resistance' },
+                            { label: 'APT', key: 'aptitude' },
+                            { label: 'AGI', key: 'agility' },
+                            { label: 'PRE', key: 'precision' },
+                            { label: 'CON', key: 'concentration' }
+                          ].map(s => (
+                            <div key={s.key} className="space-y-1 text-center">
+                              <span className="text-[7px] text-zinc-500 font-bold uppercase">{s.label}</span>
+                              <input
+                                type="number"
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-1 py-2 text-center text-white text-xs outline-none focus:border-red-500"
+                                value={localData[s.key] || 0}
+                                onChange={(e) => setLocalData({ ...localData, [s.key]: parseInt(e.target.value) || 0 })}
+                              />
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/5">
-                      <div className="flex flex-col items-center">
-                        <span className="text-[7px] font-black text-purple-400 uppercase">Acerto</span>
-                        <span className="text-xs font-bold font-mono">1d{calculateAcerto(localData)}</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[7px] font-black text-purple-400 uppercase">Desvio</span>
-                        <span className="text-xs font-bold font-mono">1d{calculateDesvio(localData)}</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-[7px] font-black text-purple-400 uppercase">Bloqueio</span>
-                        <span className="text-xs font-bold font-mono">1d{calculateBloqueio(localData)}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <span className="text-[8px] text-zinc-500 font-bold uppercase">Ataque Armado (Manual)</span>
-                        <input
-                          type="text"
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-xs outline-none focus:border-red-500"
-                          value={localData.armed_pat || '0'}
-                          onChange={(e) => setLocalData({ ...localData, armed_pat: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1 flex flex-col justify-end">
-                        <span className="text-[8px] text-zinc-500 font-bold uppercase">Ataque Desarmado</span>
-                        <div className="bg-black/20 border border-white/5 rounded-xl px-4 py-3 text-yellow-500 text-xs font-bold font-mono">
-                          {(() => {
-                            const stats = calculateDisarmedPAT(localData);
-                            const d = Math.floor(stats.dice);
-                            const pVal = Math.floor(stats.plus);
-                            const tpt = stats.tpt || 1;
-                            return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
-                          })()}
+                        <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/5">
+                          <div className="flex flex-col items-center">
+                            <span className="text-[7px] font-black text-purple-400 uppercase">Acerto</span>
+                            <span className="text-xs font-bold font-mono">1d{calculateAcerto(localData)}</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-[7px] font-black text-purple-400 uppercase">Desvio</span>
+                            <span className="text-xs font-bold font-mono">1d{calculateDesvio(localData)}</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-[7px] font-black text-purple-400 uppercase">Bloqueio</span>
+                            <span className="text-xs font-bold font-mono">1d{calculateBloqueio(localData)}</span>
+                          </div>
                         </div>
+
+                        <div className="border-t border-white/5 pt-4 space-y-2">
+                          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Arma Primária</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <span className="text-[8px] text-zinc-500 font-bold uppercase">Tipo</span>
+                              <select
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500"
+                                value={localData.weapon_type || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value || null;
+                                  setLocalData({ 
+                                    ...localData, 
+                                    weapon_type: val, 
+                                    weapon_subtype: null,
+                                    sec_weapon_type: val ? localData.sec_weapon_type : null,
+                                    sec_weapon_subtype: val ? localData.sec_weapon_subtype : null
+                                  });
+                                }}
+                              >
+                                <option value="">Nenhum</option>
+                                {WEAPON_CATEGORIES.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[8px] text-zinc-500 font-bold uppercase">Subtipo</span>
+                              <select
+                                disabled={!localData.weapon_type}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500 disabled:opacity-50"
+                                value={localData.weapon_subtype || ''}
+                                onChange={(e) => setLocalData({ ...localData, weapon_subtype: e.target.value || null })}
+                              >
+                                <option value="">Nenhum</option>
+                                {localData.weapon_type && WEAPON_SUBTYPES[localData.weapon_type] && WEAPON_SUBTYPES[localData.weapon_type].map(sub => (
+                                  <option key={sub} value={sub}>{sub}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[8px] text-zinc-500 font-bold uppercase">Dano (Manual)</span>
+                            <input
+                              disabled={!localData.weapon_type}
+                              type="text"
+                              placeholder="ex: 3d10 + 4"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500 disabled:opacity-50 font-mono"
+                              value={localData.armed_pat || '0'}
+                              onChange={(e) => setLocalData({ ...localData, armed_pat: e.target.value })}
+                            />
+                          </div>
+                        </div>
+
+                        {localData.weapon_type && (
+                          <div className="border-t border-white/5 pt-4 space-y-2 animate-in fade-in duration-300">
+                            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Arma Secundária</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <span className="text-[8px] text-zinc-500 font-bold uppercase">Tipo</span>
+                                <select
+                                  className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500"
+                                  value={localData.sec_weapon_type || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value || null;
+                                    setLocalData({ ...localData, sec_weapon_type: val, sec_weapon_subtype: null });
+                                  }}
+                                >
+                                  <option value="">Nenhum</option>
+                                  {WEAPON_CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[8px] text-zinc-500 font-bold uppercase">Subtipo</span>
+                                <select
+                                  disabled={!localData.sec_weapon_type}
+                                  className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500 disabled:opacity-50"
+                                  value={localData.sec_weapon_subtype || ''}
+                                  onChange={(e) => setLocalData({ ...localData, sec_weapon_subtype: e.target.value || null })}
+                                >
+                                  <option value="">Nenhum</option>
+                                  {localData.sec_weapon_type && WEAPON_SUBTYPES[localData.sec_weapon_type] && WEAPON_SUBTYPES[localData.sec_weapon_type].map(sub => (
+                                    <option key={sub} value={sub}>{sub}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[8px] text-zinc-500 font-bold uppercase">Dano (Manual)</span>
+                              <input
+                                disabled={!localData.sec_weapon_type}
+                                type="text"
+                                placeholder="ex: 2d8 + 3"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-2 py-3 text-white text-xs outline-none focus:border-red-500 disabled:opacity-50 font-mono"
+                                value={localData.sec_armed_pat || '0'}
+                                onChange={(e) => setLocalData({ ...localData, sec_armed_pat: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
                   </div>
                 )}
               </div>
@@ -556,7 +641,7 @@ export function Modal({ modal, closeModal }) {
                   {['Item', 'Equipamento', 'Consumível'].map(t => (
                     <button key={t} onClick={() => setActiveTab(t)}
                       className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === t ? 'text-white border-b-2 border-yellow-500 pb-1' : 'text-zinc-600 hover:text-zinc-400'}`}>
-                      {t}s
+                      {t === 'Item' ? 'Itens' : t === 'Consumível' ? 'Consumíveis' : `${t}s`}
                     </button>
                   ))}
                 </div>
@@ -871,6 +956,11 @@ export function Modal({ modal, closeModal }) {
                       image_url: localData.image_url || null,
                       rank: localData.rank || null,
                       is_visible: !!localData.is_visible,
+                      weapon_type: localData.weapon_type || null,
+                      weapon_subtype: localData.weapon_subtype || null,
+                      sec_weapon_type: localData.sec_weapon_type || null,
+                      sec_weapon_subtype: localData.sec_weapon_subtype || null,
+                      sec_armed_pat: localData.sec_armed_pat || '0',
                       // COMPLEX FIELDS
                       age: localData.type === 'Complex' ? Number(localData.age) : null,
                       bloodline: localData.type === 'Complex' ? localData.bloodline : null,

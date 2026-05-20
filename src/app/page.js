@@ -28,6 +28,7 @@ const BreathingTab = dynamic(() => import('../components/BreathingTab'));
 const TradersTab = dynamic(() => import('../components/TradersTab'));
 const AlmanaqueTab = dynamic(() => import('../components/AlmanaqueTab'));
 const SlotMachineTab = dynamic(() => import('../components/SlotMachineTab'));
+const SkillTreeTab = dynamic(() => import('../components/SkillTreeTab'));
 
 export default function Home() {
   // --- UI STATE ---
@@ -67,6 +68,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [character, setCharacter] = useState(null);
   const [tempChar, setTempChar] = useState(null);
+  const [isSheetLoading, setIsSheetLoading] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
   const [allNPCs, setAllNPCs] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -219,159 +221,172 @@ export default function Home() {
   // --- DATA FETCH & REALTIME ---
   useEffect(() => {
     const fetchData = async () => {
-      const { data: libraryData } = await supabase.from('items').select('*').order('name', { ascending: true });
-      setItemLibrary(libraryData || []);
-
-      const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
-      setLootTables(lootData || []);
-
-      const { data: tradersData } = await supabase.from('traders').select('*').order('name');
-      setAllTraders(tradersData || []);
-
-      const { data: tradeRequestsData } = await supabase.from('trade_requests')
-        .select('*, characters(char_name)')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-      setTradeRequests(tradeRequestsData || []);
-
-      let activeUser;
-      const savedFakeUser = localStorage.getItem('fake_discord_user');
-      if (savedFakeUser) {
-        activeUser = JSON.parse(savedFakeUser);
-      } else {
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
-        activeUser = supabaseUser;
+      // Check if keys are present before fetching
+      if (!supabase.supabaseUrl || supabase.supabaseUrl.includes('placeholder')) {
+        console.error("Supabase client not initialized with valid keys. Aborting fetchData.");
+        return;
       }
 
-      setUser(activeUser);
+      // We don't want a full page loader for every refresh
+      // setLoading(true); 
+      try {
+        const { data: libraryData } = await supabase.from('items').select('*').order('name', { ascending: true });
+        setItemLibrary(libraryData || []);
 
-      if (activeUser && !isActingAsMaster) {
-        const { data: pendingReq } = await supabase
-          .from('change_requests')
-          .select('*')
-          .eq('player_id', activeUser.id)
+        const { data: lootData } = await supabase.from('loot_tables').select('*').order('name', { ascending: true });
+        setLootTables(lootData || []);
+
+        const { data: tradersData } = await supabase.from('traders').select('*').order('name');
+        setAllTraders(tradersData || []);
+
+        const { data: tradeRequestsData } = await supabase.from('trade_requests')
+          .select('*, characters(char_name)')
           .eq('status', 'pending')
-          .maybeSingle();
-        setPendingRequest(pendingReq);
-      }
+          .order('created_at', { ascending: false });
+        setTradeRequests(tradeRequestsData || []);
 
-      // Fetch all players FIRST so we can use it for character/tempChar
-      const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
-      setAllPlayers(players || []);
-
-      const { data: npcsData } = await supabase.from('npcs').select('*').order('name', { ascending: true });
-      setAllNPCs(npcsData || []);
-
-      if (activeUser) {
-        const tId = viewingTarget || activeUser.id;
-        // Check if the user is in the 'players' we just fetched OR check DB directly
-        const char = (players || []).find(p => p.id === tId);
-
-        if (char) {
-          setCharacter(char);
-          if (!isEditing) setTempChar(char);
-          
-          // KICK OUT LOGIC: If viewing 'breathing' tab but style is removed
-          if (activeTab === 'breathing' && !char.breathing_style) {
-            setActiveTab('sheet');
-          }
+        let activeUser;
+        const savedFakeUser = localStorage.getItem('fake_discord_user');
+        if (savedFakeUser) {
+          activeUser = JSON.parse(savedFakeUser);
         } else {
-          // Double check DB to avoid race conditions with auth event vs fetch
-          const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
-          if (dbChar) {
-            setCharacter(dbChar);
-            if (!isEditing) setTempChar(dbChar);
-          } else if (tId === activeUser.id) {
-            // AUTO-CREATE CHARACTER IF MISSING
-            console.log("Character missing for user, creating default sheet...", { userId: activeUser.id });
-            const newChar = {
-              id: activeUser.id,
-              discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
-              char_name: "Novo Recruta",
-              age: 18,
-              strength: 5,
-              resistance: 5,
-              aptitude: 5,
-              agility: 5,
-              precision: 5,
-              concentration: 5,
-              intelligence: 5,
-              luck: 5,
-              charisma: 5,
-              stat_points_available: 0,
-              dollars: 0,
-              inventory: [],
-              rank: 'E - Recruta',
-              current_hp: 24 // (3 strength + 3 resistance * 7) = 24
-            };
+          const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+          activeUser = supabaseUser;
+        }
 
-            // Use UPSERT instead of INSERT to handle potential 409 Conflict
-            const { data: createdChar, error: createError } = await supabase
-              .from('characters')
-              .upsert(newChar, { onConflict: 'id' })
-              .select()
-              .single();
+        setUser(activeUser);
 
-            if (createError) {
-              console.error("CRITICAL: Failed to auto-create character sheet:", createError);
-              showToast("Erro ao criar ficha automática. Verifique o console.");
-            } else if (createdChar) {
-              console.log("Character sheet created successfully:", createdChar.id);
-              setCharacter(createdChar);
-              if (!isEditing) setTempChar(createdChar);
-              setAllPlayers(prev => {
-                const filtered = prev.filter(p => p.id !== createdChar.id);
-                return [...filtered, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || ""));
-              });
-              showToast("Nova ficha criada automaticamente!");
+        if (activeUser && !isActingAsMaster) {
+          const { data: pendingReq } = await supabase
+            .from('change_requests')
+            .select('*')
+            .eq('player_id', activeUser.id)
+            .eq('status', 'pending')
+            .maybeSingle();
+          setPendingRequest(pendingReq);
+        }
+
+        // Fetch all players FIRST so we can use it for character/tempChar
+        const { data: players } = await supabase.from('characters').select('*').order('char_name', { ascending: true });
+        setAllPlayers(players || []);
+
+        const { data: npcsData } = await supabase.from('npcs').select('*').order('name', { ascending: true });
+        setAllNPCs(npcsData || []);
+
+        if (activeUser) {
+          const tId = viewingTarget || activeUser.id;
+          // Check if the user is in the 'players' we just fetched OR check DB directly
+          const char = (players || []).find(p => p.id === tId);
+
+          if (char) {
+            setCharacter(char);
+            if (!isEditing) setTempChar(char);
+            
+            // KICK OUT LOGIC: If viewing 'breathing' tab but style is removed
+            if (activeTab === 'breathing' && !char.breathing_style) {
+              setActiveTab('sheet');
+            }
+          } else {
+            // Double check DB to avoid race conditions with auth event vs fetch
+            const { data: dbChar } = await supabase.from('characters').select('*').eq('id', tId).maybeSingle();
+            if (dbChar) {
+              setCharacter(dbChar);
+              if (!isEditing) setTempChar(dbChar);
+            } else if (tId === activeUser.id) {
+              // AUTO-CREATE CHARACTER IF MISSING
+              console.log("Character missing for user, creating default sheet...", { userId: activeUser.id });
+              const newChar = {
+                id: activeUser.id,
+                discord_username: activeUser.user_metadata?.full_name || activeUser.user_metadata?.preferred_username || "Explorador",
+                char_name: "Novo Recruta",
+                age: 18,
+                strength: 5,
+                resistance: 5,
+                aptitude: 5,
+                agility: 5,
+                precision: 5,
+                concentration: 5,
+                intelligence: 5,
+                luck: 5,
+                charisma: 5,
+                stat_points_available: 0,
+                dollars: 0,
+                inventory: [],
+                ph_points: 0,
+                class_skills: [],
+                rank: 'E - Recruta',
+                current_hp: 24 // (3 strength + 3 resistance * 7) = 24
+              };
+
+              // Use UPSERT instead of INSERT to handle potential 409 Conflict
+              const { data: createdChar, error: createError } = await supabase
+                .from('characters')
+                .upsert(newChar, { onConflict: 'id' })
+                .select()
+                .single();
+
+              if (createError) {
+                console.error("CRITICAL: Failed to auto-create character sheet:", createError);
+                showToast("Erro ao criar ficha automática. Verifique o console.");
+              } else if (createdChar) {
+                console.log("Character sheet created successfully:", createdChar.id);
+                setCharacter(createdChar);
+                if (!isEditing) setTempChar(createdChar);
+                setAllPlayers(prev => {
+                  const filtered = prev.filter(p => p.id !== createdChar.id);
+                  return [...filtered, createdChar].sort((a, b) => (a.char_name || "").localeCompare(b.char_name || ""));
+                });
+                showToast("Nova ficha criada automaticamente!");
+              }
             }
           }
         }
-      }
 
-      // Initial Global Game State
-      const { data: globalData, error: globalError } = await supabase.from('global').select('*').eq('id', 1).maybeSingle();
-      console.log("INITIAL GLOBAL FETCH (FULL):", { globalData, globalError });
-      setIsSessionActive(!!globalData?.is_session_active);
-      setIsCombatActive(!!globalData?.is_combat_active);
-      setIsMaintenanceMode(!!globalData?.is_maintenance_active);
-      setAllowedDiscordUsernames(globalData?.allowed_discord_usernames || []);
-      setBlockedTabs(globalData?.blocked_tabs || []);
-      if (globalData?.current_turn !== undefined) setTurn(globalData.current_turn);
-      if (globalData?.imitated_id !== undefined) setSelectedCombatantId(globalData.imitated_id);
-      setSharedImage({
-        url: globalData?.image_url || globalData?.imag_url || null,
-        title: globalData?.image_title || null,
-        contrast: !!globalData?.image_contrast
-      });
+        // Initial Global Game State
+        const { data: globalData, error: globalError } = await supabase.from('global').select('*').eq('id', 1).maybeSingle();
+        setIsSessionActive(!!globalData?.is_session_active);
+        setIsCombatActive(!!globalData?.is_combat_active);
+        setIsMaintenanceMode(!!globalData?.is_maintenance_active);
+        setAllowedDiscordUsernames(globalData?.allowed_discord_usernames || []);
+        setBlockedTabs(globalData?.blocked_tabs || []);
+        if (globalData?.current_turn !== undefined) setTurn(globalData.current_turn);
+        if (globalData?.imitated_id !== undefined) setSelectedCombatantId(globalData.imitated_id);
+        setSharedImage({
+          url: globalData?.image_url || globalData?.imag_url || null,
+          title: globalData?.image_title || null,
+          contrast: !!globalData?.image_contrast
+        });
 
-      // Fetch last 100 messages
-      const { data: msgData } = await supabase
-        .from('messages')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (msgData) {
-        // Ensure chronological order
-        const sorted = [...msgData].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        setMessages(sorted);
-      }
-
-      if (isMaster) {
-        const { data: reqData } = await supabase
-          .from('change_requests')
+        // Fetch last 100 messages
+        const { data: msgData } = await supabase
+          .from('messages')
           .select('*')
-          .eq('status', 'pending');
-        setRequests(reqData || []);
-      }
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (msgData) {
+          // Ensure chronological order
+          const sorted = [...msgData].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          setMessages(sorted);
+        }
 
-      setLoading(false);
+        if (isMaster) {
+          const { data: reqData } = await supabase
+            .from('change_requests')
+            .select('*')
+            .eq('status', 'pending');
+          setRequests(reqData || []);
+        }
+
+      } catch (e) {
+        console.error("Error in fetchData:", e);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
 
     // AUTH LISTENER for persistent session handling
     const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("AUTH EVENT:", event);
       if (event === 'SIGNED_IN') {
         setUser(session?.user ?? null);
       } else if (event === 'SIGNED_OUT') {
@@ -403,15 +418,21 @@ export default function Home() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, (p) => {
         // 1. Sync My Character Data
         const characterData = p.new || p.old;
-        if (characterData && characterData.id === (viewingTarget || user?.id)) {
+        const targetId = viewingTarget || user?.id;
+        
+        if (characterData && characterData.id === targetId) {
           if (p.eventType === 'DELETE') {
             // Handle character deletion if necessary
           } else {
             // Always update the 'character' state to reflect the latest from DB
-            setCharacter(prev => JSON.stringify(prev) === JSON.stringify(p.new) ? prev : p.new);
+            setCharacter(prev => {
+                if (prev?.id === p.new.id && JSON.stringify(prev) === JSON.stringify(p.new)) return prev;
+                console.log("Updating character state from realtime:", p.new.id);
+                return p.new;
+            });
 
             // KICK OUT LOGIC: Real-time update
-            if (activeTab === 'breathing' && !p.new.breathing_style) {
+            if (activeTab === 'breathing' && p.new.breathing_style !== undefined && !p.new.breathing_style) {
               setActiveTab('sheet');
               showToast("Você não possui mais um estilo de respiração.");
               playSoundEffect('error');
@@ -420,9 +441,14 @@ export default function Home() {
             // Update 'tempChar' only if we are NOT in editing mode AND there is NO pending request
             // This ensures tempChar holds the latest approved character data when not actively editing or proposing changes.
             if (!isEditing && !pendingRequest) {
-              setTempChar(p.new);
+              setTempChar(prev => {
+                if (prev?.id === p.new.id && JSON.stringify(prev) === JSON.stringify(p.new)) return prev;
+                return p.new;
+              });
             }
           }
+        } else {
+            // Check if this update affects allPlayers/allNPCs anyway
         }
 
         // 2. Sync "Lista de Caçadores" and "Combatants"
@@ -561,7 +587,6 @@ export default function Home() {
         }
       })
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log("--- REALTIME CONNECTED ---");
       });
 
     return () => {
@@ -703,6 +728,8 @@ export default function Home() {
                 skills: sanitized.type === 'Complex' ? (Array.isArray(sanitized.skills) ? sanitized.skills : []) : [],
                 ammunition: sanitized.ammunition || {},
                 stat_points_available: sanitized.type === 'Complex' ? Number(sanitized.stat_points_available) : 0,
+                ph_points: sanitized.type === 'Complex' ? Number(sanitized.ph_points) : 0,
+                class_skills: sanitized.type === 'Complex' ? (Array.isArray(sanitized.class_skills) ? sanitized.class_skills : []) : [],
                 inventory: sanitized.type === 'Complex' ? (Array.isArray(sanitized.inventory) ? sanitized.inventory : []) : []
               };
             } else {
@@ -1154,6 +1181,35 @@ export default function Home() {
                   }} 
                 />
                 )}
+
+                <NavButton 
+                  active={activeTab === 'skills' && (viewingTarget === null || viewingTarget === user?.id)} 
+                  label="Skill Tree" 
+                  disabled={!isActingAsMaster && blockedTabs.includes('skills')}
+                  isBlocked={!isActingAsMaster && blockedTabs.includes('skills')}
+                  onClick={() => {
+                    if (isEditing && !isViewingOnly) {
+                      playSoundEffect('error');
+                      showToast("Você precisa concluir sua edição antes de mudar de aba.");
+                      return;
+                    }
+                    if (!isActingAsMaster && blockedTabs.includes('skills')) {
+                      playSoundEffect('error');
+                      showToast("Esta página está bloqueada pelo Mestre.");
+                      return;
+                    }
+                    playSoundEffect('tab_change');
+                    
+                    const myChar = allPlayers.find(p => p.id === user?.id);
+                    if (myChar) {
+                      setCharacter(myChar);
+                      if (!isEditing) setTempChar(myChar);
+                    }
+                    
+                    setViewingTarget(null);
+                    setActiveTab('skills');
+                  }} 
+                />
                 {/* Highlight Breathing Tab when Master is viewing someone else's tree */}
                 {isActingAsMaster && viewingTarget && viewingTarget !== user?.id && activeTab === 'breathing' && (
                   null
@@ -1203,16 +1259,18 @@ export default function Home() {
                                   showToast("Ficha ainda não aprovada pelo mestre.");
                                   return;
                                 }
-                                if (isEditing && !isViewingOnly) {
-                                  playSoundEffect('error');
-                                  showToast("Você precisa concluir sua edição antes de visualizar outras fichas.");
-                                  return;
-                                }
-                                playSoundEffect('tab_change');
-                                setCharacter(p);
-                                if (!isEditing) setTempChar(p);
-                                setViewingTarget(p.id);
-                                setActiveTab('sheet');
+                                  if (isEditing && !isViewingOnly) {
+                                    playSoundEffect('error');
+                                    showToast("Você precisa concluir sua edição antes de visualizar outras fichas.");
+                                    return;
+                                  }
+                                  setIsSheetLoading(true);
+                                  playSoundEffect('tab_change');
+                                  setCharacter(p);
+                                  if (!isEditing) setTempChar(p);
+                                  setViewingTarget(p.id);
+                                  setActiveTab('sheet');
+                                  setTimeout(() => setIsSheetLoading(false), 300);
                               }}
                             />
                             {/* Dynamic Breathing Tab for this player */}
@@ -1221,6 +1279,16 @@ export default function Home() {
                                 <NavButton
                                   active={true}
                                   label={`(Resp.) ${p.char_name || p.discord_username}`}
+                                  onClick={() => {}}
+                                />
+                              </div>
+                            )}
+                            {/* Dynamic Skills Tab for this player */}
+                            {isActingAsMaster && viewingTarget === p.id && activeTab === 'skills' && (
+                              <div className="ml-4 border-l-2 border-zinc-600/30 pl-2">
+                                <NavButton
+                                  active={true}
+                                  label={`(Hab.) ${p.char_name || p.discord_username}`}
                                   onClick={() => {}}
                                 />
                               </div>
@@ -1570,12 +1638,23 @@ export default function Home() {
                   </div>
 
                   {/* BIOGRID (Respects Peek mode) */}
-                  <BioGrid activeChar={activeChar} isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
+                  <div className="relative">
+                    <BioGrid activeChar={activeChar} isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
+                    
+                    {isSheetLoading && (
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-50 rounded-3xl flex items-center justify-center animate-in fade-in duration-200">
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-red-600 font-black italic uppercase tracking-widest text-[10px]">Sincronizando...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* ANOMALIAS & HABILIDADES */}
                   <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <TagBox label="Anomalias" list={ANOMALIAS_LIST} descriptions={ANOMALIAS_DESCRIPTIONS} activeList={activeChar?.anomalies} field="anomalies" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} />
-                    <TagBox label="Habilidades" list={SKILLS_LIST} descriptions={SKILLS_DESCRIPTIONS} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
+                    <TagBox label="Skill Tree" list={SKILLS_LIST} descriptions={SKILLS_DESCRIPTIONS} activeList={activeChar?.skills} field="skills" isEditing={isEditing && !isViewingOnly} setTempChar={setTempChar} color="text-cyan-200 bg-cyan-950/30 border-cyan-500/20" />
                   </div>
 
                   {/* BOTTOM STATS BOXES */}
@@ -1905,6 +1984,21 @@ export default function Home() {
           </div>
         )}
 
+        {activeTab === 'skills' && (
+          <div className="flex-1 relative">
+            <SkillTreeTab 
+              user={user}
+              character={character}
+              isMaster={isActingAsMaster}
+              showToast={showToast}
+              playSound={playSoundEffect}
+              onReturn={() => {
+                setActiveTab('sheet');
+              }}
+            />
+          </div>
+        )}
+
         {activeTab === 'traders' && isActingAsMaster && (
           <div className="p-12">
             <TradersTab
@@ -2066,7 +2160,9 @@ export default function Home() {
                 <div className="grid grid-cols-3 gap-6">
                   {['Item', 'Equipamento', 'Consumível'].map(cat => (
                     <div key={cat} className="space-y-4">
-                      <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] italic border-b border-white/5 pb-2">{cat}s</h3>
+                      <h3 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] italic border-b border-white/5 pb-2">
+                        {cat === 'Item' ? 'Itens' : cat === 'Consumível' ? 'Consumíveis' : `${cat}s`}
+                      </h3>
                       <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                         {itemLibrary
                           .filter(i => (i.type || 'Item') === cat)
@@ -2270,6 +2366,7 @@ export default function Home() {
                 setViewingTarget(npc.id);
                 setCharacter(npc);
                 setTempChar(npc);
+                setIsEditing(false); // Reset editing mode when switching to NPC
                 setActiveTab('sheet');
               }}
             />

@@ -9,6 +9,7 @@ const SOUNDS = {
   stat_point: '/sound_effects/stat_point.wav',
   tab_change: '/sound_effects/tab_change.mp3',
   random_button: '/sound_effects/random_button.mp3',
+  skill_unlock: '/sound_effects/skill_unlock.mp3',
 };
 
 export const useSound = () => {

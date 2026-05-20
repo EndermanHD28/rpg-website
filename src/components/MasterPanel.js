@@ -283,6 +283,26 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
     });
   };
 
+  const handleAddPH = (p) => {
+    setModal({
+      isOpen: true,
+      title: "Adicionar PH (Pontos de Habilidade)",
+      message: `Quanto PH deseja dar para @${p.discord_username}?`,
+      input: true,
+      inputValue: '',
+      setInputValue: (v) => setModal(prev => ({ ...prev, inputValue: v })),
+      onConfirm: async (val) => {
+        const pts = parseInt(val);
+        if (isNaN(pts)) return;
+        await supabase.from('characters').update({
+          ph_points: (p.ph_points || 0) + pts
+        }).eq('id', p.id);
+        showToast(`${pts} PH Adicionados!`);
+        closeModal();
+      }
+    });
+  };
+
   const handleReset = (p) => {
     setModal({
       isOpen: true,
@@ -470,13 +490,14 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
                   <p className="text-[8px] text-zinc-600 font-bold uppercase mt-1">@{p.discord_username}</p>
                 </div>
                 <div className="bg-yellow-500/10 text-yellow-500 px-3 py-1 rounded border border-yellow-500/30 text-[10px] font-black font-mono">
-                  {p.stat_points_available || 0} PS | {p.breathing_points || 0} PR
+                  {p.stat_points_available || 0} PS | {p.breathing_points || 0} PR | {p.ph_points || 0} PH
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => { playSound('tab_change'); onVisualize(p); }} className="text-[8px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/30 py-2.5 rounded-xl hover:bg-blue-600 hover:text-white transition-all">VISUALIZAR</button>
                 <button onClick={() => { playSound('random_button'); handleAddPS(p); }} className="text-[8px] font-black bg-green-600/20 text-green-400 border border-green-600/30 py-2.5 rounded-xl hover:bg-green-600 hover:text-white transition-all">+ Ponto de Status</button>
                 <button onClick={() => { playSound('random_button'); handleAddResp(p); }} className="text-[8px] font-black bg-cyan-600/20 text-cyan-400 border border-cyan-600/30 py-2.5 rounded-xl hover:bg-cyan-600 hover:text-white transition-all">+ Ponto de Resp.</button>
+                <button onClick={() => { playSound('random_button'); handleAddPH(p); }} className="text-[8px] font-black bg-zinc-600/20 text-zinc-400 border border-zinc-600/30 py-2.5 rounded-xl hover:bg-zinc-600 hover:text-white transition-all">+ PH (Habilidades)</button>
                 <button onClick={() => { playSound('random_button'); handleReset(p); }} className="text-[8px] font-black bg-zinc-800 text-zinc-500 py-2.5 rounded-xl hover:bg-zinc-700 hover:text-white transition-all">RESETAR</button>
                 <button onClick={() => { playSound('random_button'); handleDelete(p); }} className="text-[8px] font-black bg-red-900/20 text-red-500 border border-red-900/30 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all col-span-2">EXCLUIR</button>
               </div>

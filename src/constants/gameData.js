@@ -1,4 +1,5 @@
 import { tempestade } from './breathing_styles/tempestade';
+import { SKILL_TREES } from './skill_trees/index';
 
 export const MASTER_DISCORD_ID = "501767960646647818";
 export const RANKS = ["E - Recruta", "D - Soldado", "C - Veterano", "B - Tenente", "A - Sargento", "S - Capitão"];
@@ -227,6 +228,8 @@ export const RESPIRACOES = ["Nenhuma", "Água", "Chama", "Trovão", "Fera", "Ins
 export const BREATHING_TREES = {
   "Tempestade": tempestade
 };
+
+export { SKILL_TREES };
 
 export const CORES = ["Nenhuma", "Vermelha", "Azul", "Amarela", "Verde", "Cinza", "Preta", "Rosa", "Índigo", "Roxa"];
 export const ANOMALIAS_LIST = [

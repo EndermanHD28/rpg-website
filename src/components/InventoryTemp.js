@@ -112,7 +112,7 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
           {['Item', 'Equipamento', 'Consumível', 'Munição'].map(t => (
             <button key={t} onClick={() => { playSound('tab_change'); setTab(t); }}
               className={`text-[10px] font-black uppercase tracking-widest transition-all ${tab === t ? 'text-white border-b-2 border-red-600 pb-1' : 'text-zinc-600 hover:text-zinc-400'}`}>
-              {t === 'Munição' ? 'Munições' : `${t}s`}
+              {t === 'Item' ? 'Itens' : t === 'Consumível' ? 'Consumíveis' : t === 'Munição' ? 'Munições' : `${t}s`}
             </button>
           ))}
         </div>

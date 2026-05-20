@@ -58,6 +58,9 @@ export default function CombatLog({
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showDiceQuickMenu, setShowDiceQuickMenu] = useState(false);
   const [showBreathingMenu, setShowBreathingMenu] = useState(false);
+  const [showSkillsMenu, setShowSkillsMenu] = useState(false);
+  const [skillSearch, setSkillSearch] = useState("");
+  const [breathingSearch, setBreathingSearch] = useState("");
   const [showLootSelector, setShowLootSelector] = useState(false);
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
@@ -120,6 +123,7 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTradeRequests(false);
   };
@@ -130,6 +134,7 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowLootSelector(false);
   };
 
@@ -256,6 +261,7 @@ export default function CombatLog({
   const chatContainerRef = useRef(null);
   const isAtBottomRef = useRef(true);
   const fileInputRef = useRef(null);
+  const lastMessageCountRef = useRef(0);
 
   const [sellPrices, setSellPrices] = useState({});
   const [traderActiveTab, setTraderActiveTab] = useState({});
@@ -264,18 +270,76 @@ export default function CombatLog({
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    
+    // Calculate the average height of visible message groups to use as threshold
+    // We look at the direct children of the scroll container (message group elements)
+    const container = chatContainerRef.current;
+    const messageGroups = container.querySelectorAll('[data-message-group]');
+    let avgMessageHeight = 80; // fallback default
+    if (messageGroups.length > 0) {
+      let totalHeight = 0;
+      messageGroups.forEach(el => { totalHeight += el.offsetHeight; });
+      avgMessageHeight = totalHeight / messageGroups.length;
+    }
+    
+    // Only consider "at bottom" if within one full message height from the bottom
+    const isAtBottom = distanceFromBottom < Math.max(avgMessageHeight, 80);
     isAtBottomRef.current = isAtBottom;
   };
 
+  // Instantly scroll to bottom, retrying to handle late layout shifts
+  const scrollToBottomInstant = () => {
+    if (!chatContainerRef.current) return;
+    const el = chatContainerRef.current;
+    el.scrollTop = el.scrollHeight;
+  };
+
+  // Scroll to bottom with retries — used for layout shifts (combat toggle, etc.)
+  const scrollToBottomWithRetries = () => {
+    scrollToBottomInstant();
+    const timeouts = [10, 50, 150, 300, 500].map(delay =>
+      setTimeout(scrollToBottomInstant, delay)
+    );
+    return () => timeouts.forEach(clearTimeout);
+  };
+
   useEffect(() => {
-    if (isAtBottomRef.current && chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: 'smooth'
+    if (!chatContainerRef.current) return;
+    
+    const newCount = messages.length;
+    const previousCount = lastMessageCountRef.current;
+    lastMessageCountRef.current = newCount;
+    
+    // First load — transitioning from 0 to some messages
+    const isFirstLoad = previousCount === 0 && newCount > 0;
+    
+    if (isFirstLoad) {
+      // Instant scroll with no animation, then retry several times
+      // to catch late layout shifts from many messages rendering
+      return scrollToBottomWithRetries();
+    }
+    
+    // Normal new message behavior — smooth scroll only if already at bottom
+    if (isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTo({
+            top: chatContainerRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
       });
     }
   }, [messages]);
+
+  // Re-scroll when combat starts/stops because the header expands/contracts
+  // which changes the chat container height and can leave the scroll offset stale
+  useEffect(() => {
+    if (!chatContainerRef.current) return;
+    if (!isAtBottomRef.current) return;
+    return scrollToBottomWithRetries();
+  }, [isCombatActive]);
 
   useEffect(() => {
     const handleTradeUpdates = (payload) => {
@@ -899,7 +963,7 @@ export default function CombatLog({
     return groups;
   };
 
-  const filteredMessages = messages.filter(m => !m.is_system || isMaster || m.content.startsWith('DICE_ROLL|') || m.content.startsWith('LOOT_INTERACTION|') || m.content.startsWith('BREATHING_MOVE|') || m.content.startsWith('TRADER_INTERACTION|'));
+  const filteredMessages = messages.filter(m => !m.is_system || isMaster || m.content.startsWith('DICE_ROLL|') || m.content.startsWith('LOOT_INTERACTION|') || m.content.startsWith('BREATHING_MOVE|') || m.content.startsWith('SKILL_TREE_MOVE|') || m.content.startsWith('TRADER_INTERACTION|'));
   const groupedMessages = groupMessages(filteredMessages);
 
   const handleInputChange = (e) => {
@@ -1042,7 +1106,7 @@ export default function CombatLog({
         if (diceResult) {
           const isTargetingType = ['ataque', 'acerto', 'desvio', 'dano', 'bloqueio'].includes(diceResult.type);
           if (isTargetingType) {
-            setTargetingRoll({ input, diceResult, playerName, playerImage });
+            setTargetingRoll({ input, diceResult, playerName, playerImage, charContext: playerChar });
             setInput("");
             setSuggestions([]);
             setSuggestionData(null);
@@ -1085,7 +1149,7 @@ export default function CombatLog({
     if (diceResult) {
       const isTargetingType = ['ataque', 'acerto', 'desvio', 'dano', 'bloqueio'].includes(diceResult.type);
       if (isTargetingType) {
-        setTargetingRoll({ input: fullInput, diceResult, playerName, playerImage });
+        setTargetingRoll({ input: fullInput, diceResult, playerName, playerImage, charContext: playerChar });
       } else {
         await finishDiceRoll(diceResult, fullInput, playerName, playerImage);
       }
@@ -1107,6 +1171,7 @@ export default function CombatLog({
     setShowGifPicker(!showGifPicker);
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTraderSelector(false);
     setShowTradeRequests(false);
@@ -1116,18 +1181,98 @@ export default function CombatLog({
     setShowDiceQuickMenu(!showDiceQuickMenu);
     setShowGifPicker(false);
     setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTraderSelector(false);
     setShowTradeRequests(false);
   };
 
+  const sendSkillTreeMove = async (skill) => {
+    let rollerChar = allPlayers?.find(p => p.id === user?.id);
+    
+    if (isActingAsMaster && selectedCombatantId) {
+        const selected = combatants.find(p => p.id === selectedCombatantId);
+        if (selected) rollerChar = selected;
+    }
+
+    if (!rollerChar) return;
+
+    // Determine if this skill needs a targeting roll (like breathing moves)
+    let diceExpr = "1d20";
+    let needsTarget = false;
+
+    if (skill.logic) {
+      if (skill.logic.diceExpr) {
+        diceExpr = parseDiceExpr(skill.logic.diceExpr, rollerChar);
+      }
+      needsTarget = !!skill.logic.needsTarget;
+    }
+
+    if (needsTarget) {
+      const diceResult = rollDice(diceExpr, rollerChar);
+      setTargetingRoll({
+        input: diceExpr,
+        diceResult,
+        playerName: rollerChar.char_name || rollerChar.name,
+        playerImage: rollerChar.image_url,
+        isSkillTreeMove: true,
+        skillId: skill.id,
+        skillName: skill.name,
+        effectDesc: skill.effect
+      });
+    } else {
+      // Non-targeted active skill — just send the roleplay message
+      await supabase.from('messages').insert({
+        player_name: "SISTEMA",
+        content: `SKILL_TREE_MOVE|${skill.id}|${skill.name}|${skill.effect}|${rollerChar.char_name || rollerChar.name}`,
+        is_system: true
+      });
+    }
+  };
+
+  const getActivatableSkillTreeSkills = () => {
+    let rollerChar = allPlayers?.find(p => p.id === user?.id);
+    if (isActingAsMaster && selectedCombatantId) {
+      const selected = combatants.find(p => p.id === selectedCombatantId);
+      if (selected) rollerChar = selected;
+    }
+    if (!rollerChar) return [];
+
+    const { SKILL_TREES } = require('../../constants/gameData');
+    const learnedSkills = Array.isArray(rollerChar.class_skills) ? rollerChar.class_skills : [];
+    if (learnedSkills.length === 0) return [];
+
+    const activatableSkills = [];
+    Object.values(SKILL_TREES).forEach(tree => {
+      tree.skills.forEach(skill => {
+        if (learnedSkills.includes(skill.id) && skill.type === 'active') {
+          activatableSkills.push(skill);
+        }
+      });
+    });
+    return activatableSkills;
+  };
+
   const toggleBreathingMenu = () => {
     setShowBreathingMenu(!showBreathingMenu);
+    setShowSkillsMenu(false);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowLootSelector(false);
     setShowTraderSelector(false);
     setShowTradeRequests(false);
+    setBreathingSearch("");
+  };
+
+  const toggleSkillsMenu = () => {
+    setShowSkillsMenu(!showSkillsMenu);
+    setShowBreathingMenu(false);
+    setShowGifPicker(false);
+    setShowDiceQuickMenu(false);
+    setShowLootSelector(false);
+    setShowTraderSelector(false);
+    setShowTradeRequests(false);
+    setSkillSearch("");
   };
 
   const toggleLootSelector = () => {
@@ -1135,6 +1280,7 @@ export default function CombatLog({
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowTraderSelector(false);
     setShowTradeRequests(false);
   };
@@ -1145,6 +1291,8 @@ export default function CombatLog({
 
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
+    setShowBreathingMenu(false);
+    setShowSkillsMenu(false);
     setShowLootSelector(false);
 
     setIsUploading(true);
@@ -1276,8 +1424,10 @@ export default function CombatLog({
                     if (targetingRoll) {
                       const actorId = (isActingAsMaster ? selectedCombatantId : null) || user?.id;
                       if (enemy.id === actorId) return;
-                      finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, enemy);
-                      setTargetingRoll(null);
+
+                      // Trigger selection via global event
+                      const event = new CustomEvent('combatant-click', { detail: enemy });
+                      window.dispatchEvent(event);
                     }
                   }}
                                       className={`flex-1 min-w-[280px] max-w-[320px] bg-zinc-900/50 border border-white/5 rounded-2xl p-4 flex gap-4 items-center group transition-all duration-500 hover:border-red-600 relative overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse' : 'hover:bg-zinc-900 hover:shadow-[0_0_20px_rgba(220,38,38,0.1)]'} ${!isActingAsMaster && !targetingRoll ? '' : ''}`}
@@ -1456,9 +1606,26 @@ export default function CombatLog({
                               );
                             } else {
                               // Updated simple logic for simple NPCs
-                              const wPAT = enemy.armed_pat ? (enemy.armed_pat.toString().startsWith('1d') ? enemy.armed_pat : `1d${enemy.armed_pat}`) : null;
+                              const w1Stats = enemy.weapon_type ? calculateWeaponPAT({
+                                category: enemy.weapon_type,
+                                subtype: enemy.weapon_subtype || (enemy.weapon_type === 'Arma de Fogo' ? 'Pistola' : 'Lâmina Curta'),
+                                tier: 1,
+                                upgrade: 0,
+                                tpt: 1,
+                                damage_multi: 1.0
+                              }, enemy) : null;
+
+                              const w2Stats = enemy.sec_weapon_type ? calculateWeaponPAT({
+                                category: enemy.sec_weapon_type,
+                                subtype: enemy.sec_weapon_subtype || (enemy.sec_weapon_type === 'Arma de Fogo' ? 'Pistola' : 'Lâmina Curta'),
+                                tier: 1,
+                                upgrade: 0,
+                                tpt: 1,
+                                damage_multi: 1.0
+                              }, enemy) : null;
+
                               const dStats = calculateDisarmedPAT(enemy);
-                              
+
                               const formatBadge = (stats) => {
                                 if (!stats) return "---";
                                 const d = Math.floor(stats.dice);
@@ -1466,6 +1633,13 @@ export default function CombatLog({
                                 const tpt = stats.tpt || 1;
                                 return `${tpt}d${d}${pVal > 0 ? ` + ${pVal}` : ""}`;
                               };
+
+                              let w1PAT = null;
+                              if (enemy.armed_pat && enemy.armed_pat !== '0') {
+                                w1PAT = enemy.armed_pat.toString().startsWith('1d') ? enemy.armed_pat : `1d${enemy.armed_pat}`;
+                              } else if (w1Stats) {
+                                w1PAT = formatBadge(w1Stats);
+                              }
 
                               const acertoValue = calculateAcerto(enemy);
                               const desvioValue = calculateDesvio(enemy);
@@ -1475,9 +1649,19 @@ export default function CombatLog({
                                 <>
                                   <div className="flex gap-2">
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
-                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Ataque Armado</span>
-                                      <span className="text-[9px] font-black text-red-500 font-mono">{wPAT || "---"}</span>
+                                      <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={enemy.weapon_subtype || enemy.weapon_type || "Ataque Armado"}>
+                                        {enemy.weapon_subtype || enemy.weapon_type || "Ataque Armado"}
+                                      </span>
+                                      <span className="text-[9px] font-black text-red-500 font-mono">{w1PAT || "---"}</span>
                                     </div>
+                                    {w2Stats && (
+                                      <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
+                                        <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter truncate w-full text-center px-1" title={enemy.sec_weapon_subtype || enemy.sec_weapon_type}>
+                                          {enemy.sec_weapon_subtype || enemy.sec_weapon_type}
+                                        </span>
+                                        <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(w2Stats)}</span>
+                                      </div>
+                                    )}
                                     <div className="flex-1 bg-red-500/5 border border-red-500/10 rounded-lg py-1 flex flex-col items-center">
                                       <span className="text-[6px] font-black text-zinc-500 uppercase tracking-tighter">Desarmado</span>
                                       <span className="text-[9px] font-black text-red-500 font-mono">{formatBadge(dStats)}</span>
@@ -1524,7 +1708,7 @@ export default function CombatLog({
           const avatar = sender?.image_url;
 
           return (
-            <div key={group.id || i} className="group animate-in fade-in slide-in-from-left-2 duration-300 flex flex-col gap-2">
+            <div key={group.id || i} data-message-group className="group animate-in fade-in slide-in-from-left-2 duration-300 flex flex-col gap-2">
               <div className="flex items-start gap-4">
                 <div className="shrink-0 mt-1">
                   {avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-white/10" alt="" /> : <div className="w-11 h-11 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] opacity-40">{group.player_name === 'SISTEMA' ? '⚙️' : '👤'}</div>}
@@ -1539,6 +1723,41 @@ export default function CombatLog({
                     </div>
                     <div className="flex flex-col gap-2 mt-1">
                       {group.messages.map((m, mi) => {
+                        if (m.content.startsWith('SKILL_TREE_MOVE|')) {
+                          const [, skillId, skillName, effectDesc, rollerName] = m.content.split('|');
+                          return (
+                            <div key={m.id || `${i}-${mi}`} className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-6 my-2 shadow-[0_0_30px_rgba(245,158,11,0.1)] relative overflow-hidden group/skilltree group/message">
+                              {isMaster && (
+                                <div className="absolute top-2 right-2 z-10 flex gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                                  <button onClick={() => handlePinMessage(m)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-yellow-500"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg></button>
+                                  <button onClick={() => handleDeleteMessage(m.id)} className="p-1.5 bg-zinc-900/50 text-white rounded-full hover:bg-red-600"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                                </div>
+                              )}
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[50px] -z-10" />
+                              
+                              <div className="flex items-center gap-4 mb-4">
+                                <div className="w-12 h-12 shrink-0 bg-amber-500/20 border border-amber-500/40 rounded-xl flex items-center justify-center shadow-xl">
+                                  <span className="text-2xl">⚔️</span>
+                                </div>
+                                <div>
+                                  <div className="bg-amber-500 text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] mb-1 skew-x-[-12deg] w-fit">HABILIDADE_ATIVA</div>
+                                  <h4 className="text-amber-400 font-black italic uppercase text-lg tracking-tighter leading-none">{skillName}</h4>
+                                </div>
+                              </div>
+
+                              <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-4">
+                                <p className="text-zinc-300 text-xs leading-relaxed italic" dangerouslySetInnerHTML={{ __html: effectDesc.replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-400">$1</strong>') }} />
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="h-[1px] flex-1 bg-gradient-to-r from-amber-500/50 to-transparent" />
+                                <span className="text-[9px] font-black text-amber-500/60 uppercase tracking-[0.2em]">
+                                  Usado por @{rollerName || group.player_name}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
                         if (m.content.startsWith('BREATHING_MOVE|')) {
                           const [, skillId, skillName, cost, diceExpr, effectDesc, rollResult, rollerName, targetId] = m.content.split('|');
                           const { BREATHING_TREES } = require('../../constants/gameData');
@@ -1604,7 +1823,7 @@ export default function CombatLog({
                         }
                         if (m.content.startsWith('DICE_ROLL|')) {
                         const parts = m.content.split('|');
-                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = "", targetId = "", effectNote = ""] = parts;
+                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = "", targetId = "", effectNote = "", weaponCategory = "", weaponSubtype = "", damageState = ""] = parts;
                         
                         const styles = {
                           combat: { bg: "bg-red-500/5", border: "border-red-500/20", accent: "text-red-500" },
@@ -1640,7 +1859,18 @@ export default function CombatLog({
                                   <span className={`${style.accent} text-[10px] font-black uppercase tracking-widest`}>Tentativa de</span>
                                   <span className="text-white text-[11px] font-bold italic">{expr}</span>
                                   <div dangerouslySetInnerHTML={{ __html: status }} />
-                                  {diceType && <span className="ml-auto bg-white/10 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded border border-white/10 tracking-widest italic">{diceType}</span>}
+                                  {diceType && (
+                                    <div className="ml-auto flex flex-col items-end gap-1">
+                                      {parts[13] && (
+                                        <span className="bg-red-900/40 text-red-200 text-[7px] font-black uppercase px-2 py-0.5 rounded border border-red-500/20 tracking-widest italic leading-none">
+                                          {parts[13]}
+                                        </span>
+                                      )}
+                                      <span className="bg-white/10 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded border border-white/10 tracking-widest italic leading-none">
+                                        {diceType}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex items-end gap-4">
                                   <div className="text-5xl font-black italic text-white/40 tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">{Number(total).toFixed(0)}</div>
@@ -1709,13 +1939,122 @@ export default function CombatLog({
                                       });
                                   }
 
+                                  // Build weapon info from the DICE_ROLL message fields
+                                  const msgWeaponInfo = { category: weaponCategory, subtype: weaponSubtype };
+
+                                  // Attacker-side damage boosts (e.g. assaltante Obcecado Pela Pólvora)
+                                  const attackerChar = combatants.find(c => c.name === pName || c.username === pName) || allPlayers.find(p => p.char_name === pName);
+                                  if (attackerChar && attackerChar.class_skills) {
+                                      const { SKILL_TREES } = require('../../constants/gameData');
+                                      const aLearnedSkills = Array.isArray(attackerChar.class_skills) ? attackerChar.class_skills : [];
+                                      Object.values(SKILL_TREES).forEach(tree => {
+                                          tree.skills.forEach(skill => {
+                                              if (aLearnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
+                                                  skill.logic.damage_boosts.forEach(boost => {
+                                                      let applies = true;
+                                                      if (boost.condition) {
+                                                          if (boost.condition.type === 'weapon_subtype' && msgWeaponInfo.subtype !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'weapon_category' && msgWeaponInfo.category !== boost.condition.value) applies = false;
+                                                      }
+                                                      if (applies) {
+                                                          dmgValue *= (1 + boost.amount);
+                                                      }
+                                                  });
+                                              }
+                                          });
+                                      });
+                                  }
+
+                                  // Target-side final damage reduction/boost from class skills
+                                  if (target && target.class_skills) {
+                                      const { SKILL_TREES } = require('../../constants/gameData');
+                                      const learnedSkills = Array.isArray(target.class_skills) ? target.class_skills : [];
+                                      const attackerWeapon = msgWeaponInfo;
+                                      Object.values(SKILL_TREES).forEach(tree => {
+                                          tree.skills.forEach(skill => {
+                                              if (learnedSkills.includes(skill.id) && skill.logic?.damage_received_boosts) {
+                                                  skill.logic.damage_received_boosts.forEach(boost => {
+                                                      let applies = true;
+                                                      if (boost.condition) {
+                                                          if (boost.condition.type === 'weapon_subtype' && attackerWeapon.subtype !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'weapon_category' && attackerWeapon.category !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'min_hp_pct') {
+                                                              const { life: maxLife } = calculateDerivedStats(target);
+                                                              const currentLife = target.current_hp ?? maxLife;
+                                                              const hpPct = (currentLife / maxLife) * 100;
+                                                              if (hpPct < boost.condition.value) applies = false;
+                                                          }
+                                                      }
+                                                      if (applies) {
+                                                          dmgValue *= (1 + boost.amount);
+                                                      }
+                                                  });
+                                              }
+                                          });
+                                      });
+                                  }
+
                                   const dNormal = Math.round(dmgValue);
                                   const dLightlyBlocked = Math.round(dmgValue * 0.7);
                                   const dBlocked = Math.round(dmgValue * 0.5);
 
-                                  const basePostureDamage = dmgValue / 3;
+                                  let postureMultiplier = 1.0;
+
+                                  // Attacker-side posture damage boosts (increases posture damage caused)
+                                  if (attackerChar && attackerChar.class_skills) {
+                                      const { SKILL_TREES } = require('../../constants/gameData');
+                                      const learnedSkills = Array.isArray(attackerChar.class_skills) ? attackerChar.class_skills : [];
+                                      const weapon = msgWeaponInfo;
+                                      Object.values(SKILL_TREES).forEach(tree => {
+                                          tree.skills.forEach(skill => {
+                                              if (learnedSkills.includes(skill.id) && skill.logic?.posture_damage_boosts) {
+                                                  skill.logic.posture_damage_boosts.forEach(boost => {
+                                                      let applies = true;
+                                                      if (boost.condition) {
+                                                          if (boost.condition.type === 'weapon_subtype' && weapon.subtype !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'weapon_category' && weapon.category !== boost.condition.value) applies = false;
+                                                      }
+                                                      if (applies) {
+                                                          postureMultiplier += boost.amount;
+                                                      }
+                                                  });
+                                              }
+                                          });
+                                      });
+                                  }
+
+                                  // Target-side posture damage received boosts (reduces/increases posture damage received)
+                                  if (target && target.class_skills) {
+                                      const { SKILL_TREES } = require('../../constants/gameData');
+                                      const learnedSkills = Array.isArray(target.class_skills) ? target.class_skills : [];
+                                      const attackerWeapon = msgWeaponInfo;
+                                      Object.values(SKILL_TREES).forEach(tree => {
+                                          tree.skills.forEach(skill => {
+                                              if (learnedSkills.includes(skill.id) && skill.logic?.posture_damage_received_boosts) {
+                                                  skill.logic.posture_damage_received_boosts.forEach(boost => {
+                                                      let applies = true;
+                                                      if (boost.condition) {
+                                                          if (boost.condition.type === 'weapon_subtype' && attackerWeapon.subtype !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'weapon_category' && attackerWeapon.category !== boost.condition.value) applies = false;
+                                                          if (boost.condition.type === 'min_hp_pct') {
+                                                              const { life: maxLife } = calculateDerivedStats(target);
+                                                              const currentLife = target.current_hp ?? maxLife;
+                                                              const hpPct = (currentLife / maxLife) * 100;
+                                                              if (hpPct < boost.condition.value) applies = false;
+                                                          }
+                                                      }
+                                                      if (applies) {
+                                                          postureMultiplier += boost.amount;
+                                                      }
+                                                  });
+                                              }
+                                          });
+                                      });
+                                  }
+
+                                  const basePostureDamage = (dmgValue / 3) * Math.max(0, postureMultiplier);
                                   function roundPostureDamage(pDmg, roundingFunction) {
-                                    return roundingFunction(Math.max(pDmg / 5, pDmg));
+                                    return roundingFunction(Math.max(dmgValue / 5, pDmg));
                                   }
                                   const pLeve = roundPostureDamage(basePostureDamage, Math.floor);
                                   const pMedio = roundPostureDamage(basePostureDamage * 1.6, Math.round);
@@ -2453,7 +2792,7 @@ export default function CombatLog({
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-[8px] font-black text-cyan-500 uppercase tracking-tighter ml-1">Dado de Foco</label>
                                 <div className="flex gap-2">
-                                    <div className="flex-1 bg-black/40 border border-cyan-500/20 rounded-lg px-3 py-1.5 text-[10px] text-cyan-400 font-mono flex items-center justify-center">
+                                    <div className="flex-1 bg-black/40 border border-cyan-500/20 rounded-lg px-4 py-1.5 text-[10px] text-cyan-400 font-mono flex items-center justify-start">
                                         {diceExpr}
                                     </div>
                                     <button
@@ -2471,8 +2810,7 @@ export default function CombatLog({
                   {[
                     { id: 'acerto', label: 'Dado de Acerto' },
                     { id: 'desvio', label: 'Dado de Desvio' },
-                    { id: 'bloqueio', label: 'Dado de Bloqueio' },
-                    { id: 'dano', label: 'Dado de Dano' }
+                    { id: 'bloqueio', label: 'Dado de Bloqueio' }
                   ].map(dice => (
                     <div key={dice.id} className="flex flex-col gap-1.5">
                       <label className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter ml-1">{dice.label}</label>
@@ -2493,6 +2831,20 @@ export default function CombatLog({
                       </div>
                     </div>
                   ))}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[8px] font-black text-red-500 uppercase tracking-tighter ml-1">Dado de Dano</label>
+                    <div className="flex gap-2">
+                      <div className="flex-1 bg-black/40 border border-red-600/20 rounded-lg px-4 py-1.5 text-[10px] text-red-500 font-mono flex items-center justify-start">
+                        Variável
+                      </div>
+                      <button
+                        onClick={() => handleQuickRoll('dano', '1d1')}
+                        className="px-3 py-1.5 bg-red-600/10 border border-red-600/20 text-red-500 rounded-lg text-[10px] font-black uppercase tracking-tighter hover:bg-red-600 hover:text-white transition-all shadow-[0_0_10px_rgba(220,38,38,0.2)]"
+                      >
+                        Rolar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -2508,86 +2860,183 @@ export default function CombatLog({
                 const activeBreathing = rollerChar?.breathing_style;
                 const learnedSkills = Array.isArray(rollerChar?.breathing_skills) ? rollerChar.breathing_skills : [];
                 
-                if (!activeBreathing || learnedSkills.length === 0) return null;
+                const hasSkillTreeSkills = getActivatableSkillTreeSkills().length > 0;
+                if ((!activeBreathing || learnedSkills.length === 0) && !hasSkillTreeSkills) return null;
 
                 const { BREATHING_TREES } = require('../../constants/gameData');
                 const tree = BREATHING_TREES[activeBreathing];
-                // Only skills that have a focus cost and are not passive (skill_1b is passive now)
-                const activatableSkills = tree?.skills.filter(s => 
-                  learnedSkills.includes(s.id) && 
-                  s.id !== 'skill_0' &&
-                  s.id !== 'skill_1b' &&
-                  s.effect.includes('Foco')
-                ) || [];
+                // Only skills that are activatable: have logic.needsTarget OR logic.diceExpr (but NOT isFocusDice which is the passive focus-gain roll)
+                const activatableSkills = tree?.skills.filter(s => {
+                  if (!learnedSkills.includes(s.id)) return false;
+                  // Skip passive/non-activatable skills
+                  if (s.logic?.isFocusDice) return false;
+                  // Skip the root skill (skill_0) which is just the passive unlock
+                  if (!s.logic || (!s.logic.needsTarget && !s.logic.diceExpr)) return false;
+                  return true;
+                }) || [];
 
-                if (activatableSkills.length === 0) return null;
+                const hasBreathingSkills = activatableSkills.length > 0;
+                if (!hasBreathingSkills && !hasSkillTreeSkills) return null;
 
                 const iconPath = `/breathing_styles/icon_breathing_${activeBreathing.toLowerCase()}.png`;
 
                 return (
                   <div className="relative flex items-center gap-1 mr-2 border-r border-white/10 pr-2">
-                    {showBreathingMenu && (
-                      <div className="absolute bottom-full right-0 mb-4 w-[450px] bg-zinc-950 border-2 border-cyan-500/30 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] backdrop-blur-xl flex flex-col p-6 animate-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex justify-between items-center mb-6">
+                    {(showBreathingMenu || showSkillsMenu) && (
+                      <div className="absolute bottom-full right-0 mb-4 w-[500px] max-h-[70vh] bg-zinc-950 border-2 border-cyan-500/30 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] backdrop-blur-xl flex flex-col animate-in slide-in-from-bottom-2 duration-300 overflow-hidden">
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-6 pb-4 border-b border-white/5">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center overflow-hidden">
                               <img src={iconPath} className="w-full h-full object-cover" alt="" />
                             </div>
                             <div>
-                              <h3 className="text-[11px] font-black text-cyan-400 uppercase tracking-[0.2em] leading-none mb-1">Formas de Respiração</h3>
+                              <h3 className="text-[11px] font-black text-cyan-400 uppercase tracking-[0.2em] leading-none mb-1">Habilidades de Combate</h3>
                               <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">{activeBreathing}</p>
                             </div>
                           </div>
-                          <button onClick={toggleBreathingMenu} className="text-zinc-600 hover:text-white transition-colors text-2xl leading-none">×</button>
+                          <button onClick={() => { toggleBreathingMenu(); toggleSkillsMenu(); }} className="text-zinc-600 hover:text-white transition-colors text-2xl leading-none">×</button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 pr-1">
-                          {activatableSkills.map(skill => (
-                            <div key={skill.id} className="relative group/skill">
-                              <button
-                                onClick={() => { sendBreathingMove(skill); setShowBreathingMenu(false); }}
-                                className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all text-left relative overflow-hidden"
-                              >
-                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
-                                <div className="w-8 h-8 rounded-lg bg-black/40 border border-white/10 shrink-0 overflow-hidden relative z-10">
-                                    <img src={iconPath} className="w-full h-full object-cover group-hover/btn:scale-110 transition-transform" alt="" />
-                                </div>
-                                <div className="flex-1 min-w-0 relative z-10">
-                                  <p className="text-[10px] font-black text-zinc-200 group-hover/btn:text-cyan-400 uppercase tracking-tighter truncate leading-tight">{skill.name}</p>
-                                  <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="text-[7px] font-black text-cyan-600 uppercase tracking-widest">Ativar</span>
-                                    <div className="h-[1px] flex-1 bg-white/5" />
-                                    {skill.effect.match(/(\d+)\s*de\s*Foco/i) && (
-                                        <span className="text-[8px] font-black text-cyan-400/60 font-mono">{skill.effect.match(/(\d+)/)[0]} FOCO</span>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
+                        {/* Search Bar */}
+                        <div className="px-6 py-3 border-b border-white/5">
+                          <input
+                            value={showBreathingMenu ? breathingSearch : skillSearch}
+                            onChange={(e) => { if (showBreathingMenu) setBreathingSearch(e.target.value); else setSkillSearch(e.target.value); }}
+                            placeholder="Buscar habilidade..."
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-600"
+                          />
+                        </div>
 
-                              {/* BREATHING TREE STYLE TOOLTIP */}
-                              <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-cyan-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
-                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-transparent rounded-lg"></div>
-                                <div className="relative z-[1000] flex flex-col gap-2">
-                                  <div>
-                                    <p className="text-cyan-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
-                                    <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
-                                  </div>
-                                  <div className="flex flex-col gap-3">
-                                    {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
-                                    <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
-                                      {(() => {
-                                        let text = skill.description || skill.effect || "";
-                                        let formatted = text.replace(/_/g, '\u00A0')
-                                                          .replace(/\n/g, '<br />')
-                                                          .replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400 font-black">$1</strong>');
-                                        return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
-                                      })()}
+                        {/* Scrollable Content */}
+                        <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4 custom-scrollbar">
+
+                          {/* Section: Breathing Style */}
+                          {showBreathingMenu && (
+                            <>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="h-[1px] flex-1 bg-gradient-to-r from-cyan-500/30 to-transparent" />
+                                <span className="text-[8px] font-black text-cyan-500/60 uppercase tracking-[0.3em]">Formas de Respiração</span>
+                                <div className="h-[1px] flex-1 bg-gradient-to-l from-cyan-500/30 to-transparent" />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 pr-1">
+                                {activatableSkills
+                                  .filter(s => s.name.toLowerCase().includes(breathingSearch.toLowerCase()))
+                                  .map(skill => (
+                                  <div key={skill.id} className="relative group/skill">
+                                    <button
+                                      onClick={() => { sendBreathingMove(skill); setShowBreathingMenu(false); setBreathingSearch(""); }}
+                                      className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all text-left relative overflow-hidden"
+                                    >
+                                      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                                      <div className="w-8 h-8 rounded-lg bg-black/40 border border-white/10 shrink-0 overflow-hidden relative z-10">
+                                          <img src={iconPath} className="w-full h-full object-cover group-hover/btn:scale-110 transition-transform" alt="" />
+                                      </div>
+                                      <div className="flex-1 min-w-0 relative z-10">
+                                        <p className="text-[10px] font-black text-zinc-200 group-hover/btn:text-cyan-400 uppercase tracking-tighter truncate leading-tight">{skill.name}</p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                          <span className="text-[7px] font-black text-cyan-600 uppercase tracking-widest">Ativar</span>
+                                          <div className="h-[1px] flex-1 bg-white/5" />
+                                          {skill.effect.match(/(\d+)\s*de\s*Foco/i) && (
+                                              <span className="text-[8px] font-black text-cyan-400/60 font-mono">{skill.effect.match(/(\d+)/)[0]} FOCO</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </button>
+
+                                    {/* BREATHING TREE STYLE TOOLTIP */}
+                                    <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-cyan-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
+                                      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-transparent rounded-lg"></div>
+                                      <div className="relative z-[1000] flex flex-col gap-2">
+                                        <div>
+                                          <p className="text-cyan-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
+                                          <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
+                                        </div>
+                                        <div className="flex flex-col gap-3">
+                                          {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
+                                          <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
+                                            {(() => {
+                                              let text = skill.description || skill.effect || "";
+                                              let formatted = text.replace(/_/g, '\u00A0')
+                                                                .replace(/\n/g, '<br />')
+                                                                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400 font-black">$1</strong>');
+                                              return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+                                            })()}
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
+                                ))}
                               </div>
-                            </div>
-                          ))}
+                            </>
+                          )}
+
+                          {/* Section: Active Skills from Skill Tree */}
+                          {showSkillsMenu && (() => {
+                            const skillTreeSkills = getActivatableSkillTreeSkills();
+                            const filteredSkills = skillTreeSkills.filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()));
+                            if (skillTreeSkills.length === 0) return (
+                              <div className="text-center py-4">
+                                <p className="text-[10px] text-zinc-600 uppercase font-black tracking-widest">Nenhuma habilidade ativa encontrada</p>
+                              </div>
+                            );
+                            return (
+                              <>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="h-[1px] flex-1 bg-gradient-to-r from-amber-500/30 to-transparent" />
+                                  <span className="text-[8px] font-black text-amber-500/60 uppercase tracking-[0.3em]">Habilidades Ativas</span>
+                                  <div className="h-[1px] flex-1 bg-gradient-to-l from-amber-500/30 to-transparent" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 pr-1">
+                                  {filteredSkills.map(skill => (
+                                    <div key={skill.id} className="relative group/skill">
+                                      <button
+                                        onClick={() => { sendSkillTreeMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
+                                        className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all text-left relative overflow-hidden"
+                                      >
+                                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                                        <div className="w-8 h-8 rounded-lg bg-black/40 border border-white/10 shrink-0 overflow-hidden relative z-10 flex items-center justify-center">
+                                          <span className="text-sm">⚔️</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0 relative z-10">
+                                          <p className="text-[10px] font-black text-zinc-200 group-hover/btn:text-amber-400 uppercase tracking-tighter truncate leading-tight">{skill.name}</p>
+                                          <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className="text-[7px] font-black text-amber-600 uppercase tracking-widest">Usar</span>
+                                            <div className="h-[1px] flex-1 bg-white/5" />
+                                          </div>
+                                        </div>
+                                      </button>
+
+                                      {/* SKILL TREE TOOLTIP */}
+                                      <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-amber-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-transparent rounded-lg"></div>
+                                        <div className="relative z-[1000] flex flex-col gap-2">
+                                          <div>
+                                            <p className="text-amber-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
+                                            <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
+                                          </div>
+                                          <div className="flex flex-col gap-3">
+                                            {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
+                                            <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
+                                              {(() => {
+                                                let text = skill.description || skill.effect || "";
+                                                let formatted = text.replace(/_/g, '\u00A0')
+                                                                  .replace(/\n/g, '<br />')
+                                                                  .replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-400 font-black">$1</strong>');
+                                                return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+                                              })()}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            );
+                          })()}
+
                         </div>
                       </div>
                     )}
@@ -2599,6 +3048,14 @@ export default function CombatLog({
                       title="Formas de Respiração"
                     >
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={toggleSkillsMenu} 
+                      className={`p-2 transition-all ${showSkillsMenu ? 'text-amber-400 scale-110' : 'text-zinc-500 hover:text-amber-400'}`} 
+                      title="Habilidades Ativas (Árvore de Skills)"
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                     </button>
                   </div>
                 );
@@ -2675,3 +3132,5 @@ export default function CombatLog({
     </div>
   );
 }
+
+

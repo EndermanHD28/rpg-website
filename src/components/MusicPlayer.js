@@ -282,7 +282,6 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
   useEffect(() => {
     const handleFirstInteraction = () => {
-      console.log("--- FIRST INTERACTION DETECTED ---");
       setHasInteracted(true);
       window.removeEventListener('mousedown', handleFirstInteraction);
       window.removeEventListener('keydown', handleFirstInteraction);
@@ -458,7 +457,6 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       fetch('/api/sounds')
         .then(res => res.json())
         .then(data => {
-          console.log("SFX List from API:", data);
           setSfxList(data);
         })
         .catch(err => console.error("Error fetching sounds:", err));

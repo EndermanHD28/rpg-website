@@ -1,20 +1,41 @@
-import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES, BREATHING_TREES } from '../constants/gameData';
+import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES, BREATHING_TREES, SKILL_TREES } from '../constants/gameData';
 
 const GLOBAL_PAT_MULTIPLIER = 0.6;
+
+export function getSkillBuffs(char, targetStat) {
+  if (!char || !char.class_skills) return [];
+  const buffs = [];
+  const learnedSkills = Array.isArray(char.class_skills) ? char.class_skills : [];
+  
+  // Iterate through all skill trees to find learned skills
+  Object.values(SKILL_TREES).forEach(tree => {
+    tree.skills.forEach(skill => {
+      if (learnedSkills.includes(skill.id) && skill.logic?.stat_boosts) {
+        skill.logic.stat_boosts.forEach(boost => {
+          const boostStat = boost.stat.toLowerCase();
+          const target = targetStat.toLowerCase();
+          
+          if (boostStat === target || boostStat === 'all') {
+            buffs.push({ source: skill.name, amount: boost.amount });
+          }
+        });
+      }
+    });
+  });
+  
+  return buffs;
+}
 
 export function getStatBuffs(char, statName) {
   if (!char) return [];
   const buffs = [];
 
   // 1. Lineage Buffs
-  // In the DB/state it's called 'bloodline', but the user prompt called it 'lineage'.
-  // Looking at BioGrid.js: field="bloodline"
   const lineageName = char.bloodline || char.lineage;
   const lineageData = LINHAGENS_DATA[lineageName];
   if (lineageData && lineageData.stat_boosts) {
     lineageData.stat_boosts.forEach(boost => {
       let applies = false;
-      // Normalized stat names for comparison
       const targetStat = statName.toLowerCase();
       const boostStat = boost.stat.toLowerCase();
 
@@ -42,20 +63,24 @@ export function getStatBuffs(char, statName) {
     });
   }
 
-  // 2. Anomaly Buffs (Placeholder for now)
-  // 3. Nichirin Buffs (Placeholder for now)
-  // 4. Class Buffs (Placeholder for now)
+  // 2. Skill Tree Buffs
+  const skillBuffs = getSkillBuffs(char, statName);
+  buffs.push(...skillBuffs);
+
+  // 3. Anomaly Buffs (Placeholder for now)
+  // 4. Nichirin Buffs (Placeholder for now)
 
   return buffs;
 }
 
 export function calculateStatWithBuffs(char, statName, baseValue) {
   const buffs = getStatBuffs(char, statName);
-  const totalMultiplier = buffs.reduce((acc, buff) => acc + buff.amount, 0);
+  // MULTIPLICATIVE LOGIC: (1 + b1) * (1 + b2) * ...
+  const totalMultiplier = buffs.reduce((acc, buff) => acc * (1 + buff.amount), 1);
   return {
-    total: Math.floor(baseValue * (1 + totalMultiplier)),
+    total: Math.floor(baseValue * totalMultiplier),
     buffs: buffs,
-    multiplier: totalMultiplier
+    multiplier: totalMultiplier - 1
   };
 }
 
@@ -292,7 +317,10 @@ export function calculateCurrentWeight(inventory, ammunition = {}) {
 }
 
 export function calculateWeaponPAT(weapon, char) {
-  if (!weapon || !char) return { dice: 0, plus: 0, tpt: 1 };
+  if (!weapon) {
+    return { dice: 0, plus: 0, tpt: 1 };
+  }
+  if (!char) return { dice: 0, plus: 0, tpt: 1 };
   
   const effects = Array.isArray(char.effects) ? char.effects : [];
   
@@ -308,7 +336,6 @@ export function calculateWeaponPAT(weapon, char) {
     if (eff.modifiers?.strength) strength *= eff.modifiers.strength;
     if (eff.modifiers?.agility) agility *= eff.modifiers.agility;
     if (eff.modifiers?.resistance) resistance *= eff.modifiers.resistance;
-    // Concentration modifiers? (Optional, let's keep it consistent)
     if (eff.modifiers?.concentration) concentration *= eff.modifiers.concentration;
   });
   let baseDice = 0;
@@ -330,11 +357,11 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.3 * s) + (0.4 * p) + (0.5 * c)
     }),
     'Escopeta': (s, p, a, r, c) => ({
-      dice: (1.0 * s) + (1.0 * p) + (0.4 * c),
-      plus: (0.4 * s) + (0.4 * p) + (0.2 * c)
+      dice: (0.4 * s) + (1.0 * p) + (0.5 * c),
+      plus: (0.4 * s) + (0.4 * p) + (0.3 * c)
     }),
     'Metralhadora': (s, p, a, r, c) => ({
-      dice: (0.05 * s) + (0.07 * p) + (0.02 * a) + (0.04 * c),
+      dice: (0.04 * s) + (0.07 * p) + (0.02 * a) + (0.04 * c),
       plus: (0.2 * s) + (0.3 * p) + (0.3 * a) + (0.2 * c)
     }),
     'Submetralhadora': (s, p, a, r, c) => ({
@@ -386,8 +413,7 @@ export function calculateWeaponPAT(weapon, char) {
   const tierMults = { 0: 0.8, 1: 1.0, 2: 1.2, 3: 1.5, 4: 2.0 };
   const tierValue = typeof weapon.tier === 'string' ? parseInt(weapon.tier.replace(/\D/g, '')) : weapon.tier;
   const tierMult = tierMults[tierValue] || 1.0;
-  // UPGRADE CALC: 'linear +10%' + 'exponential +5%'
-  // We assume level 1 is +1, level 2 is +2 etc.
+  
   const upgradeLvl = Number(weapon.upgrade) || 0;
   let upgradeMult = 1.0;
   if (upgradeLvl > 0) {
@@ -395,9 +421,32 @@ export function calculateWeaponPAT(weapon, char) {
     const exponential = Math.pow(1.05, upgradeLvl);
     upgradeMult = linear * exponential;
   }
-  // BLOODLINE MULTIPLIER (Placeholder for now, can be expanded if gameData provides it)
+
+  // BLOODLINE MULTIPLIER (Placeholder for now)
   const bloodlineMult = 1.0;
-  const customDamageMulti = typeof weapon.damage_multi === 'number' ? weapon.damage_multi : 1.0;
+  let customDamageMulti = typeof weapon.damage_multi === 'number' ? weapon.damage_multi : 1.0;
+
+  // Skill Tree Damage Multipliers (Applied directly to Weapon PAT)
+  if (char?.class_skills) {
+    const learnedSkills = Array.isArray(char.class_skills) ? char.class_skills : [];
+    Object.entries(SKILL_TREES).forEach(([treeName, tree]) => {
+      if (treeName === 'Artista') return;
+      tree.skills.forEach(skill => {
+        if (learnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
+          skill.logic.damage_boosts.forEach(boost => {
+            let applies = true;
+            if (boost.condition) {
+              if (boost.condition.type === 'weapon_subtype' && weapon.subtype !== boost.condition.value) applies = false;
+              if (boost.condition.type === 'weapon_category' && weapon.category !== boost.condition.value) applies = false;
+            }
+            if (applies) {
+              customDamageMulti *= (1 + boost.amount);
+            }
+          });
+        }
+      });
+    });
+  }
   
   const finalDice = (baseDice * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER);
   const finalPlus = (basePlus * tierMult * upgradeMult * bloodlineMult * customDamageMulti * GLOBAL_PAT_MULTIPLIER);
@@ -510,16 +559,44 @@ export function rollDice(expression, charContext = null) {
     effects.forEach(eff => {
       const mod = eff.modifiers?.[diceType];
       if (mod) {
-        // Precision impacts PAT (Dano) for some weapons, but here we apply it to the dice roll if it's the requested type
+        // MULTIPLICATIVE
         total *= mod;
       }
     });
+
+    // Skill Tree Dice Modifiers
+    if (charContext?.class_skills) {
+      const learnedSkills = Array.isArray(charContext.class_skills) ? charContext.class_skills : [];
+      Object.values(SKILL_TREES).forEach(tree => {
+        tree.skills.forEach(skill => {
+          if (learnedSkills.includes(skill.id) && skill.logic?.dice_boosts) {
+            skill.logic.dice_boosts.forEach(boost => {
+              if (boost.type === diceType || boost.type === 'all') {
+                // Condition Check
+                let applies = true;
+                if (boost.condition) {
+                  if (boost.condition.type === 'weapon_category' && charContext.equipped_weapon?.category !== boost.condition.value) {
+                    applies = false;
+                  }
+                  if (boost.condition.type === 'weapon_subtype' && charContext.equipped_weapon?.subtype !== boost.condition.value) {
+                    applies = false;
+                  }
+                }
+                
+                if (applies) {
+                  total *= (1 + boost.amount);
+                }
+              }
+            });
+          }
+        });
+      });
+    }
 
     // Special case: Precision impacts "dano" type if requested
     if (diceType === 'dano') {
       effects.forEach(eff => {
         if (eff.modifiers?.precision) {
-          // If the player has a precision debuff, it also affects damage (as per user request)
           total *= eff.modifiers.precision;
         }
       });
@@ -543,6 +620,30 @@ export function rollDice(expression, charContext = null) {
       total *= focusBuff;
     }
     
+    // Apply Skill Tree Final Damage Boosts
+    if (charContext?.class_skills) {
+      const learnedSkills = Array.isArray(charContext.class_skills) ? charContext.class_skills : [];
+      Object.values(SKILL_TREES).forEach(tree => {
+        tree.skills.forEach(skill => {
+          if (learnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
+            skill.logic.damage_boosts.forEach(boost => {
+              // Condition Check (e.g., weapon type)
+              let applies = true;
+              if (boost.condition) {
+                // If it's a weapon subtype boost, we only apply it here if it's NOT already applied to the weapon PAT
+                if (boost.condition.type === 'weapon_subtype' || boost.condition.type === 'weapon_category') {
+                  applies = false;
+                }
+              }
+              if (applies) {
+                total *= (1 + boost.amount);
+              }
+            });
+          }
+        });
+      });
+    }
+
     // Apply Breathing Tree Passive Logic for Damage
     if (charContext.breathing_style && BREATHING_TREES[charContext.breathing_style]) {
         const tree = BREATHING_TREES[charContext.breathing_style];
