@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { TooltipWrapper } from '../UIElements';
 import { 
@@ -8,9 +8,22 @@ import {
   calculateAcerto, 
   calculateDesvio, 
   calculateBloqueio,
-  calculateDerivedStats 
+  calculateDerivedStats,
+  rollDice
 } from '../../lib/rpg-math';
 import { BREATHING_TREES } from '../../constants/gameData';
+
+const getAmmoIdForSubtype = (subtype) => {
+  if (!subtype) return null;
+  const normalized = subtype.toLowerCase();
+  if (normalized === "rifle") return "ammo_rifle";
+  if (normalized === "pistola") return "ammo_pistola";
+  if (normalized === "revólver" || normalized === "revolver") return "ammo_revolver";
+  if (normalized === "escopeta") return "ammo_escopeta";
+  if (normalized === "metralhadora") return "ammo_metralhadora";
+  if (normalized === "submetralhadora") return "ammo_submetralhadora";
+  return null;
+};
 
 export default function CombatManager({
   user,
@@ -26,8 +39,116 @@ export default function CombatManager({
   finishDiceRoll,
   handleNextTurn,
   handleStartCombat,
+  showToast,
   allNPCs = []
 }) {
+  const [selectedWeapon, setSelectedWeapon] = useState(null); // { id, name, category, subtype, etc. } or { id: 'disarmed', name: 'Desarmado' }
+  const [tirosInput, setTirosInput] = useState("");
+
+  useEffect(() => {
+    if (selectedWeapon && selectedWeapon.category === 'Arma de Fogo') {
+      const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
+      const actor = combatants.find(c => c.id === actorId) || (allPlayers.find(p => p.id === actorId));
+      if (actor) {
+        const stats = calculateWeaponPAT(selectedWeapon, actor);
+        setTirosInput((stats.tpt || 1).toString());
+      }
+    } else {
+      setTirosInput("");
+    }
+  }, [selectedWeapon, selectedCombatantId, user, combatants, allPlayers, isActingAsMaster]);
+
+  const handleCombatantSelect = async (target) => {
+    if (targetingRoll) {
+      const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
+      if (target.id === actorId) return;
+
+      // ENFORCE WEAPON SELECTION for targeting rolls
+      if (!selectedWeapon) {
+        if (showToast) {
+          showToast("Selecione uma arma primeiro!", "warning");
+        } else {
+          alert("Selecione uma arma primeiro!");
+        }
+        return;
+      }
+
+      const actor = targetingRoll.charContext || combatants.find(c => c.id === actorId) || (allPlayers.find(p => p.id === actorId));
+      if (!actor) return;
+
+      // Tiros Verification for Arma de Fogo
+      let tirosValue = 0;
+      if (selectedWeapon.category === 'Arma de Fogo') {
+        tirosValue = parseInt(tirosInput);
+        const wStats = calculateWeaponPAT(selectedWeapon, actor);
+        const maxTpT = wStats.tpt || 1;
+
+        if (isNaN(tirosValue) || tirosValue < 1 || tirosValue > maxTpT) {
+          const msg = `O número de tiros deve ser entre 1 e ${maxTpT}!`;
+          if (showToast) {
+            showToast(msg, "warning");
+          } else {
+            alert(msg);
+          }
+          return;
+        }
+
+        const ammoId = getAmmoIdForSubtype(selectedWeapon.subtype);
+        if (ammoId) {
+          const availableAmmo = actor.ammunition?.[ammoId] || 0;
+          if (tirosValue > availableAmmo) {
+            const msg = `Você não tem balas suficientes! (Disponível: ${availableAmmo}, Necessário: ${tirosValue})`;
+            if (showToast) {
+              showToast(msg, "warning");
+            } else {
+              alert(msg);
+            }
+            return;
+          }
+
+          // Reduce ammo
+          const newAmmoState = {
+            ...(actor.ammunition || {}),
+            [ammoId]: Math.max(0, availableAmmo - tirosValue)
+          };
+          const table = actor.is_npc ? 'npcs' : 'characters';
+          const { error: ammoError } = await supabase.from(table).update({ ammunition: newAmmoState }).eq('id', actor.id);
+          if (ammoError) {
+            console.error("Error reducing ammo:", ammoError);
+          }
+        }
+      }
+
+      // Re-roll/Update dice result based on selected weapon if it's an attack/damage roll
+      let finalDiceResult = targetingRoll.diceResult;
+      let finalInput = targetingRoll.input;
+
+      if (actor && (targetingRoll.diceResult.type === 'dano' || targetingRoll.diceResult.type === 'ataque')) {
+        if (selectedWeapon.id === 'disarmed') {
+          const dStats = calculateDisarmedPAT(actor);
+          finalInput = `/dano ${dStats.tpt}d${Math.floor(dStats.dice)} + ${Math.floor(dStats.plus)}`;
+        } else {
+          const wStats = calculateWeaponPAT(selectedWeapon, actor);
+          const tptValue = selectedWeapon.category === 'Arma de Fogo' ? tirosValue : wStats.tpt;
+          finalInput = `/dano ${tptValue}d${Math.floor(wStats.dice)} + ${Math.floor(wStats.plus)}`;
+        }
+        finalDiceResult = rollDice(finalInput, { ...actor, equipped_weapon: selectedWeapon });
+      } else if (actor && targetingRoll.diceResult.type === 'acerto') {
+        finalDiceResult = rollDice(targetingRoll.input, { ...actor, equipped_weapon: selectedWeapon });
+      }
+
+      finishDiceRoll(finalDiceResult, finalInput, targetingRoll.playerName, targetingRoll.playerImage, target, selectedWeapon.name);
+      setTargetingRoll(null);
+      setSelectedWeapon(null);
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalClick = (e) => handleCombatantSelect(e.detail);
+    window.addEventListener('combatant-click', handleGlobalClick);
+    return () => window.removeEventListener('combatant-click', handleGlobalClick);
+  }, [targetingRoll, selectedWeapon, selectedCombatantId, user, combatants, allPlayers, finishDiceRoll]);
+
   const [editingHP, setEditingHP] = useState(null);
   const [editingPosture, setEditingPosture] = useState(null);
   const [editingFocus, setEditingFocus] = useState(null);
@@ -194,15 +315,101 @@ export default function CombatManager({
   return (
     <div className="w-[400px] shrink-0 bg-zinc-950 flex flex-col border-l border-white/5 relative">
       {targetingRoll && (
-        <div className="absolute inset-0 z-[80] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300 pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-          <div className="relative z-[100] flex flex-col items-center">
-            <div className="bg-red-600 text-black px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] mb-4 skew-x-[-12deg]">SELECIONE UM ALVO</div>
-            <p className="text-white font-bold italic text-sm mb-8">Selecione um alvo para esta ação</p>
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-end pb-32 p-8 text-center animate-in fade-in duration-300 pointer-events-none">
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px]" />
+          <div className="relative z-[1010] flex flex-col items-center w-full max-w-sm pointer-events-auto">
+            <div className="bg-red-600 text-black px-6 py-2 text-xs font-black uppercase tracking-[0.3em] mb-6 skew-x-[-12deg] shadow-[0_0_30px_rgba(220,38,38,0.5)]">SELECIONE UM ALVO</div>
+            <p className="text-white font-black italic text-base mb-8 uppercase tracking-tight drop-shadow-lg">Escolha sua arma e clique em um combatente</p>
+            
+            {/* Weapon Selection */}
+            <div className="w-full bg-zinc-950/90 border-2 border-red-500/20 rounded-[32px] p-6 mb-8 space-y-4 shadow-2xl backdrop-blur-xl">
+              <div className="flex items-center justify-between px-2 border-b border-white/10 pb-2">
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Arsenal</span>
+                {selectedWeapon && <span className="text-[10px] font-black text-red-500 uppercase animate-pulse">Pronto</span>}
+              </div>
+              <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {(() => {
+                  const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
+                  const actor = combatants.find(c => c.id === actorId) || (allPlayers.find(p => p.id === actorId));
+                  if (!actor) return null;
+
+                  const inventory = Array.isArray(actor.inventory) ? actor.inventory : [];
+                  const equippedWeapons = inventory.filter(i => i.equipped && (i.category === "Arma de Fogo" || i.category === "Arma Branca")) || [];
+                  const options = [
+                    { id: 'disarmed', name: 'Desarmado', category: 'Desarmado', subtype: 'Soco / Improviso' },
+                    ...equippedWeapons
+                  ];
+
+                  if (!selectedWeapon && options.length > 0) {
+                    setSelectedWeapon(options[0]);
+                  }
+
+                  return options.map((w, idx) => {
+                    const stats = w.id === 'disarmed' ? calculateDisarmedPAT(actor) : calculateWeaponPAT(w, actor);
+                    const diceVal = Math.floor(stats.dice);
+                    const plusVal = Math.floor(stats.plus);
+                    const tpt = stats.tpt || 1;
+                    const statsLabel = `${tpt}d${diceVal}${plusVal > 0 ? ` + ${plusVal}` : ""}`;
+
+                    return (
+                      <button
+                        key={w.id || idx}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedWeapon(w); }}
+                        className={`flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 ${selectedWeapon?.id === w.id || (selectedWeapon?.id === 'disarmed' && w.id === 'disarmed') ? 'bg-red-600/20 border-red-500 text-white shadow-[0_0_20px_rgba(220,38,38,0.2)]' : 'bg-black/60 border-white/5 text-zinc-500 hover:border-white/20'}`}
+                      >
+                        <span className="text-xl">{w.id === 'disarmed' ? '👊' : (w.category === 'Arma de Fogo' ? '🔫' : '⚔️')}</span>
+                        <div className="flex flex-col items-start min-w-0 flex-1">
+                          <span className="text-[10px] font-black uppercase tracking-tight truncate w-full">{w.name}</span>
+                          <span className={`text-[7px] font-bold uppercase tracking-wider ${selectedWeapon?.id === w.id || (selectedWeapon?.id === 'disarmed' && w.id === 'disarmed') ? 'text-red-400' : 'text-zinc-600'}`}>{w.subtype}</span>
+                        </div>
+                        
+                        <div className="shrink-0 flex flex-col items-center justify-center p-1.5 min-w-[50px] rounded-lg border border-red-500/10 bg-red-500/5">
+                           <span className="text-[6px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 truncate w-full text-center px-1">Dano</span>
+                           <span className="text-[10px] font-black font-mono text-red-500 leading-none">{statsLabel}</span>
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+
+              {selectedWeapon && selectedWeapon.category === "Arma de Fogo" && (() => {
+                const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
+                const actor = combatants.find(c => c.id === actorId) || (allPlayers.find(p => p.id === actorId));
+                if (!actor) return null;
+                const stats = calculateWeaponPAT(selectedWeapon, actor);
+                const diceVal = Math.floor(stats.dice);
+                const plusVal = Math.floor(stats.plus);
+                const diceSuffix = `d${diceVal}${plusVal > 0 ? ` + ${plusVal}` : ""}`;
+
+                return (
+                  <div className="flex flex-col items-center justify-center p-3 border border-red-500/20 bg-black/40 rounded-2xl gap-1 animate-in fade-in zoom-in-95 duration-200">
+                    <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">Tiros</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={tirosInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "" || /^\d+$/.test(val)) {
+                            if (val.length <= 2) {
+                              setTirosInput(val);
+                            }
+                          }
+                        }}
+                        className="w-14 bg-zinc-950 border-2 border-red-500/20 rounded-xl py-1 text-center font-black font-mono text-white text-base outline-none focus:border-red-500/50"
+                      />
+                      <span className="text-sm font-black font-mono text-red-500 select-none">{diceSuffix}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             <button
               type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTargetingRoll(null); }}
-              className="px-6 py-2 border border-white/20 text-white text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all rounded-full cursor-pointer pointer-events-auto"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTargetingRoll(null); setSelectedWeapon(null); }}
+              className="px-8 py-2 bg-zinc-950/50 border border-white/10 text-white text-[9px] font-black uppercase tracking-[0.2em] hover:bg-white hover:text-black transition-all rounded-full"
             >
               Cancelar
             </button>
@@ -303,7 +510,7 @@ export default function CombatManager({
                       <div key={n.id} className="flex items-center gap-1 group">
                         <button
                           onClick={() => toggleCombatant(n, 'npc')}
-                          className={`flex-1 flex items-center gap-3 p-2 rounded-lg border transition-all ${n.is_in_combat ? (n.is_enemy ? 'bg-red-600/20 border-red-500/50 text-white' : 'bg-green-600/20 border-green-500/50 text-white') : 'bg-white/5 border-transparent text-zinc-400 hover:bg-white/10'}`}
+                          className={`flex-1 flex items-center gap-3 p-2 rounded-lg border transition-all ${n.is_in_combat ? (n.is_enemy ? 'bg-red-600/20 border-red-500/50 text-white' : 'bg-green-600/20 border-red-500/50 text-white') : 'bg-white/5 border-transparent text-zinc-400 hover:bg-white/10'}`}
                         >
                           <div className="w-8 h-8 rounded-md bg-zinc-800 overflow-hidden shrink-0 border border-white/10">
                             {n.image_url ? <img src={n.image_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-[10px]">👤</div>}
@@ -424,19 +631,8 @@ export default function CombatManager({
                 return (
                   <div
                     key={p.id}
-                    onClick={() => {
-                      if (targetingRoll) {
-                        if (p.is_enemy && !isActingAsMaster) {
-                          // This case shouldn't be reachable via UI but for safety:
-                          return;
-                        }
-                        const actorId = isActingAsMaster ? selectedCombatantId : user?.id;
-                        if (p.id === actorId) return;
-                        finishDiceRoll(targetingRoll.diceResult, targetingRoll.input, targetingRoll.playerName, targetingRoll.playerImage, p);
-                        setTargetingRoll(null);
-                      }
-                    }}
-                    className={`relative group bg-zinc-900 border border-white/5 rounded-xl p-3 shadow-2xl transition-all duration-500 shrink-0 overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-1 ring-red-600/50 animate-pulse hover:bg-zinc-800' : 'hover:border-red-600/40'}`}
+                    onClick={() => handleCombatantSelect(p)}
+                    className={`relative group bg-zinc-900 border border-white/5 rounded-xl p-3 shadow-2xl transition-all duration-500 shrink-0 overflow-hidden ${targetingRoll ? 'cursor-crosshair ring-2 ring-red-600/50 animate-pulse hover:bg-zinc-800' : 'hover:border-red-600/40'}`}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-[60px] -z-10 group-hover:bg-red-600/10 transition-colors" />
                     <div className="flex flex-col gap-2 relative">
@@ -627,8 +823,8 @@ export default function CombatManager({
                     </div>
                   </div>
                 </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       </div>
