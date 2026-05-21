@@ -57,10 +57,8 @@ export default function CombatLog({
 
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showDiceQuickMenu, setShowDiceQuickMenu] = useState(false);
-  const [showBreathingMenu, setShowBreathingMenu] = useState(false);
   const [showSkillsMenu, setShowSkillsMenu] = useState(false);
   const [skillSearch, setSkillSearch] = useState("");
-  const [breathingSearch, setBreathingSearch] = useState("");
   const [showLootSelector, setShowLootSelector] = useState(false);
   const [lootSearch, setLootSearch] = useState("");
   const [lootDicePlaceholder, setLootDicePlaceholder] = useState("1d20");
@@ -122,7 +120,6 @@ export default function CombatLog({
     setShowTraderSelector(!showTraderSelector);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTradeRequests(false);
@@ -133,7 +130,6 @@ export default function CombatLog({
     setShowTraderSelector(false);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowLootSelector(false);
   };
@@ -1170,7 +1166,6 @@ export default function CombatLog({
   const toggleGifPicker = () => {
     setShowGifPicker(!showGifPicker);
     setShowDiceQuickMenu(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTraderSelector(false);
@@ -1180,7 +1175,6 @@ export default function CombatLog({
   const toggleDiceQuickMenu = () => {
     setShowDiceQuickMenu(!showDiceQuickMenu);
     setShowGifPicker(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowLootSelector(false);
     setShowTraderSelector(false);
@@ -1253,20 +1247,9 @@ export default function CombatLog({
     return activatableSkills;
   };
 
-  const toggleBreathingMenu = () => {
-    setShowBreathingMenu(!showBreathingMenu);
-    setShowSkillsMenu(false);
-    setShowGifPicker(false);
-    setShowDiceQuickMenu(false);
-    setShowLootSelector(false);
-    setShowTraderSelector(false);
-    setShowTradeRequests(false);
-    setBreathingSearch("");
-  };
 
   const toggleSkillsMenu = () => {
     setShowSkillsMenu(!showSkillsMenu);
-    setShowBreathingMenu(false);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
     setShowLootSelector(false);
@@ -1279,7 +1262,6 @@ export default function CombatLog({
     setShowLootSelector(!showLootSelector);
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowTraderSelector(false);
     setShowTradeRequests(false);
@@ -1291,7 +1273,6 @@ export default function CombatLog({
 
     setShowGifPicker(false);
     setShowDiceQuickMenu(false);
-    setShowBreathingMenu(false);
     setShowSkillsMenu(false);
     setShowLootSelector(false);
 
@@ -2882,7 +2863,7 @@ export default function CombatLog({
 
                 return (
                   <div className="relative flex items-center gap-1 mr-2 border-r border-white/10 pr-2">
-                    {(showBreathingMenu || showSkillsMenu) && (
+                    {showSkillsMenu && (
                       <div className="absolute bottom-full right-0 mb-4 w-[500px] max-h-[70vh] bg-zinc-950 border-2 border-cyan-500/30 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] backdrop-blur-xl flex flex-col animate-in slide-in-from-bottom-2 duration-300 overflow-hidden">
                         {/* Header */}
                         <div className="flex justify-between items-center p-6 pb-4 border-b border-white/5">
@@ -2895,14 +2876,14 @@ export default function CombatLog({
                               <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">{activeBreathing}</p>
                             </div>
                           </div>
-                          <button onClick={() => { toggleBreathingMenu(); toggleSkillsMenu(); }} className="text-zinc-600 hover:text-white transition-colors text-2xl leading-none">×</button>
+                          <button onClick={() => { setShowSkillsMenu(false); }} className="text-zinc-600 hover:text-white transition-colors text-2xl leading-none">×</button>
                         </div>
 
                         {/* Search Bar */}
                         <div className="px-6 py-3 border-b border-white/5">
                           <input
-                            value={showBreathingMenu ? breathingSearch : skillSearch}
-                            onChange={(e) => { if (showBreathingMenu) setBreathingSearch(e.target.value); else setSkillSearch(e.target.value); }}
+                            value={skillSearch}
+                            onChange={(e) => setSkillSearch(e.target.value)}
                             placeholder="Buscar habilidade..."
                             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-cyan-500/50 transition-all placeholder:text-zinc-600"
                           />
@@ -2912,7 +2893,7 @@ export default function CombatLog({
                         <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4 custom-scrollbar">
 
                           {/* Section: Breathing Style */}
-                          {showBreathingMenu && (
+                          {activatableSkills.length > 0 && (
                             <>
                               <div className="flex items-center gap-2 mb-2">
                                 <div className="h-[1px] flex-1 bg-gradient-to-r from-cyan-500/30 to-transparent" />
@@ -2921,11 +2902,11 @@ export default function CombatLog({
                               </div>
                               <div className="grid grid-cols-2 gap-3 pr-1">
                                 {activatableSkills
-                                  .filter(s => s.name.toLowerCase().includes(breathingSearch.toLowerCase()))
+                                  .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()))
                                   .map(skill => (
                                   <div key={skill.id} className="relative group/skill">
                                     <button
-                                      onClick={() => { sendBreathingMove(skill); setShowBreathingMenu(false); setBreathingSearch(""); }}
+                                      onClick={() => { sendBreathingMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
                                       className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all text-left relative overflow-hidden"
                                     >
                                       <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
@@ -2973,7 +2954,7 @@ export default function CombatLog({
                           )}
 
                           {/* Section: Active Skills from Skill Tree */}
-                          {showSkillsMenu && (() => {
+                          {(() => {
                             const skillTreeSkills = getActivatableSkillTreeSkills();
                             const filteredSkills = skillTreeSkills.filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()));
                             if (skillTreeSkills.length === 0) return (
@@ -3043,19 +3024,11 @@ export default function CombatLog({
                     
                     <button 
                       type="button" 
-                      onClick={toggleBreathingMenu} 
-                      className={`p-2 transition-all ${showBreathingMenu ? 'text-cyan-400 scale-110' : 'text-zinc-500 hover:text-cyan-400'}`} 
-                      title="Formas de Respiração"
+                      onClick={toggleSkillsMenu} 
+                      className={`p-2 transition-all ${showSkillsMenu ? 'text-cyan-400 scale-110' : 'text-zinc-500 hover:text-cyan-400'}`} 
+                      title="Habilidades de Combate"
                     >
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={toggleSkillsMenu} 
-                      className={`p-2 transition-all ${showSkillsMenu ? 'text-amber-400 scale-110' : 'text-zinc-500 hover:text-amber-400'}`} 
-                      title="Habilidades Ativas (Árvore de Skills)"
-                    >
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                     </button>
                   </div>
                 );
