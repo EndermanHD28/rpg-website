@@ -46,10 +46,13 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
         const rect = containerRef.current.getBoundingClientRect();
         
         if (loading) {
-            // Initial centering
+            // Find the root skill (no parent) and center the viewport on it
+            const rootSkill = treeData.skills.find(s => !s.parent);
+            const centerX = rootSkill ? rootSkill.pos.x + OFFSET_X : OFFSET_X;
+            const centerY = rootSkill ? rootSkill.pos.y + OFFSET_Y : OFFSET_Y;
             setPan({
-                x: Math.round(rect.width / 2 - OFFSET_X),
-                y: Math.round(rect.height / 2 - OFFSET_Y)
+                x: Math.round(rect.width / 2 - centerX),
+                y: Math.round(rect.height / 2 - centerY)
             });
             setLoading(false);
         } else {
@@ -234,11 +237,11 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
               if (!parent) return null;
               const isLineUnlocked = learnedSkills.includes(skill.id);
               
-              // Apply centering offset to skill positions
-              const x1 = parent.pos.x + OFFSET_X + 40;
-              const y1 = parent.pos.y + OFFSET_Y + 40;
-              const x2 = skill.pos.x + OFFSET_X + 40;
-              const y2 = skill.pos.y + OFFSET_Y + 40;
+              // Connect lines to the center of each skill square
+              const x1 = parent.pos.x + OFFSET_X;
+              const y1 = parent.pos.y + OFFSET_Y;
+              const x2 = skill.pos.x + OFFSET_X;
+              const y2 = skill.pos.y + OFFSET_Y;
  
               return (
                 <line 
@@ -259,9 +262,9 @@ export default function BreathingTab({ user, character, isMaster, showToast, pla
             const unlocked = isUnlocked(skill);
             const iconPath = `/breathing_styles/icon_breathing_${breathingStyle.toLowerCase()}.png`;
             
-            // Apply centering offset
-            const left = skill.pos.x + OFFSET_X;
-            const top = skill.pos.y + OFFSET_Y;
+            // Apply centering offset (subtract 40 to center the 80x80 square on its position)
+            const left = skill.pos.x + OFFSET_X - 40;
+            const top = skill.pos.y + OFFSET_Y - 40;
 
             return (
               <div

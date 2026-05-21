@@ -47,11 +47,14 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
         const isClassChange = prevClassRef.current !== selectedClass;
         
         if (loading || isClassChange) {
-            // Center board on initial load or when switching classes,
+            // Center on the root skill on initial load or when switching classes,
             // and reset zoom so the new layout is fully visible.
+            const rootSkill = treeData.skills.find(s => !s.parent);
+            const centerX = rootSkill ? rootSkill.pos.x + OFFSET_X : OFFSET_X;
+            const centerY = rootSkill ? rootSkill.pos.y + OFFSET_Y : OFFSET_Y;
             setPan({
-                x: Math.round(rect.width / 2 - OFFSET_X),
-                y: Math.round(rect.height / 2 - OFFSET_Y)
+                x: Math.round(rect.width / 2 - centerX),
+                y: Math.round(rect.height / 2 - centerY)
             });
             setZoom(1);
             setLoading(false);
@@ -246,10 +249,10 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
               if (!parent) return null;
               const isLineUnlocked = learnedSkills.includes(skill.id);
               
-              const x1 = parent.pos.x + OFFSET_X + 40;
-              const y1 = parent.pos.y + OFFSET_Y + 40;
-              const x2 = skill.pos.x + OFFSET_X + 40;
-              const y2 = skill.pos.y + OFFSET_Y + 40;
+              const x1 = parent.pos.x + OFFSET_X;
+              const y1 = parent.pos.y + OFFSET_Y;
+              const x2 = skill.pos.x + OFFSET_X;
+              const y2 = skill.pos.y + OFFSET_Y;
 
               return (
                 <line 
@@ -269,8 +272,8 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
             const isLearned = learnedSkills.includes(skill.id);
             const unlocked = isUnlocked(skill);
             
-            const left = skill.pos.x + OFFSET_X;
-            const top = skill.pos.y + OFFSET_Y;
+            const left = skill.pos.x + OFFSET_X - 40;
+            const top = skill.pos.y + OFFSET_Y - 40;
 
             // Image path logic
             const classKey = selectedClass.toLowerCase();

@@ -1,15 +1,13 @@
 /*
   ⚠️ EFFECTS RULE
   All status effects MUST be defined in src/constants/gameData.js (EFFECTS export).
-  Skills must NOT construct effect objects inline — use addEffect() from the postRoll context instead.
-  Example: addEffect('target', 'electrification', 2)
 */
 export const vanguarda = {
   name: "Vanguarda",
   boardMultiplier: { x: 1, y: 1.5 },
   skills: [
 
-    // Attack and Resist route
+    // --- ROTA 1: ATACAR E RESISTIR (Superior Esquerda) ---
 
     {
       id: 'vanguarda_initial',
@@ -36,9 +34,7 @@ export const vanguarda = {
       flavor: 'Rota: Atacar e Resistir.',
       effect: 'Aumenta sua **Resistência** em **+5%**.',
       logic: {
-        stat_boosts: [
-          { stat: 'resistance', amount: 0.05 }
-        ]
+        stat_boosts: [{ stat: 'resistance', amount: 0.05 }]
       }
     },
     {
@@ -51,9 +47,7 @@ export const vanguarda = {
       flavor: 'Um escudo humano inabalável.',
       effect: 'Aumenta sua **Aptidão** em **+7%**.',
       logic: {
-        stat_boosts: [
-          { stat: 'aptitude', amount: 0.07 }
-        ]
+        stat_boosts: [{ stat: 'aptitude', amount: 0.07 }]
       }
     },
     {
@@ -64,11 +58,9 @@ export const vanguarda = {
       pos: { x: -170, y: -140 },
       parent: 'vanguarda_resistance_0',
       flavor: 'Um escudo humano inabalável.',
-      effect: 'Aumenta sua **Resistência** em **+5%**.',
+      effect: 'Aumenta sua **Resistência** em **+7%**.',
       logic: {
-        stat_boosts: [
-          { stat: 'resistance', amount: 0.05 }
-        ]
+        stat_boosts: [{ stat: 'resistance', amount: 0.07 }]
       }
     },
     {
@@ -79,11 +71,9 @@ export const vanguarda = {
       pos: { x: -190, y: -240 },
       parent: 'vanguarda_resistance_1',
       flavor: 'Um escudo humano inabalável.',
-      effect: 'Aumenta sua **Aptidão** em **+7%**.',
+      effect: 'Aumenta sua **Aptidão** em **+10%**.',
       logic: {
-        stat_boosts: [
-          { stat: 'aptitude', amount: 0.07 }
-        ]
+        stat_boosts: [{ stat: 'aptitude', amount: 0.1 }]
       }
     },
     {
@@ -101,6 +91,19 @@ export const vanguarda = {
         ]
       }
     },
+    // NOVO SATÉLITE DE RESISTÊNCIA
+    {
+      id: 'vanguarda_resistance_peak',
+      name: 'Bastião Inquebrável',
+      cost: 2,
+      requirements: { resistance: 18 },
+      pos: { x: -420, y: -250 }, // Fora do eixo principal
+      parent: 'vanguarda_resistance_2',
+      flavor: 'Uma montanha não se move.',
+      effect: 'Identidade desconhecida.',
+      logic: {}
+    },
+
     {
       id: 'vanguarda_resistance_5',
       name: 'Postura Agressiva I',
@@ -110,9 +113,7 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_1',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {
-        
-      }
+      logic: {}
     },
     {
       id: 'vanguarda_resistance_6',
@@ -123,9 +124,7 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_5',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {
-        
-      }
+      logic: {}
     },
     {
       id: 'vanguarda_resistance_7',
@@ -136,13 +135,10 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_6',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {
-        
-      }
+      logic: {}
     },
 
-
-    // Nulify and Counter Attack Route
+    // --- ROTA 2: ANULAR E REVIDAR (Superior Direita) ---
 
     {
       id: 'vanguarda_counter_0',
@@ -159,13 +155,12 @@ export const vanguarda = {
         ]
       }
     },
-
     {
       id: 'vanguarda_counter_1',
       name: 'À Prova de Balas II',
       cost: 1,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 200, y: -100 },
+      pos: { x: 220, y: -120 }, // Leve ajuste de respiro
       parent: 'vanguarda_counter_0',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -175,13 +170,12 @@ export const vanguarda = {
         ]
       }
     },
-
     {
       id: 'vanguarda_counter_2',
       name: 'À Prova de Balas III',
       cost: 1,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 300, y: -100 },
+      pos: { x: 340, y: -120 },
       parent: 'vanguarda_counter_1',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -191,13 +185,12 @@ export const vanguarda = {
         ]
       }
     },
-
     {
       id: 'vanguarda_counter_3',
       name: 'À Prova de Balas IV',
       cost: 2,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 400, y: -100 },
+      pos: { x: 460, y: -120 },
       parent: 'vanguarda_counter_2',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -207,6 +200,18 @@ export const vanguarda = {
         ]
       }
     },
+    // NOVO SATÉLITE DE CONTRA-ATAQUE
+    {
+      id: 'vanguarda_counter_reflect',
+      name: 'Reflexo de Lâmina',
+      cost: 2,
+      requirements: { agility: 12 },
+      pos: { x: 400, y: -240 }, // Sobe em relação à linha de balas
+      parent: 'vanguarda_counter_2',
+      flavor: 'Devolvendo o presente.',
+      effect: 'Identidade desconhecida.',
+      logic: {}
+    },
 
     {
       id: 'vanguarda_counter_4',
@@ -214,7 +219,7 @@ export const vanguarda = {
       isActivatable: true,
       cost: 1,
       requirements: { strength: 13, agility: 9 },
-      pos: { x: 200, y: 0 },
+      pos: { x: 220, y: 10 },
       parent: 'vanguarda_counter_0',
       flavor: 'Acerto certeiro!',
       effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, você pode realizar um ataque físico com uma **Arma Branca**: Se o Dado de Acerto for um Crítico, **Desarme** o alvo.',
@@ -229,7 +234,6 @@ export const vanguarda = {
         }
       }
     },
-
     {
       id: 'vanguarda_counter_5',
       name: 'Desarmar e Revidar',
@@ -237,14 +241,70 @@ export const vanguarda = {
       type: 'epic',
       cost: 2,
       requirements: { strength: 17, agility: 11 },
-      pos: { x: 300, y: 0 },
+      pos: { x: 360, y: 20 },
       parent: 'vanguarda_counter_4',
       flavor: 'Chutaremos seus corpos!',
       effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, Ao **Desarmar** um alvo, você pode imediatamente atacá-lo (sem gastar turnos).',
-      logic: {
-      }
+      logic: {}
+    },
+
+    // --- ROTA 3: ESMAGAR E CONTROLAR (Inferior - NOVA) ---
+
+    {
+      id: 'vanguarda_heavy_0',
+      name: 'Peso do Julgamento',
+      cost: 2,
+      requirements: { strength: 10 },
+      pos: { x: 0, y: 180 }, // Desce preenchendo o vazio
+      parent: 'vanguarda_initial',
+      flavor: 'Cada golpe racha o solo.',
+      effect: 'Aumenta o **Dano Final** de **Armas Pesadas** em **+10%**.',
+      logic: {}
+    },
+    {
+      id: 'vanguarda_heavy_1',
+      name: 'Impacto Sísmico',
+      cost: 1,
+      requirements: { strength: 12 },
+      pos: { x: -140, y: 300 }, // Perna esquerda da âncora
+      parent: 'vanguarda_heavy_0',
+      flavor: 'Faça a terra tremer.',
+      effect: 'Identidade desconhecida.',
+      logic: {}
+    },
+    {
+      id: 'vanguarda_heavy_2',
+      name: 'Onda de Choque',
+      cost: 1,
+      requirements: { resistance: 10 },
+      pos: { x: 140, y: 300 }, // Perna direita da âncora
+      parent: 'vanguarda_heavy_0',
+      flavor: 'O ar se expande com a força do golpe.',
+      effect: 'Identidade desconhecida.',
+      logic: {}
+    },
+    {
+      id: 'vanguarda_heavy_3',
+      name: 'Quebra-Crânios',
+      cost: 2,
+      requirements: { strength: 15 },
+      pos: { x: -250, y: 420 }, // Extensão da perna esquerda
+      parent: 'vanguarda_heavy_1',
+      flavor: 'Armaduras são inúteis contra o peso bruto.',
+      effect: 'Identidade desconhecida.',
+      logic: {}
+    },
+    {
+      id: 'vanguarda_heavy_active',
+      name: '????',
+      isActivatable: true,
+      cost: 2,
+      requirements: { strength: 18, resistance: 14 },
+      pos: { x: 0, y: 550 }, // Fundo da âncora (Coração do controle)
+      parent: 'vanguarda_heavy_2',
+      flavor: 'O mundo para quando você decide.',
+      effect: 'Bloqueado.',
+      logic: {}
     }
-
-
   ]
 };

@@ -13,7 +13,7 @@ export const tempestade = {
       name: 'Névoa Inicial', 
       cost: 0, 
       requirements: { concentration: 8, resistance: 7 }, 
-      pos: { x: 0, y: -100 },
+      pos: { x: 0, y: 0 },
       logic: {
         startingFocus: 35,
         maxFocus: 75,
@@ -29,7 +29,7 @@ export const tempestade = {
       name: 'Primeira Forma: Vento Cortante', 
       cost: 1, 
       requirements: { agility: 14, aptitude: 10 }, 
-      pos: { x: -100, y: -180 }, 
+      pos: { x: -100, y: -80 }, 
       parent: 'skill_0', 
       logic: {
         needsTarget: true,
@@ -48,7 +48,7 @@ export const tempestade = {
       name: 'Acúmulo Estático', 
       cost: 1, 
       requirements: { concentration: 9 }, 
-      pos: { x: 100, y: -180 }, 
+      pos: { x: 100, y: -80 }, 
       parent: 'skill_0', 
       logic: {
         isFocusDice: true,
@@ -62,7 +62,7 @@ export const tempestade = {
       name: 'Furacão Elétrico', 
       cost: 2, 
       requirements: { concentration: 16, intelligence: 15, resistance: 14 }, 
-      pos: { x: 0, y: -250 }, 
+      pos: { x: 0, y: -150 }, 
       parent: 'skill_1a', 
       logic: {
         needsTarget: false,
@@ -90,7 +90,7 @@ export const tempestade = {
       name: 'Segunda Forma: Trovão Distante', 
       cost: 1, 
       requirements: { agility: 15, concentration: 9 }, 
-      pos: { x: 200, y: -250 }, 
+      pos: { x: 200, y: -150 }, 
       parent: 'skill_1b', 
       logic: {
         needsTarget: true,
@@ -104,7 +104,7 @@ export const tempestade = {
       name: 'Despertar Corrosivo', 
       cost: 2, 
       requirements: { strength: 17, resistance: 15, concentration: 13 }, 
-      pos: { x: -150, y: 50 }, 
+      pos: { x: -150, y: 150 }, 
       parent: 'skill_1a', 
       logic: {
         needsTarget: false,
@@ -128,7 +128,7 @@ export const tempestade = {
       name: 'Quarta Forma: Tempestade Devastadora', 
       cost: 3, 
       requirements: { strength: 20, concentration: 18, resistance: 17, aptitude: 14, precision: 10 }, 
-      pos: { x: -50, y: 150 }, 
+      pos: { x: -50, y: 250 }, 
       parent: 'skill_2b', 
       logic: {
         needsTarget: true,
@@ -142,7 +142,7 @@ export const tempestade = {
       name: 'Terceira Forma: Relâmpago Vertical', 
       cost: 2, 
       requirements: { concentration: 14, agility: 9, intelligence: 8 }, 
-      pos: { x: 50, y: 50 }, 
+      pos: { x: 50, y: 150 }, 
       parent: 'skill_1b', 
       logic: {
         needsTarget: true,
@@ -156,7 +156,7 @@ export const tempestade = {
       name: 'Chuva Torrencial', 
       cost: 2, 
       requirements: { aptitude: 7 }, 
-      pos: { x: 150, y: 150 }, 
+      pos: { x: 150, y: 250 }, 
       parent: 'skill_2d', 
       flavor: 'Uma sequência incessante de golpes.', 
       effect: 'Permite realizar um **ataque extra** se o primeiro ataque atingir o alvo.' 
