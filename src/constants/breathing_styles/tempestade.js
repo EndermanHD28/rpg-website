@@ -7,8 +7,8 @@ export const tempestade = {
       name: 'Névoa Inicial', 
       cost: 0, 
       requirements: { concentration: 8, resistance: 7 }, 
-      pos: { x: 0, y: -100 }, 
-      skillLogic: {
+      pos: { x: 0, y: -100 },
+      logic: {
         startingFocus: 35,
         maxFocus: 75,
         extraMaxFocusPerLevel: 5,

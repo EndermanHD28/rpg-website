@@ -1245,7 +1245,7 @@ export default function CombatLog({
     const activatableSkills = [];
     Object.values(SKILL_TREES).forEach(tree => {
       tree.skills.forEach(skill => {
-        if (learnedSkills.includes(skill.id) && skill.type === 'active') {
+        if (learnedSkills.includes(skill.id) && skill.isActivatable) {
           activatableSkills.push(skill);
         }
       });

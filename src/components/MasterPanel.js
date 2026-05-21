@@ -21,6 +21,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
     { id: 'npcs', label: 'NPCs' },
     { id: 'almanaque', label: 'Almanaque' },
     { id: 'slots', label: 'Roleta' },
+    { id: 'skills', label: 'Skill Tree' },
   ];
 
   // Fetch maintenance and blocked tabs status

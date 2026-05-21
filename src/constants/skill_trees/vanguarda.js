@@ -205,7 +205,7 @@ export const vanguarda = {
     {
       id: 'vanguarda_counter_4',
       name: 'Desarmar',
-      type: 'active',
+      isActivatable: true,
       cost: 1,
       requirements: { strength: 13, agility: 9 },
       pos: { x: 200, y: 0 },
@@ -221,6 +221,7 @@ export const vanguarda = {
     {
       id: 'vanguarda_counter_5',
       name: 'Desarmar e Revidar',
+      isActivatable: true,
       type: 'epic',
       cost: 2,
       requirements: { strength: 17, agility: 11 },
