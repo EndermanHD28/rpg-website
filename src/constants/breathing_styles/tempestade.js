@@ -1,3 +1,9 @@
+/*
+  ⚠️ EFFECTS RULE
+  All status effects MUST be defined in src/constants/gameData.js (EFFECTS export).
+  Skills must NOT construct effect objects inline — use addEffect() from the postRoll context instead.
+  Example: addEffect('target', 'electrification', 2)
+*/
 export const tempestade = {
   name: "Tempestade",
   boardMultiplier: { x: 1, y: 1 },
@@ -27,21 +33,10 @@ export const tempestade = {
       parent: 'skill_0', 
       logic: {
         needsTarget: true,
-        diceExpr: '1d{acertoBonus2}',
-        postRoll: async ({ result, targetChar, supabase, EFFECTS }) => {
+        diceExpr: '1d{acertoBonus2} /acerto',
+        postRoll: async ({ addEffect, result, targetChar }) => {
           if (result && result.status !== 'Desastre' && targetChar) {
-            const effectTemplate = EFFECTS["eletrification"];
-            const electrification = {
-              ...effectTemplate,
-              key: "eletrification",
-              duration: 2
-            };
-            const currentEffects = Array.isArray(targetChar.effects) ? targetChar.effects : [];
-            const newEffects = [...currentEffects.filter(e => e.name !== "Eletrificação"), electrification];
-
-            const table = targetChar.is_npc ? 'npcs' : 'characters';
-            const dbId = targetChar.is_npc ? targetChar.dbId : targetChar.id;
-            await supabase.from(table).update({ effects: newEffects }).eq('id', dbId);
+            await addEffect('target', 'electrification', 2);
           }
         }
       },
@@ -72,23 +67,9 @@ export const tempestade = {
       logic: {
         needsTarget: false,
         diceExpr: '1d20',
-        postRoll: async ({ result, rollerChar, supabase, showToast, EFFECTS }) => {
-          if (result) {
-            const effectTemplate = EFFECTS["eletrification"];
-            const electrification = {
-              ...effectTemplate,
-              key: "eletrification",
-              duration: 3
-            };
-            const currentEffects = Array.isArray(rollerChar.effects) ? rollerChar.effects : [];
-            const newEffects = [...currentEffects.filter(e => e.name !== "Eletrificação"), electrification];
-
-            await supabase.from('characters').update({
-              effects: newEffects
-            }).eq('id', rollerChar.id);
-
-            showToast("Furacão Elétrico Ativado!");
-          }
+        postRoll: async ({ addEffect, showToast }) => {
+          await addEffect('self', 'electrification', 3);
+          showToast?.("Furacão Elétrico Ativado!");
         },
         passiveBuffs: (char, bLvlBonus) => {
           const effects = Array.isArray(char.effects) ? char.effects : [];
@@ -128,26 +109,14 @@ export const tempestade = {
       logic: {
         needsTarget: false,
         diceExpr: '1d20',
-        postRoll: async ({ result, rollerChar, supabase, calculateDerivedStats, showToast, EFFECTS }) => {
+        postRoll: async ({ addEffect, result, rollerChar, supabase, calculateDerivedStats, showToast }) => {
           if (result.total >= 12) {
             const { focus: maxFocus } = calculateDerivedStats(rollerChar);
-            
-            const effectTemplate = EFFECTS["eletrification"];
-            const electrification = {
-              ...effectTemplate,
-              key: "eletrification",
-              duration: 3
-            };
-
-            const currentEffects = Array.isArray(rollerChar.effects) ? rollerChar.effects : [];
-            const newEffects = [...currentEffects.filter(e => e.name !== "Eletrificação"), electrification];
-
             await supabase.from('characters').update({
-              current_focus: maxFocus,
-              effects: newEffects
+              current_focus: maxFocus
             }).eq('id', rollerChar.id);
-
-            showToast("Despertar Corrosivo Ativado!");
+            await addEffect('self', 'electrification', 3);
+            showToast?.("Despertar Corrosivo Ativado!");
           }
         }
       },

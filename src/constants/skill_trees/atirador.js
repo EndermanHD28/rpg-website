@@ -1,3 +1,9 @@
+/*
+  ⚠️ EFFECTS RULE
+  All status effects MUST be defined in src/constants/gameData.js (EFFECTS export).
+  Skills must NOT construct effect objects inline — use addEffect() from the postRoll context instead.
+  Example: addEffect('target', 'electrification', 2)
+*/
 export const atirador = {
   name: "Atirador",
   skills: [

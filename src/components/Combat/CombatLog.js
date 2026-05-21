@@ -16,6 +16,7 @@ import {
 import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
 import { TooltipWrapper } from '../UIElements';
+import { createPortal } from 'react-dom';
 
 /* 
   NOTE: This system uses a server-side RPC function 'toggle_session' to clear the chat.
@@ -86,6 +87,8 @@ export default function CombatLog({
   const [showTradeRequests, setShowTradeRequests] = useState(false);
 
   const [itemsDB, setItemsDB] = useState([]);
+  const [hoveredSkill, setHoveredSkill] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     fetchItemsDB();
@@ -1705,7 +1708,16 @@ export default function CombatLog({
                     <div className="flex flex-col gap-2 mt-1">
                       {group.messages.map((m, mi) => {
                         if (m.content.startsWith('SKILL_TREE_MOVE|')) {
-                          const [, skillId, skillName, effectDesc, rollerName] = m.content.split('|');
+                          const parts = m.content.split('|');
+                          const skillId = parts[1];
+                          const skillName = parts[2];
+                          const effectDesc = parts[3];
+                          // New format (targeted): SKILL_TREE_MOVE|id|name|effect|diceResult|rollerName|targetId
+                          // Old format (non-targeted): SKILL_TREE_MOVE|id|name|effect|rollerName
+                          const hasDiceResult = parts.length >= 6 && parts[5] && !['none', 'undefined'].includes(parts[4]);
+                          const diceResult = hasDiceResult ? parts[4] : null;
+                          const rollerName = hasDiceResult ? parts[5] : parts[4];
+                          const targetId = hasDiceResult ? parts[6] : null;
                           return (
                             <div key={m.id || `${i}-${mi}`} className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-6 my-2 shadow-[0_0_30px_rgba(245,158,11,0.1)] relative overflow-hidden group/skilltree group/message">
                               {isMaster && (
@@ -1724,6 +1736,12 @@ export default function CombatLog({
                                   <div className="bg-amber-500 text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] mb-1 skew-x-[-12deg] w-fit">HABILIDADE_ATIVA</div>
                                   <h4 className="text-amber-400 font-black italic uppercase text-lg tracking-tighter leading-none">{skillName}</h4>
                                 </div>
+                                {diceResult !== null && (
+                                  <div className="ml-auto flex flex-col items-end">
+                                    <span className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest">Resultado</span>
+                                    <span className="text-xl font-black text-amber-400 font-mono leading-none">{diceResult}</span>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-4">
@@ -1733,7 +1751,7 @@ export default function CombatLog({
                               <div className="flex items-center gap-3">
                                 <div className="h-[1px] flex-1 bg-gradient-to-r from-amber-500/50 to-transparent" />
                                 <span className="text-[9px] font-black text-amber-500/60 uppercase tracking-[0.2em]">
-                                  Usado por @{rollerName || group.player_name}
+                                  {diceResult !== null ? `Resultado: ${diceResult} • ` : ""}Usado por @{rollerName || group.player_name}
                                 </span>
                               </div>
                             </div>
@@ -2904,9 +2922,15 @@ export default function CombatLog({
                                 {activatableSkills
                                   .filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()))
                                   .map(skill => (
-                                  <div key={skill.id} className="relative group/skill">
+                                  <div key={skill.id} className="relative">
                                     <button
-                                      onClick={() => { sendBreathingMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
+                                      onClick={() => { setHoveredSkill(null); sendBreathingMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
+                                      onMouseEnter={(e) => {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setHoveredSkill({ ...skill, type: 'breathing' });
+                                        setTooltipPos({ top: rect.top, left: rect.left });
+                                      }}
+                                      onMouseLeave={() => setHoveredSkill(null)}
                                       className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/30 rounded-xl transition-all text-left relative overflow-hidden"
                                     >
                                       <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
@@ -2924,29 +2948,6 @@ export default function CombatLog({
                                         </div>
                                       </div>
                                     </button>
-
-                                    {/* BREATHING TREE STYLE TOOLTIP */}
-                                    <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-cyan-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
-                                      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-transparent rounded-lg"></div>
-                                      <div className="relative z-[1000] flex flex-col gap-2">
-                                        <div>
-                                          <p className="text-cyan-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
-                                          <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
-                                        </div>
-                                        <div className="flex flex-col gap-3">
-                                          {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
-                                          <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
-                                            {(() => {
-                                              let text = skill.description || skill.effect || "";
-                                              let formatted = text.replace(/_/g, '\u00A0')
-                                                                .replace(/\n/g, '<br />')
-                                                                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyan-400 font-black">$1</strong>');
-                                              return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
-                                            })()}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -2971,9 +2972,15 @@ export default function CombatLog({
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 pr-1">
                                   {filteredSkills.map(skill => (
-                                    <div key={skill.id} className="relative group/skill">
+                                    <div key={skill.id} className="relative">
                                       <button
-                                        onClick={() => { sendSkillTreeMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
+                                        onClick={() => { setHoveredSkill(null); sendSkillTreeMove(skill); setShowSkillsMenu(false); setSkillSearch(""); }}
+                                        onMouseEnter={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setHoveredSkill({ ...skill, type: 'active' });
+                                          setTooltipPos({ top: rect.top, left: rect.left });
+                                        }}
+                                        onMouseLeave={() => setHoveredSkill(null)}
                                         className="w-full group/btn flex items-center gap-3 p-3 bg-white/[0.02] hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 rounded-xl transition-all text-left relative overflow-hidden"
                                       >
                                         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
@@ -2988,29 +2995,6 @@ export default function CombatLog({
                                           </div>
                                         </div>
                                       </button>
-
-                                      {/* SKILL TREE TOOLTIP */}
-                                      <div className="absolute top-0 right-[105%] w-[400px] p-5 bg-[#0a0a0a] border border-amber-500/30 rounded-lg opacity-0 group-hover/skill:opacity-100 transition-all duration-200 pointer-events-none z-[1000] shadow-[0_0_50px_rgba(0,0,0,1)] scale-95 group-hover/skill:scale-100 origin-right">
-                                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-transparent rounded-lg"></div>
-                                        <div className="relative z-[1000] flex flex-col gap-2">
-                                          <div>
-                                            <p className="text-amber-400 font-black uppercase text-[12px] leading-tight">{skill.name}</p>
-                                            <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
-                                          </div>
-                                          <div className="flex flex-col gap-3">
-                                            {skill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{skill.flavor}"</p>}
-                                            <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap relative z-[1010]">
-                                              {(() => {
-                                                let text = skill.description || skill.effect || "";
-                                                let formatted = text.replace(/_/g, '\u00A0')
-                                                                  .replace(/\n/g, '<br />')
-                                                                  .replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-400 font-black">$1</strong>');
-                                                return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
-                                              })()}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -3101,6 +3085,49 @@ export default function CombatLog({
             })()}
           </div>
         </div>
+      )}
+
+      {/* PORTAL TOOLTIP - Renders outside any overflow container */}
+      {hoveredSkill && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: tooltipPos.top,
+            left: tooltipPos.left - 415,
+            zIndex: 9999,
+            pointerEvents: 'none'
+          }}
+          className={`w-[400px] p-5 bg-[#0a0a0a] border rounded-lg shadow-[0_0_50px_rgba(0,0,0,1)] animate-in fade-in zoom-in-95 duration-200 ${
+            hoveredSkill.type === 'breathing' ? 'border-cyan-500/30' : 'border-amber-500/30'
+          }`}
+        >
+          <div className={`absolute inset-0 rounded-lg opacity-10 ${
+            hoveredSkill.type === 'breathing' ? 'bg-gradient-to-br from-cyan-500 via-purple-500' : 'bg-gradient-to-br from-amber-500 via-orange-500'
+          }`}></div>
+          
+          <div className="relative z-[1000] flex flex-col gap-2">
+            <div>
+              <p className={`font-black uppercase text-[12px] leading-tight ${
+                hoveredSkill.type === 'breathing' ? 'text-cyan-400' : 'text-amber-400'
+              }`}>{hoveredSkill.name}</p>
+              <p className="text-zinc-600 font-mono text-[9px] uppercase mt-0.5 tracking-tighter">ID: {hoveredSkill.id}</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              {hoveredSkill.flavor && <p className="text-zinc-500 text-[10px] italic leading-snug border-l border-zinc-800 pl-2">"{hoveredSkill.flavor}"</p>}
+              <div className="text-zinc-300 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+                {(() => {
+                  let text = hoveredSkill.description || hoveredSkill.effect || "";
+                  let colorClass = hoveredSkill.type === 'breathing' ? 'text-cyan-400' : 'text-amber-400';
+                  let formatted = text.replace(/_/g, '\u00A0')
+                                    .replace(/\n/g, '<br />')
+                                    .replace(/\*\*(.*?)\*\*/g, `<strong class="${colorClass} font-black">$1</strong>`);
+                  return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,3 +1,9 @@
+/*
+  ⚠️ EFFECTS RULE
+  All status effects MUST be defined in src/constants/gameData.js (EFFECTS export).
+  Skills must NOT construct effect objects inline — use addEffect() from the postRoll context instead.
+  Example: addEffect('target', 'electrification', 2)
+*/
 export const vanguarda = {
   name: "Vanguarda",
   boardMultiplier: { x: 1, y: 1.5 },
@@ -211,10 +217,16 @@ export const vanguarda = {
       pos: { x: 200, y: 0 },
       parent: 'vanguarda_counter_0',
       flavor: 'Acerto certeiro!',
-      effect: '**Uma vez por combate**, você pode realizar um ataque físico com uma **Arma Branca**: Se o Dado de Acerto for um Crítico, **Desarme** o alvo.',
+      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, você pode realizar um ataque físico com uma **Arma Branca**: Se o Dado de Acerto for um Crítico, **Desarme** o alvo.',
       logic: {
         needsTarget: true,
-        diceExpr: '1d{acerto}'
+        diceExpr: '1d{acerto}',
+        postRoll: async ({ addEffect, result, targetChar, showToast }) => {
+          if (result.status === 'Crítico' && targetChar) {
+            await addEffect('target', 'disarmed', 2);
+            showToast?.(`${targetChar.char_name || targetChar.name} foi Desarmado!`);
+          }
+        }
       }
     },
 
@@ -228,7 +240,7 @@ export const vanguarda = {
       pos: { x: 300, y: 0 },
       parent: 'vanguarda_counter_4',
       flavor: 'Chutaremos seus corpos!',
-      effect: '**Uma vez por combate**, Ao **Desarmar** um alvo, você pode imediatamente atacá-lo (sem gastar turnos).',
+      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, Ao **Desarmar** um alvo, você pode imediatamente atacá-lo (sem gastar turnos).',
       logic: {
       }
     }

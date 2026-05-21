@@ -297,6 +297,13 @@ export const formatHeight = (val) => {
   return `${digits[0]},${digits.slice(1, 3)}m`;
 };
 
+/*
+  ⚠️ EFFECTS — SINGLE SOURCE OF TRUTH
+  All status effects MUST be defined here, not in individual skill files.
+  Skills should reference effects by key (e.g. "electrification") via the addEffect() helper.
+  Do NOT construct effect objects inline in skill postRoll logic.
+  See EFFECT_ALIASES below for alternative spellings/translations.
+*/
 export const EFFECTS = {
   "cooling": {
     name: "Resfriamento",
@@ -375,6 +382,12 @@ export const EFFECTS = {
     emoji: "✨",
     description: "Aumenta o Dado de Acerto em 10%. Aumenta a Vida e a Vida Máxima em 15%. Aumenta o Foco Máximo em 15%. Aumenta o Foco em 25.",
     modifiers: { acerto: 1.1, maxLife: 1.15, hpRegen: 0.15, maxFocus: 1.15, fixedFocusRegen: 25 }
+  },
+  "disarmed": {
+    name: "Desarmado",
+    emoji: "🏳️",
+    description: "Aumenta o Dano Tomado em 10%. Impossibilita o uso da arma de quando o efeito foi aplicado.",
+    modifiers: { damageTaken: 1.10 }
   }
 };
 

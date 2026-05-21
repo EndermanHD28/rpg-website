@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { SKILL_TREES, STAT_LABELS } from '../constants/gameData';
 
@@ -12,6 +12,7 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
   const [isPanning, setIsPanning] = useState(false);
   const [imageErrors, setImageErrors] = useState({});
   const mouseOffset = useRef({ x: 0, y: 0 });
+  const prevClassRef = useRef(selectedClass);
 
   const [optimisticSkills, setOptimisticSkills] = useState(character?.class_skills || []);
   const [optimisticPoints, setOptimisticPoints] = useState(character?.ph_points || 0);
@@ -40,17 +41,23 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
 
   const prevDims = useRef({ width: BOARD_WIDTH, height: BOARD_HEIGHT });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
+        const isClassChange = prevClassRef.current !== selectedClass;
         
-        if (loading) {
+        if (loading || isClassChange) {
+            // Center board on initial load or when switching classes,
+            // and reset zoom so the new layout is fully visible.
             setPan({
                 x: Math.round(rect.width / 2 - OFFSET_X),
                 y: Math.round(rect.height / 2 - OFFSET_Y)
             });
+            setZoom(1);
             setLoading(false);
+            prevClassRef.current = selectedClass;
         } else {
+            // Adjust pan when board dimensions change for any other reason.
             const dx = (BOARD_WIDTH - prevDims.current.width) / 2;
             const dy = (BOARD_HEIGHT - prevDims.current.height) / 2;
             if (dx !== 0 || dy !== 0) {

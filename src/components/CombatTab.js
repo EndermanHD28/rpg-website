@@ -48,6 +48,27 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [targetingRoll]);
 
+  // Centralized effect applier — skills call addEffect() instead of duplicating DB logic
+  const applyEffect = async (entity, effectKey, duration, roller, target, supabase, showToast, EFFECTS) => {
+    let targets = [];
+    if (entity === 'self') targets = roller ? [roller] : [];
+    else if (entity === 'target') targets = target ? [target] : [];
+    // 'all' not yet supported — requires all-combatants list
+
+    for (const t of targets) {
+      if (!t) continue;
+      const template = EFFECTS[effectKey];
+      if (!template) { showToast?.(`Efeito "${effectKey}" não encontrado em EFFECTS!`); return; }
+
+      const newEffect = { ...template, key: effectKey, duration, addedAtTurn: 1 };
+      const currentEffects = Array.isArray(t.effects) ? t.effects : [];
+      const filtered = currentEffects.filter(e => e.key !== effectKey);
+      const table = t.is_npc ? 'npcs' : 'characters';
+      const dbId = t.is_npc ? t.dbId : t.id;
+      await supabase.from(table).update({ effects: [...filtered, newEffect] }).eq('id', dbId);
+    }
+  };
+
   const finishDiceRoll = async (diceResult, originalInput, playerName, playerImage, targetPlayer = null) => {
     let detail = diceResult.original;
     diceResult.rolls.forEach(r => {
@@ -109,14 +130,58 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
         const skill = tree?.skills.find(s => s.id === skillId);
 
         if (skill?.logic?.postRoll) {
-          await skill.logic.postRoll({ 
-            result: diceResult, 
-            rollerChar, 
-            targetChar: targetPlayer, 
-            supabase, 
-            calculateDerivedStats, 
-            showToast, 
-            EFFECTS 
+          await skill.logic.postRoll({
+            result: diceResult,
+            rollerChar,
+            targetChar: targetPlayer,
+            supabase,
+            calculateDerivedStats,
+            showToast,
+            EFFECTS,
+            addEffect: async (entity, effectKey, duration) => {
+              await applyEffect(entity, effectKey, duration, rollerChar, targetPlayer, supabase, showToast, EFFECTS);
+            }
+          });
+        }
+      }
+    }
+
+    // --- SKILL TREE POST-TARGET EFFECTS ---
+    if (targetingRoll?.isSkillTreeMove) {
+      const rollerChar = allPlayers.find(p => p.char_name === playerName) || allNPCs.find(n => n.name === playerName);
+      if (rollerChar) {
+        const skillId = targetingRoll.skillId;
+        const skillName = targetingRoll.skillName;
+        const effectDesc = targetingRoll.effectDesc || "";
+
+        // 1. Send the Skill Tree Move layout card NOW
+        await supabase.from('messages').insert({
+          player_name: "SISTEMA",
+          content: `SKILL_TREE_MOVE|${skillId}|${skillName}|${effectDesc}|${diceResult.total}|${rollerChar.char_name || rollerChar.name}|${targetPlayer ? targetPlayer.id : 'none'}`,
+          is_system: true
+        });
+
+        // 2. Apply post-roll logic from skill if exists
+        const { SKILL_TREES } = await import('../constants/gameData');
+        let skill = null;
+        Object.values(SKILL_TREES).forEach(tree => {
+          const found = tree.skills.find(s => s.id === skillId);
+          if (found) skill = found;
+        });
+
+        if (skill?.logic?.postRoll) {
+          const { EFFECTS } = await import('../constants/gameData');
+          await skill.logic.postRoll({
+            result: diceResult,
+            rollerChar,
+            targetChar: targetPlayer,
+            supabase,
+            calculateDerivedStats,
+            showToast,
+            EFFECTS,
+            addEffect: async (entity, effectKey, duration) => {
+              await applyEffect(entity, effectKey, duration, rollerChar, targetPlayer, supabase, showToast, EFFECTS);
+            }
           });
         }
       }
