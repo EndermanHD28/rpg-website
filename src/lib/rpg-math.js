@@ -108,7 +108,7 @@ export function calculateAcerto(char) {
   return Math.round(10 + Math.pow(
     (
       (sPrecision * 0.7) +
-      sAgility +
+      sAgility * 2 +
       (sAptitude * 0.35) +
       (sStrength * 0.35)
     ) * 3,
@@ -125,7 +125,7 @@ export function calculateDesvio(char) {
 
   return Math.round(8 + Math.pow(
     (
-      (sAgility * 0.95) +
+      (sAgility * 1.5) +
       (sConcentration * 0.55) +
       (sResistance * 0.2) +
       (sAptitude * 0.3)
@@ -382,15 +382,15 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.35 * s) + (0.35 * p) + (0.4 * a)+ (0.1 * c)
     }),
     'Machado/Porrete Leve': (s, p, a, r, c) => ({
-      dice: (1.4 * s) + (0.6 * p) + (0.65 * r) + (0.2 * c),
+      dice: (1.4 * s) + (0.6 * p) + (0.55 * r) + (0.2 * c),
       plus: (0.45 * s) + (0.15 * p) + (0.3 * r) + (0.1 * c)
     }),
     'Espada/Machado Pesado': (s, p, a, r, c) => ({
-      dice: (1.7 * s) + (1.1 * r) + (1.15 * a) + (0.1 * c),
+      dice: (1.7 * s) + (1.1 * r) + (0.65 * a) + (0.1 * c),
       plus: (0.65 * s) + (0.1 * r) + (0.4 * a) + (0.05 * c)
     }),
     'Martelo Pesado': (s, p, a, r, c) => ({
-      dice: (1.9 * s) + (1.45 * r) + (1.15 * a) + (0.2 * c),
+      dice: (1.9 * s) + (1.45 * r) + (0.55 * a) + (0.2 * c),
       plus: (0.55 * s) + (0.25 * r) + (0.6 * a) + (0.1 * c)
     }),
     'Soco / Improviso': (s, p, a, r, c) => ({

@@ -9,7 +9,7 @@ export const atirador = {
     {
       id: 'atirador_initial',
       name: 'Foco no Alvo',
-      cost: 1,
+      cost: 3,
       requirements: { precision: 10 },
       pos: { x: 0, y: 0 },
       flavor: 'Um tiro, uma morte.',
@@ -96,7 +96,7 @@ export const atirador = {
       name: 'Passos Curtos',
       cost: 1,
       requirements: { agility: 12 },
-      pos: { x: 300, y: -40 }, // "Zigue" para a direita
+      pos: { x: 300, y: -60 }, // "Zigue" para a direita
       parent: 'atirador_agil_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',

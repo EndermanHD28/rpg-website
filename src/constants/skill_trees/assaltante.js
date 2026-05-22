@@ -257,7 +257,7 @@ export const assaltante = {
       type: 'epic',
       cost: 3,
       requirements: { agility: 20 },
-      pos: { x: 420, y: -620 }, // FIM DA ROTA DIREITA
+      pos: { x: 420, y: -550 }, // FIM DA ROTA DIREITA
       parent: 'assaltante_util_active',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',

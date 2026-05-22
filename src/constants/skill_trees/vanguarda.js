@@ -4,7 +4,7 @@
 */
 export const vanguarda = {
   name: "Vanguarda",
-  boardMultiplier: { x: 1, y: 1.5 },
+  boardMultiplier: { x: 0.8, y: 1.3 },
   skills: [
 
     // --- ROTA 1: ATACAR E RESISTIR (Superior Esquerda) ---
