@@ -111,7 +111,7 @@ export function calculateAcerto(char) {
       sAgility * 2 +
       (sAptitude * 0.35) +
       (sStrength * 0.35)
-    ) * 3,
+    ) * 2.2,
     0.72
   ));
 }
@@ -129,7 +129,7 @@ export function calculateDesvio(char) {
       (sConcentration * 0.55) +
       (sResistance * 0.2) +
       (sAptitude * 0.3)
-    ) * 2,
+    ) * 1.4,
     0.72
   ));
 }
