@@ -31,7 +31,7 @@ export const artista = {
       requirements: { agility: 12, charisma: 10 },
       pos: { x: -140, y: -120 },
       parent: 'artista_initial',
-      flavor: 'Um ataque tão belo quanto mortal.',
+      flavor: 'Rota: Exibicionista e Arrogante.',
       effect: 'Golpes de **Socos** e **Improviso** possuem o **Dobro** de chance de Crítico.'
     },
     {
@@ -85,13 +85,14 @@ export const artista = {
 
     {
       id: 'artista_brutal_0',
-      name: 'Postura de Pugilista',
-      cost: 1,
-      requirements: { strength: 10 },
+      name: 'Postura de Boxeador',
+      cost: 2,
+      requirements: { strength: 10, agility: 10, resistance: 8 },
       pos: { x: 150, y: -100 }, 
       parent: 'artista_initial',
-      flavor: 'Queixo no peito, punhos no rosto.',
-      effect: 'Identidade desconhecida.',
+      flavor: 'Rota: Brutalizar.',
+      isActivatable: true,
+      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, caso um inimigo **próximo** realizaria um ataque com você como alvo, rolete **1d20** (Sucesso: **9+**): **Cancele** o ataque e imediatamente **Contra-ataque**. Caso falhe: o ataque torna-se **Garantido**.',
       logic: {}
     },
     {

@@ -107,9 +107,9 @@ export const assaltante = {
 
     {
       id: 'assaltante_shotguns_0',
-      name: 'Finalizar de uma vez.',
+      name: 'Dissipar o Chumbo I',
       cost: 2,
-      requirements: { precision: 9, strength: 7, resistance: 6},
+      requirements: { precision: 8, aptitude: 7, resistance: 6},
       pos: { x: -140, y: -100 }, // SOBE ESQUERDA
       parent: 'assaltante_initial',
       flavor: 'Excentricidade nas Balas!',
@@ -124,58 +124,65 @@ export const assaltante = {
       }
     },
     {
-      id: 'assaltante_sg_1',
-      name: 'Chumbo Grosso',
+      id: 'assaltante_shotguns_1',
+      name: 'Dissipar o Chumbo II',
       cost: 1,
-      requirements: { strength: 10 },
-      pos: { x: -280, y: -140 },
+      requirements: { precision: 10, aptitude: 8, resistance: 7},
+      pos: { x: -240, y: -100 }, // SOBE ESQUERDA
       parent: 'assaltante_shotguns_0',
-      flavor: 'Sinta o impacto.',
-      effect: 'Identidade desconhecida.',
-      logic: {}
+      flavor: 'Excentricidade nas Balas!',
+      effect: 'Aumenta **Precisão** em **+3%**.\nAumenta o **Dano Final** de **Escopetas** em **+3%**.',
+      logic: {
+        damage_boosts: [
+          { amount: 0.03, condition: { type: 'weapon_subtype', value: 'Escopeta' } }
+        ],
+        stat_boosts: [
+          { stat: 'precision', amount: 0.03 }
+        ]
+      }
     },
     {
-      id: 'assaltante_sg_2',
+      id: 'assaltante_shotguns_2',
       name: 'Arrombador',
       cost: 2,
       requirements: { strength: 13, resistance: 10 },
       pos: { x: -220, y: -260 },
-      parent: 'assaltante_sg_1',
+      parent: 'assaltante_shotguns_0',
       flavor: 'Portas são apenas sugestões.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_sg_side_1',
+      id: 'assaltante_shotguns_3',
       name: 'Cano Serrado',
       cost: 1,
       requirements: { agility: 9 },
       pos: { x: -380, y: -200 }, // ISOLADO PARA A ESQUERDA
-      parent: 'assaltante_sg_1',
+      parent: 'assaltante_shotguns_2',
       flavor: 'Portabilidade letal.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_sg_active',
+      id: 'assaltante_shotguns_4',
       name: '????',
       isActivatable: true,
       cost: 2,
       requirements: { strength: 16 },
       pos: { x: -350, y: -380 },
-      parent: 'assaltante_sg_2',
+      parent: 'assaltante_shotguns_2',
       flavor: 'Pura brutalidade.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'assaltante_sg_epic',
+      id: 'assaltante_shotguns_5',
       name: '????',
       type: 'epic',
       cost: 4,
       requirements: { strength: 22, resistance: 18 },
       pos: { x: -480, y: -500 }, // FIM DA ROTA ESQUERDA
-      parent: 'assaltante_sg_active',
+      parent: 'assaltante_shotguns_4',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
@@ -186,13 +193,13 @@ export const assaltante = {
 
     {
       id: 'assaltante_util_0',
-      name: 'Saque Veloz',
+      name: 'Saque Instantâneo',
       cost: 1,
       requirements: { agility: 8 },
       pos: { x: 120, y: -90 }, // SOBE DIREITA
       parent: 'assaltante_initial',
-      flavor: 'A mão é mais rápida.',
-      effect: 'Identidade desconhecida.',
+      flavor: 'Ha! Sou mais rápido.',
+      effect: 'Ao iniciar um **Combate**, você pode escolher ter o **Primeiro Turno** dentre seus aliados (o primeiro turno ainda pode começar por inimigos).',
       logic: {}
     },
     {
@@ -266,14 +273,15 @@ export const assaltante = {
 
     // --- ROTA SECRETA / BÔNUS (OPCIONAL) ---
     {
-      id: 'assaltante_extra_1',
+      id: 'assaltante_extra_0',
       name: 'Sede de Sangue',
-      cost: 2,
-      requirements: { strength: 12, agility: 12 },
-      pos: { x: 180, y: 150 }, // Única que "cai" para o sudeste
+      cost: 3,
+      type: 'epic',
+      requirements: { strength: 12, resistance: 12 },
+      pos: { x: 150, y: 110 },
       parent: 'assaltante_initial',
       flavor: 'O caos te alimenta.',
-      effect: 'Identidade desconhecida.',
+      effect: '**Uma vez por combate**, se você roletaria um **Dado de Dano** com uma **Arma de Fogo**, você pode sacrificar **35%** de **Postura**: aumente o **Dado de Dano** em **+25%**.',
       logic: {}
     }
   ]

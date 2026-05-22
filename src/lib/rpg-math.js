@@ -1,6 +1,126 @@
 import { LINHAGENS_DATA, RESPIRACOES_DATA, AMMUNITION_TYPES, BREATHING_TREES, SKILL_TREES } from '../constants/gameData';
 
 const GLOBAL_PAT_MULTIPLIER = 0.6;
+// ============================================================================
+// CONDITION EVALUATION SYSTEM
+// Supports both old single-condition format and new AND/OR compound format.
+//
+// Old format (backward compatible):
+//   { type: 'weapon_subtype', value: 'Escopeta' }
+//
+// New compound format:
+//   { operator: 'AND', conditions: [
+//     { type: 'weapon_category', value: 'Arma Branca' },
+//     { type: 'weapon_subtype', value: 'Impacto' }
+//   ]}
+//   { operator: 'OR', conditions: [
+//     { type: 'weapon_subtype', value: 'Metralhadora' },
+//     { type: 'weapon_subtype', value: 'Submetralhadora' }
+//   ]}
+// ============================================================================
+
+/**
+ * Evaluates a single leaf condition.
+ * @param {Object} condition - The condition object with { type, value }
+ * @param {Object} ctx - Context containing char, weapon, target, etc.
+ * @returns {boolean}
+ */
+export function evaluateSingleCondition(condition, ctx) {
+  if (!condition || !condition.type) return true;
+
+  const type = condition.type;
+
+  // --- Weapon conditions ---
+  if (type === 'weapon_subtype') {
+    const weapon = ctx.weapon || ctx.attackerWeapon || ctx.msgWeaponInfo || (ctx.charContext && ctx.charContext.equipped_weapon);
+    return weapon && weapon.subtype === condition.value;
+  }
+  if (type === 'weapon_category') {
+    const weapon = ctx.weapon || ctx.attackerWeapon || ctx.msgWeaponInfo || (ctx.charContext && ctx.charContext.equipped_weapon);
+    return weapon && weapon.category === condition.value;
+  }
+  if (type === 'damage_type') {
+    const weapon = ctx.weapon || ctx.attackerWeapon || ctx.msgWeaponInfo || (ctx.charContext && ctx.charContext.equipped_weapon);
+    return weapon && weapon.damageType === condition.value;
+  }
+
+  // --- Breathing conditions ---
+  if (type === 'breathing_keyword') {
+    const char = ctx.char || ctx.charContext || ctx.attackerChar;
+    const breathing = char && char.breathing_style;
+    // RESPIRACOES_DATA is imported at top of file
+    const breathingData = typeof RESPIRACOES_DATA !== 'undefined' ? RESPIRACOES_DATA[breathing] : null;
+    return breathingData && breathingData.keywords && breathingData.keywords.includes(condition.value);
+  }
+  if (type === 'breathing_style') {
+    const char = ctx.char || ctx.charContext || ctx.attackerChar;
+    return char && char.breathing_style === condition.value;
+  }
+
+  // --- HP conditions ---
+  if (type === 'min_hp_pct') {
+    const target = ctx.target;
+    if (!target) return true; // If no target context, don't block
+    // calculateDerivedStats is available in rpg-math.js scope
+    const { life: maxLife } = (typeof calculateDerivedStats === 'undefined')
+      ? { life: target.max_hp || target.life }
+      : calculateDerivedStats(target);
+    const currentLife = target.current_hp != null ? target.current_hp : maxLife;
+    const hpPct = (currentLife / maxLife) * 100;
+    return hpPct >= condition.value;
+  }
+  if (type === 'max_hp_pct') {
+    const target = ctx.target;
+    if (!target) return true;
+    const { life: maxLife } = (typeof calculateDerivedStats === 'undefined')
+      ? { life: target.max_hp || target.life }
+      : calculateDerivedStats(target);
+    const currentLife = target.current_hp != null ? target.current_hp : maxLife;
+    const hpPct = (currentLife / maxLife) * 100;
+    return hpPct <= condition.value;
+  }
+
+  // --- Stat threshold conditions ---
+  if (type === 'min_posture_pct') {
+    const char = ctx.char || ctx.charContext || ctx.attackerChar;
+    if (!char) return true;
+    const currentPosture = char.current_posture != null ? char.current_posture : (char.posture || 100);
+    const maxPosture = char.max_posture || char.posture || 100;
+    if (maxPosture <= 0) return true;
+    const posturePct = (currentPosture / maxPosture) * 100;
+    return posturePct >= condition.value;
+  }
+
+  // Unknown condition type: default to true (permissive)
+  return true;
+}
+
+/**
+ * Evaluates a condition that can be either a single condition (old format)
+ * or a compound AND/OR condition (new format).
+ *
+ * @param {Object} condition - Single condition or compound { operator, conditions }
+ * @param {Object} ctx - Evaluation context (char, weapon, target, etc.)
+ * @returns {boolean}
+ */
+export function evaluateCondition(condition, ctx) {
+  if (!condition) return true;
+
+  // Detect compound format: has 'operator' and 'conditions' array
+  if (condition.operator && Array.isArray(condition.conditions)) {
+    if (condition.operator === 'AND') {
+      return condition.conditions.every(sub => evaluateCondition(sub, ctx));
+    }
+    if (condition.operator === 'OR') {
+      return condition.conditions.some(sub => evaluateCondition(sub, ctx));
+    }
+    // Unknown operator: default to true
+    return true;
+  }
+
+  // Old single-condition format (leaf)
+  return evaluateSingleCondition(condition, ctx);
+}
 
 export function getSkillBuffs(char, targetStat) {
   if (!char || !char.class_skills) return [];
@@ -44,17 +164,7 @@ export function getStatBuffs(char, statName) {
       }
 
       if (applies && boost.condition) {
-        if (boost.condition.type === 'breathing_keyword') {
-          const breathing = char.breathing_style;
-          const breathingData = RESPIRACOES_DATA[breathing];
-          if (!breathingData || !breathingData.keywords.includes(boost.condition.value)) {
-            applies = false;
-          }
-        } else if (boost.condition.type === 'breathing_style') {
-          if (char.breathing_style !== boost.condition.value) {
-            applies = false;
-          }
-        }
+        if (!evaluateCondition(boost.condition, { char })) applies = false;
       }
 
       if (applies) {
@@ -434,12 +544,7 @@ export function calculateWeaponPAT(weapon, char) {
       tree.skills.forEach(skill => {
         if (learnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
           skill.logic.damage_boosts.forEach(boost => {
-            let applies = true;
-            if (boost.condition) {
-              if (boost.condition.type === 'weapon_subtype' && weapon.subtype !== boost.condition.value) applies = false;
-              if (boost.condition.type === 'weapon_category' && weapon.category !== boost.condition.value) applies = false;
-            }
-            if (applies) {
+            if (evaluateCondition(boost.condition, { weapon })) {
               customDamageMulti *= (1 + boost.amount);
             }
           });
@@ -572,18 +677,7 @@ export function rollDice(expression, charContext = null) {
           if (learnedSkills.includes(skill.id) && skill.logic?.dice_boosts) {
             skill.logic.dice_boosts.forEach(boost => {
               if (boost.type === diceType || boost.type === 'all') {
-                // Condition Check
-                let applies = true;
-                if (boost.condition) {
-                  if (boost.condition.type === 'weapon_category' && charContext.equipped_weapon?.category !== boost.condition.value) {
-                    applies = false;
-                  }
-                  if (boost.condition.type === 'weapon_subtype' && charContext.equipped_weapon?.subtype !== boost.condition.value) {
-                    applies = false;
-                  }
-                }
-                
-                if (applies) {
+                if (evaluateCondition(boost.condition, { charContext })) {
                   total *= (1 + boost.amount);
                 }
               }
@@ -628,14 +722,12 @@ export function rollDice(expression, charContext = null) {
           if (learnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
             skill.logic.damage_boosts.forEach(boost => {
               // Condition Check (e.g., weapon type)
-              let applies = true;
-              if (boost.condition) {
-                // If it's a weapon subtype boost, we only apply it here if it's NOT already applied to the weapon PAT
-                if (boost.condition.type === 'weapon_subtype' || boost.condition.type === 'weapon_category') {
-                  applies = false;
-                }
-              }
-              if (applies) {
+              // If it's a simple weapon subtype/category boost, we skip it here since it's already applied to the weapon PAT
+              // But compound conditions (AND/OR) or non-weapon conditions should still be evaluated
+              const isSimpleWeaponCondition = boost.condition &&
+                !boost.condition.operator &&
+                (boost.condition.type === 'weapon_subtype' || boost.condition.type === 'weapon_category');
+              if (!isSimpleWeaponCondition && evaluateCondition(boost.condition, { charContext })) {
                 total *= (1 + boost.amount);
               }
             });

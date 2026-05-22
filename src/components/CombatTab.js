@@ -69,7 +69,7 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
     }
   };
 
-  const finishDiceRoll = async (diceResult, originalInput, playerName, playerImage, targetPlayer = null) => {
+  const finishDiceRoll = async (diceResult, originalInput, playerName, playerImage, targetPlayer = null, weaponInfo = null) => {
     let detail = diceResult.original;
     diceResult.rolls.forEach(r => {
       detail = detail.replace(r.notation, `<span class="text-zinc-500 font-mono text-[10px]">[${r.results.join(', ')}]</span>`);
@@ -195,9 +195,13 @@ export default function CombatTab({ user, allPlayers, allNPCs = [], messages, is
       damageState = "|{}";
     }
 
+    const wCategory = weaponInfo ? weaponInfo.category : "";
+    const wSubtype = weaponInfo ? weaponInfo.subtype : "";
+    const wDamageType = weaponInfo ? (weaponInfo.damageType || "") : "";
+
     await supabase.from('messages').insert({
       player_name: "SISTEMA",
-      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}|${targetName}|${targetId}|${effectNote}${damageState}`,
+      content: `DICE_ROLL|${playerName}|${originalInput}|${finalTotal}|${detail}|${statusLabel}|${category}|${playerImage}|${diceResult.type || ''}|${targetName}|${targetId}|${effectNote}|${wCategory}|${wSubtype}|${wDamageType}${damageState}`,
       is_system: true
     });
   };

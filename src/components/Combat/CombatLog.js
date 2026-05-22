@@ -2,16 +2,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { handleCommand, COMMANDS } from '../../lib/commands';
-import { 
-  rollDice, 
-  calculateWeaponPAT, 
-  calculateDisarmedPAT, 
+import {
+  rollDice,
+  calculateWeaponPAT,
+  calculateDisarmedPAT,
   rollLoot,
   calculateAcerto,
   calculateDesvio,
   calculateBloqueio,
   calculateDerivedStats,
-  calculateCurrentWeight
+  calculateCurrentWeight,
+  evaluateCondition
 } from '../../lib/rpg-math';
 import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
@@ -849,13 +850,14 @@ export default function CombatLog({
 
   const handleUpdateDamageState = async (msg, newState) => {
     const parts = msg.content.split('|');
-    // DICE_ROLL|pName|expr|total|detail|status|category|pImage|diceType|targetName|targetId|effectNote|damageState
-    // damageState is at index 12.
-    while (parts.length < 13) parts.push("{}");
+    // DICE_ROLL|pName|expr|total|detail|status|category|pImage|diceType|targetName|targetId|effectNote|weaponCategory|weaponSubtype|weaponDamageType|damageState
+    // damageState is at index 15 (or 12 for backward compat with old messages).
+    const damageStateIndex = parts.length > 15 ? 15 : 12;
+    while (parts.length <= damageStateIndex) parts.push("{}");
     
-    const currentState = JSON.parse(parts[12] || "{}");
+    const currentState = JSON.parse(parts[damageStateIndex] || "{}");
     const updatedState = { ...currentState, ...newState };
-    parts[12] = JSON.stringify(updatedState);
+    parts[damageStateIndex] = JSON.stringify(updatedState);
     
     const newContent = parts.join('|');
     await supabase.from('messages').update({ content: newContent }).eq('id', msg.id);
@@ -1822,7 +1824,7 @@ export default function CombatLog({
                         }
                         if (m.content.startsWith('DICE_ROLL|')) {
                         const parts = m.content.split('|');
-                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = "", targetId = "", effectNote = "", weaponCategory = "", weaponSubtype = "", damageState = ""] = parts;
+                        const [, pName, expr, total, detail, status, category = "normal", pImage = "", diceType = "", targetName = "", targetId = "", effectNote = "", weaponCategory = "", weaponSubtype = "", weaponDamageType = "", damageState = ""] = parts;
                         
                         const styles = {
                           combat: { bg: "bg-red-500/5", border: "border-red-500/20", accent: "text-red-500" },
@@ -1902,7 +1904,8 @@ export default function CombatLog({
                                 
                                 {(() => {
                                   const parts = m.content.split('|');
-                                  const dStateRaw = parts[12] || "{}";
+                                  const dStateIndex = parts.length > 15 ? 15 : 12;
+                                  const dStateRaw = parts[dStateIndex] || "{}";
                                   let dState = {};
                                   try { dState = JSON.parse(dStateRaw); } catch(e) {}
                                   
@@ -1939,7 +1942,7 @@ export default function CombatLog({
                                   }
 
                                   // Build weapon info from the DICE_ROLL message fields
-                                  const msgWeaponInfo = { category: weaponCategory, subtype: weaponSubtype };
+                                  const msgWeaponInfo = { category: weaponCategory, subtype: weaponSubtype, damageType: weaponDamageType };
 
                                   // Attacker-side damage boosts (e.g. assaltante Obcecado Pela Pólvora)
                                   const attackerChar = combatants.find(c => c.name === pName || c.username === pName) || allPlayers.find(p => p.char_name === pName);
@@ -1950,12 +1953,7 @@ export default function CombatLog({
                                           tree.skills.forEach(skill => {
                                               if (aLearnedSkills.includes(skill.id) && skill.logic?.damage_boosts) {
                                                   skill.logic.damage_boosts.forEach(boost => {
-                                                      let applies = true;
-                                                      if (boost.condition) {
-                                                          if (boost.condition.type === 'weapon_subtype' && msgWeaponInfo.subtype !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'weapon_category' && msgWeaponInfo.category !== boost.condition.value) applies = false;
-                                                      }
-                                                      if (applies) {
+                                                      if (evaluateCondition(boost.condition, { msgWeaponInfo, attackerChar })) {
                                                           dmgValue *= (1 + boost.amount);
                                                       }
                                                   });
@@ -1973,18 +1971,7 @@ export default function CombatLog({
                                           tree.skills.forEach(skill => {
                                               if (learnedSkills.includes(skill.id) && skill.logic?.damage_received_boosts) {
                                                   skill.logic.damage_received_boosts.forEach(boost => {
-                                                      let applies = true;
-                                                      if (boost.condition) {
-                                                          if (boost.condition.type === 'weapon_subtype' && attackerWeapon.subtype !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'weapon_category' && attackerWeapon.category !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'min_hp_pct') {
-                                                              const { life: maxLife } = calculateDerivedStats(target);
-                                                              const currentLife = target.current_hp ?? maxLife;
-                                                              const hpPct = (currentLife / maxLife) * 100;
-                                                              if (hpPct < boost.condition.value) applies = false;
-                                                          }
-                                                      }
-                                                      if (applies) {
+                                                      if (evaluateCondition(boost.condition, { attackerWeapon, target })) {
                                                           dmgValue *= (1 + boost.amount);
                                                       }
                                                   });
@@ -2008,12 +1995,7 @@ export default function CombatLog({
                                           tree.skills.forEach(skill => {
                                               if (learnedSkills.includes(skill.id) && skill.logic?.posture_damage_boosts) {
                                                   skill.logic.posture_damage_boosts.forEach(boost => {
-                                                      let applies = true;
-                                                      if (boost.condition) {
-                                                          if (boost.condition.type === 'weapon_subtype' && weapon.subtype !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'weapon_category' && weapon.category !== boost.condition.value) applies = false;
-                                                      }
-                                                      if (applies) {
+                                                      if (evaluateCondition(boost.condition, { weapon, attackerChar })) {
                                                           postureMultiplier += boost.amount;
                                                       }
                                                   });
@@ -2031,18 +2013,7 @@ export default function CombatLog({
                                           tree.skills.forEach(skill => {
                                               if (learnedSkills.includes(skill.id) && skill.logic?.posture_damage_received_boosts) {
                                                   skill.logic.posture_damage_received_boosts.forEach(boost => {
-                                                      let applies = true;
-                                                      if (boost.condition) {
-                                                          if (boost.condition.type === 'weapon_subtype' && attackerWeapon.subtype !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'weapon_category' && attackerWeapon.category !== boost.condition.value) applies = false;
-                                                          if (boost.condition.type === 'min_hp_pct') {
-                                                              const { life: maxLife } = calculateDerivedStats(target);
-                                                              const currentLife = target.current_hp ?? maxLife;
-                                                              const hpPct = (currentLife / maxLife) * 100;
-                                                              if (hpPct < boost.condition.value) applies = false;
-                                                          }
-                                                      }
-                                                      if (applies) {
+                                                      if (evaluateCondition(boost.condition, { attackerWeapon, target })) {
                                                           postureMultiplier += boost.amount;
                                                       }
                                                   });

@@ -137,7 +137,7 @@ export default function CombatManager({
         finalDiceResult = rollDice(targetingRoll.input, { ...actor, equipped_weapon: selectedWeapon });
       }
 
-      finishDiceRoll(finalDiceResult, finalInput, targetingRoll.playerName, targetingRoll.playerImage, target, selectedWeapon.name);
+      finishDiceRoll(finalDiceResult, finalInput, targetingRoll.playerName, targetingRoll.playerImage, target, selectedWeapon);
       setTargetingRoll(null);
       setSelectedWeapon(null);
     }

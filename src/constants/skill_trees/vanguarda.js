@@ -113,7 +113,13 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_1',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {}
+      logic: {
+        damage_boosts: [
+          { amount: 0.07, condition: { operator: 'AND', conditions: [
+            { type: 'min_posture_pct', value: 50 },
+            { type: 'weapon_category', value: 'Arma Branca' }
+          ]}}
+        ]}
     },
     {
       id: 'vanguarda_resistance_6',
@@ -124,7 +130,13 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_5',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {}
+      logic: {
+        damage_boosts: [
+          { amount: 0.07, condition: { operator: 'AND', conditions: [
+            { type: 'min_posture_pct', value: 50 },
+            { type: 'weapon_category', value: 'Arma Branca' }
+          ]}}
+        ]}
     },
     {
       id: 'vanguarda_resistance_7',
@@ -135,7 +147,13 @@ export const vanguarda = {
       parent: 'vanguarda_resistance_6',
       flavor: 'Tudo você pode derrubar.',
       effect: 'Se a **Postura** for igual ou maior que **50%**, cause **+7%** de **Dano Final** com **Armas Brancas**.',
-      logic: {}
+      logic: {
+        damage_boosts: [
+          { amount: 0.07, condition: { operator: 'AND', conditions: [
+            { type: 'min_posture_pct', value: 50 },
+            { type: 'weapon_category', value: 'Arma Branca' }
+          ]}}
+        ]}
     },
 
     // --- ROTA 2: ANULAR E REVIDAR (Superior Direita) ---
@@ -148,10 +166,10 @@ export const vanguarda = {
       pos: { x: 100, y: -100 },
       parent: 'vanguarda_initial',
       flavor: 'Rota: Anular e Revidar.',
-      effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **15%**.',
+      effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **20%**.',
       logic: {
         damage_received_boosts: [
-          { amount: -0.15, condition: { type: 'weapon_category', value: 'Arma de Fogo' } }
+          { amount: -0.20, condition: { type: 'weapon_category', value: 'Arma de Fogo' } }
         ]
       }
     },
@@ -160,7 +178,7 @@ export const vanguarda = {
       name: 'À Prova de Balas II',
       cost: 1,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 220, y: -120 }, // Leve ajuste de respiro
+      pos: { x: 220, y: -100 }, // Leve ajuste de respiro
       parent: 'vanguarda_counter_0',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -175,7 +193,7 @@ export const vanguarda = {
       name: 'À Prova de Balas III',
       cost: 1,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 340, y: -120 },
+      pos: { x: 340, y: -100 },
       parent: 'vanguarda_counter_1',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -190,7 +208,7 @@ export const vanguarda = {
       name: 'À Prova de Balas IV',
       cost: 2,
       requirements: { resistance: 7, agility: 6 },
-      pos: { x: 460, y: -120 },
+      pos: { x: 460, y: -100 },
       parent: 'vanguarda_counter_2',
       flavor: 'Disparos não me ferem.',
       effect: 'Reduz o **Dano Final** recebido de **Armas de Fogo** em **10%**.',
@@ -202,7 +220,7 @@ export const vanguarda = {
     },
     // NOVO SATÉLITE DE CONTRA-ATAQUE
     {
-      id: 'vanguarda_counter_reflect',
+      id: 'vanguarda_counter_4',
       name: 'Reflexo de Lâmina',
       cost: 2,
       requirements: { agility: 12 },
@@ -214,7 +232,7 @@ export const vanguarda = {
     },
 
     {
-      id: 'vanguarda_counter_4',
+      id: 'vanguarda_counter_5',
       name: 'Desarmar',
       isActivatable: true,
       cost: 1,
@@ -235,33 +253,60 @@ export const vanguarda = {
       }
     },
     {
-      id: 'vanguarda_counter_5',
+      id: 'vanguarda_counter_6',
       name: 'Desarmar e Revidar',
       isActivatable: true,
       type: 'epic',
       cost: 2,
       requirements: { strength: 17, agility: 11 },
-      pos: { x: 360, y: 20 },
-      parent: 'vanguarda_counter_4',
+      pos: { x: 360, y: 10 },
+      parent: 'vanguarda_counter_5',
       flavor: 'Chutaremos seus corpos!',
-      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, Ao **Desarmar** um alvo, você pode imediatamente atacá-lo (sem gastar turnos).',
+      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, ao **Desarmar** um alvo, você pode imediatamente atacá-lo (sem gastar turnos).',
       logic: {}
+    },
+    {
+      id: 'vanguarda_counter_7',
+      name: 'Resistência Invejável',
+      cost: 2,
+      requirements: { strength: 17, agility: 11 },
+      pos: { x: 100, y: -220 },
+      parent: 'vanguarda_counter_0',
+      flavor: 'Haha! Sou imune!',
+      effect: 'Aumenta sua **Resistência** em **+8%**.\nAumenta o **Dado de Bloqueio** em **+25%**.',
+      logic: {
+        dice_boosts: [
+          { type: 'bloqueio', amount: 0.25 }
+        ],
+        stat_boosts: [
+          { stat: 'resistance', amount: 0.08 }
+        ],
+      }
     },
 
     // --- ROTA 3: QUEBRAR E CONTROLAR (Inferior - NOVA) ---
 
     {
       id: 'vanguarda_heavy_0',
-      name: 'Peso do Julgamento',
-      cost: 2,
+      name: 'Julgamento Impactante',
+      cost: 1,
       requirements: { strength: 9 },
       pos: { x: 0, y: 130 }, // Desce preenchendo o vazio
       parent: 'vanguarda_initial',
       flavor: 'Rota: Quebrar e Controlar.',
-      effect: 'Aumenta o **Dano Final** de **Armas Brancas** de **Impacto** em **+5%**.',
+      effect: 'Aumenta o **Dano Final** de **Armas Brancas** de **Corte** em **+5%**.\nAumenta o **Dano de Postura** de **Armas Brancas** de **Impacto** em **+10%**.',
       logic: {
-        damage_received_boosts: [
-          { amount: -0.1, condition: { type: 'weapon_category', value: 'Arma Branca' } }
+        damage_boosts: [
+          { amount: 0.05, condition: { operator: 'AND', conditions: [
+            { type: 'weapon_category', value: 'Arma Branca' },
+            { type: 'damage_type', value: 'Corte' }
+          ]}}
+        ],
+        posture_damage_boosts: [
+          { amount: 10.10, condition: { operator: 'AND', conditions: [
+            { type: 'weapon_category', value: 'Arma Branca' },
+            { type: 'damage_type', value: 'Impacto' }
+          ]}}
         ]}
     },
     {
