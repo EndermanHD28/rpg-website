@@ -248,25 +248,28 @@ export const vanguarda = {
       logic: {}
     },
 
-    // --- ROTA 3: ESMAGAR E CONTROLAR (Inferior - NOVA) ---
+    // --- ROTA 3: QUEBRAR E CONTROLAR (Inferior - NOVA) ---
 
     {
       id: 'vanguarda_heavy_0',
       name: 'Peso do Julgamento',
       cost: 2,
-      requirements: { strength: 10 },
-      pos: { x: 0, y: 180 }, // Desce preenchendo o vazio
+      requirements: { strength: 9 },
+      pos: { x: 0, y: 130 }, // Desce preenchendo o vazio
       parent: 'vanguarda_initial',
-      flavor: 'Cada golpe racha o solo.',
-      effect: 'Aumenta o **Dano Final** de **Armas Pesadas** em **+10%**.',
-      logic: {}
+      flavor: 'Rota: Quebrar e Controlar.',
+      effect: 'Aumenta o **Dano Final** de **Armas Brancas** de **Impacto** em **+5%**.',
+      logic: {
+        damage_received_boosts: [
+          { amount: -0.1, condition: { type: 'weapon_category', value: 'Arma Branca' } }
+        ]}
     },
     {
       id: 'vanguarda_heavy_1',
       name: 'Impacto Sísmico',
       cost: 1,
       requirements: { strength: 12 },
-      pos: { x: -140, y: 300 }, // Perna esquerda da âncora
+      pos: { x: -140, y: 250 }, // Perna esquerda da âncora
       parent: 'vanguarda_heavy_0',
       flavor: 'Faça a terra tremer.',
       effect: 'Identidade desconhecida.',
@@ -277,7 +280,7 @@ export const vanguarda = {
       name: 'Onda de Choque',
       cost: 1,
       requirements: { resistance: 10 },
-      pos: { x: 140, y: 300 }, // Perna direita da âncora
+      pos: { x: 140, y: 250 }, // Perna direita da âncora
       parent: 'vanguarda_heavy_0',
       flavor: 'O ar se expande com a força do golpe.',
       effect: 'Identidade desconhecida.',
@@ -288,7 +291,7 @@ export const vanguarda = {
       name: 'Quebra-Crânios',
       cost: 2,
       requirements: { strength: 15 },
-      pos: { x: -250, y: 420 }, // Extensão da perna esquerda
+      pos: { x: -250, y: 370 }, // Extensão da perna esquerda
       parent: 'vanguarda_heavy_1',
       flavor: 'Armaduras são inúteis contra o peso bruto.',
       effect: 'Identidade desconhecida.',
@@ -300,7 +303,7 @@ export const vanguarda = {
       isActivatable: true,
       cost: 2,
       requirements: { strength: 18, resistance: 14 },
-      pos: { x: 0, y: 550 }, // Fundo da âncora (Coração do controle)
+      pos: { x: 0, y: 500 }, // Fundo da âncora (Coração do controle)
       parent: 'vanguarda_heavy_2',
       flavor: 'O mundo para quando você decide.',
       effect: 'Bloqueado.',
