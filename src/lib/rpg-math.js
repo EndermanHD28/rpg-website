@@ -112,7 +112,7 @@ export function calculateAcerto(char) {
       (sAptitude * 0.35) +
       (sStrength * 0.35)
     ) * 3,
-    0.72
+    0.85
   ));
 }
 
@@ -130,7 +130,7 @@ export function calculateDesvio(char) {
       (sResistance * 0.2) +
       (sAptitude * 0.3)
     ) * 2,
-    0.72
+    0.85
   ));
 }
 
