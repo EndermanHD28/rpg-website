@@ -521,8 +521,8 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.35 * s) + (0.1 * r) + (0.05 * c)
     }),
     'Lâmina Curta': (s, p, a, r, c) => ({
-      dice: (0.3 * s) + (0.71 * p) + (0.9 * a) + (0.1 * c),
-      plus: (0.1 * s) + (0.35 * p) + (0.25 * a) + (0.1 * c)
+      dice: (0.4 * s) + (0.8 * p) + (1.15 * a) + (0.5 * c),
+      plus: (0.05 * s) + (0.25 * p) + (0.18 * a) + (0.07 * c)
     }),
     'Espada Leve': (s, p, a, r, c) => ({
       dice: (1.1 * s) + (1.1 * p) + (0.8 * a)+ (0.2 * c),
@@ -533,8 +533,8 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.45 * s) + (0.15 * p) + (0.3 * r) + (0.1 * c)
     }),
     'Lança': (s, p, a, r, c) => ({
-      dice: (1.0 * s) + (0.85 * p) + (0.45 * r) + (0.8 * c),
-      plus: (0.15 * s) + (0.45 * p) + (0.3 * r) + (0.2 * c)
+      dice: (0.83 * s) + (0.65 * p) + (0.35 * r) + (0.6 * c),
+      plus: (0.25 * s) + (0.65 * p) + (0.5 * r) + (0.4 * c)
     }),
     'Espada Pesada': (s, p, a, r, c) => ({
       dice: (1.7 * s) + (1.1 * r) + (0.65 * a) + (0.1 * c),
