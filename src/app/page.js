@@ -627,7 +627,7 @@ export default function Home() {
   const handleStatChange = (stat, val) => {
     playSoundEffect('stat_point');
     const nVal = val === "" ? "" : parseInt(val);
-    const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'intelligence', 'luck', 'charisma'];
+    const keys = ['strength', 'resistance', 'aptitude', 'agility', 'precision', 'concentration', 'intelligence', 'luck', 'charisma'];
 
       setTempChar(prev => {
         // 1. Create the new state object for attributes
