@@ -10,7 +10,7 @@ export const atirador = {
       id: 'atirador_initial',
       name: 'Foco no Alvo',
       cost: 3,
-      requirements: { precision: 10 },
+      requirements: { precision: 8, concentration: 7 },
       pos: { x: 0, y: 0 },
       flavor: 'Um tiro, uma morte.',
       effect: 'Aumenta seu **Dado de Acerto** com armas de fogo em **+10%**.\nLibera a Árvore de Habilidades do **Atirador**.',
@@ -24,13 +24,14 @@ export const atirador = {
     // --- ROTA SUPERIOR ESQUERDA: O GARFO DE PRECISÃO ---
     {
       id: 'atirador_precisao_0',
-      name: 'Olhar de Águia',
+      name: 'Acerto Vital',
       cost: 1,
-      requirements: { precision: 12 },
+      requirements: { precision: 11, concentration: 8 },
       pos: { x: -140, y: -100 }, // O "Cabo" do garfo
+      isActivatable: true,
       parent: 'atirador_initial',
-      flavor: 'Identidade desconhecida.',
-      effect: 'Bloqueado.',
+      flavor: 'Rota: Mira Perfeita.',
+      effect: '**-Habilidade Ativa-**\nQuando você roletar um **Dado de Acerto** com uma **Arma de Fogo** que seja um **Crítico**: se o golpe sucedir, você pode aumentar o **Dano Final** em **50%**.',
       logic: {}
     },
     {
@@ -84,11 +85,12 @@ export const atirador = {
       id: 'atirador_agil_0',
       name: 'Saque Veloz',
       cost: 1,
-      requirements: { agility: 10 },
+      requirements: { precision: 9, agility: 8 },
       pos: { x: 150, y: -80 }, 
+      isActivatable: true,
       parent: 'atirador_initial',
-      flavor: 'Identidade desconhecida.',
-      effect: 'Bloqueado.',
+      flavor: 'Rota: Disparos Ágeis.',
+      effect: '**-Habilidade Ativa-**\nAo realizar o seu primeiro **disparo** (ou sucessão de disparos) em um combate com um **Revólver**, **Rifle** ou **Pistola**, você pode multiplicar o **Dado de Acerto** por **1,5x**.',
       logic: {}
     },
     {
@@ -145,9 +147,18 @@ export const atirador = {
       requirements: { intelligence: 10 },
       pos: { x: 0, y: 160 }, // Hub central da âncora
       parent: 'atirador_initial',
-      flavor: 'Identidade desconhecida.',
-      effect: 'Bloqueado.',
-      logic: {}
+      flavor: 'Rota: Atirador Tático.',
+      effect: 'Para cada **0,5%** de **Inteligência** após **8%**, aumente o **Dado de Acerto** em **3%** (Máximo: **+15%**).',
+      logic: {
+        passiveBuffs: {
+          statAmount: 0.5, // Em porcentagem
+          stat: 'intelligence',
+          threshold: 8, // Em porcentagem
+          base: 0.03, // Em decimal
+          maxBuff: 0.15, // Em decimal
+          target: 'acertoDice'
+        }
+      }
     },
     {
       id: 'atirador_tatico_1',

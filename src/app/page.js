@@ -2435,9 +2435,9 @@ const StatLine = ({ label, statKey, val, isEditing, handleStatChange, getPerc, i
   const perc = getPerc(v);
   const getStatColor = (p) => {
     const pf = parseFloat(p);
-    if (pf >= 20) return 'text-cyan-400';
-    if (pf > 11.5) return 'text-green-400';
-    if (pf >= 8.5) return 'text-yellow-400';
+    if (pf >= 15) return 'text-cyan-400';
+    if (pf > 8) return 'text-green-400';
+    if (pf >= 5) return 'text-yellow-400';
     return 'text-red-700';
   };
 

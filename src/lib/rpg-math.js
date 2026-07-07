@@ -208,6 +208,39 @@ export function calculateDisarmedPAT(char) {
   };
 }
 
+export function getPassiveBuffMultiplier(char, buffsConfig) {
+  // New declarative format: { stat, threshold, base, target }
+  if (buffsConfig && typeof buffsConfig === 'object' && buffsConfig.stat) {
+    const derived = calculateDerivedStats(char);
+    const statPercKey = buffsConfig.stat.toLowerCase() + 'Perc';
+    const statPerc = parseFloat(derived[statPercKey]) || 0;
+    const tiers = Math.max(Math.floor(statPerc - (buffsConfig.threshold || 0)), 0);
+    return Math.min(buffsConfig.base * tiers / (buffsConfig.statAmount || 0.01), buffsConfig.maxBuff || Infinity) + 1;
+  }
+  // Old function format: passiveBuffs is a function
+  if (typeof buffsConfig === 'function') {
+    const buffs = buffsConfig(char);
+    if (buffs?.acertoDiceMultiplier) {
+      return buffs.acertoDiceMultiplier;
+    }
+  }
+  return 1;
+}
+
+export function getAcertoDiceMultiplier(char) {
+  if (!char?.class_skills) return 1;
+  const learnedSkills = Array.isArray(char.class_skills) ? char.class_skills : [];
+  let multiplier = 1;
+  Object.values(SKILL_TREES).forEach(tree => {
+    tree.skills.forEach(skill => {
+      if (learnedSkills.includes(skill.id) && skill.logic?.passiveBuffs) {
+        multiplier *= getPassiveBuffMultiplier(char, skill.logic.passiveBuffs);
+      }
+    });
+  });
+  return multiplier;
+}
+
 export function calculateAcerto(char) {
   if (!char) return 0;
   const sPrecision = calculateStatWithBuffs(char, 'precision', Number(char.precision) || 0).total;
@@ -215,7 +248,7 @@ export function calculateAcerto(char) {
   const sAptitude = calculateStatWithBuffs(char, 'aptitude', Number(char.aptitude) || 0).total;
   const sStrength = calculateStatWithBuffs(char, 'strength', Number(char.strength) || 0).total;
 
-  return Math.round(10 + Math.pow(
+  const base = Math.round(10 + Math.pow(
     (
       (sPrecision * 0.7) +
       sAgility * 2 +
@@ -224,6 +257,10 @@ export function calculateAcerto(char) {
     ) * 2.2,
     0.72
   ));
+
+  // Apply passive skill multipliers (e.g., stat-percentage-based acerto boosts)
+  const multiplier = getAcertoDiceMultiplier(char);
+  return Math.round(base * multiplier);
 }
 
 export function calculateDesvio(char) {
@@ -267,10 +304,10 @@ export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
   // Define tiers similar to "Imposto de Renda" (Progressive Taxation)
   // Each tier has a limit and a power (exponent)
   const tiers = [
-    { limit: 8.5, power: 0.5 },
-    { limit: 11.5, power: 0.45 },
-    { limit: 20, power: 0.55 },
-    { limit: Infinity, power: 0.4 }
+    { limit: 5, power: 0.9 },
+    { limit: 8, power: 0.82 },
+    { limit: 15, power: 0.7 },
+    { limit: Infinity, power: 0.45 }
   ];
 
   let accumulatedValue = 0;
@@ -296,7 +333,7 @@ export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
   // Tier 2 (11.11 - 8.5 = 2.61): Math.pow(2.61, 0.45) ≈ 1.543
   // Total ≈ 4.458
   // 20 - 4.458 ≈ 15.542
-  let baseValue = Math.round(15.54 + accumulatedValue);
+  let baseValue = Math.round(7.77 + 2.25 * accumulatedValue);
 
   // Special Case: Convencimento buff from Lireou
   if (char && isCharisma) {
@@ -313,7 +350,7 @@ export function calculateSecondaryStat(perc, char = null, isCharisma = false) {
 
 export function calculateLootDie(luckPerc) {
   const p = parseFloat(luckPerc) || 0;
-  return Math.round(15 + (5 * Math.pow(p / 10, 0.7)));
+  return Math.round(6 + (3.4 * Math.pow(p, 0.8)));
 }
 
 export function calculateDerivedStats(char) {
@@ -494,6 +531,10 @@ export function calculateWeaponPAT(weapon, char) {
     'Machado/Porrete Leve': (s, p, a, r, c) => ({
       dice: (1.4 * s) + (0.6 * p) + (0.55 * r) + (0.2 * c),
       plus: (0.45 * s) + (0.15 * p) + (0.3 * r) + (0.1 * c)
+    }),
+    'Lança': (s, p, a, r, c) => ({
+      dice: (1.0 * s) + (0.85 * p) + (0.45 * r) + (0.8 * c),
+      plus: (0.15 * s) + (0.45 * p) + (0.3 * r) + (0.2 * c)
     }),
     'Espada Pesada': (s, p, a, r, c) => ({
       dice: (1.7 * s) + (1.1 * r) + (0.65 * a) + (0.1 * c),
@@ -685,6 +726,11 @@ export function rollDice(expression, charContext = null) {
           }
         });
       });
+
+      // Skill Tree Passive Buffs (e.g., stat-percentage-based acerto multipliers)
+      if (diceType === 'acerto') {
+        total *= getAcertoDiceMultiplier(charContext);
+      }
     }
 
     // Special case: Precision impacts "dano" type if requested

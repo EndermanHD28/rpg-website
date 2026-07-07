@@ -57,6 +57,7 @@ export default function CombatLog({
   tradeRequests = []
 }) {
 
+  const [hasMounted, setHasMounted] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showDiceQuickMenu, setShowDiceQuickMenu] = useState(false);
   const [showSkillsMenu, setShowSkillsMenu] = useState(false);
@@ -100,6 +101,12 @@ export default function CombatLog({
 
     return () => clearInterval(pollInterval);
   }, [user?.id]);
+
+  // After first render, enable CSS transitions for the combat header
+  // to avoid the initial flicker when entering a session with combat active
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const fetchItemsDB = async () => {
     const { data } = await supabase.from('items').select('*');
@@ -1249,7 +1256,22 @@ export default function CombatLog({
         }
       });
     });
-    return activatableSkills;
+
+    // Collect all skill IDs that should be hidden by other learned skills
+    const blockedSkillIds = new Set();
+    activatableSkills.forEach(skill => {
+      if (Array.isArray(skill.blockedActivatable)) {
+        skill.blockedActivatable.forEach(blockedId => {
+          // Only block if the blocking skill is actually learned
+          if (learnedSkills.includes(skill.id)) {
+            blockedSkillIds.add(blockedId);
+          }
+        });
+      }
+    });
+
+    // Filter out blocked skills
+    return activatableSkills.filter(skill => !blockedSkillIds.has(skill.id));
   };
 
 
@@ -1394,7 +1416,7 @@ export default function CombatLog({
           </div>
         </div>
 
-        <div className={`px-8 transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden flex gap-4 overflow-x-auto no-scrollbar pt-2 ${isCombatActive ? 'pb-8 opacity-100 max-h-[400px]' : 'pb-0 opacity-0 max-h-0 pointer-events-none'}`}>
+        <div className={`px-8 overflow-hidden flex gap-4 overflow-x-auto no-scrollbar pt-2 ${hasMounted ? 'transition-[max-height,opacity] duration-300 ease-in-out' : ''} ${isCombatActive ? 'pb-8 opacity-100 max-h-[400px]' : 'pb-0 opacity-0 max-h-0 pointer-events-none'}`}>
           {combatants.filter(c => c.is_enemy).slice(0, 5).map(enemy => {
               const { life: maxLife, posture: maxPosture } = calculateDerivedStats(enemy);
               const currentLife = enemy.current_hp ?? maxLife;

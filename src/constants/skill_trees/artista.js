@@ -92,18 +92,21 @@ export const artista = {
       parent: 'artista_initial',
       flavor: 'Rota: Brutalizar.',
       isActivatable: true,
-      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, caso um inimigo **próximo** realizaria um ataque com você como alvo, rolete **1d20** (Sucesso: **9+**): **Cancele** o ataque e imediatamente **Contra-ataque**. Caso falhe: o ataque torna-se **Garantido**.',
+      effect: '**-Habilidade Ativa-**\n**Uma vez por combate**, caso um inimigo **próximo** realize um ataque com você como alvo, e seja roletado o **Dado de Dano**, rolete **1d20** (Sucesso: **9+**): imediatamente **Contra-ataque** usando **Socos** ou **Improviso**.',
       logic: {}
     },
     {
       id: 'artista_brutal_1',
-      name: 'Socos de Britadeira',
-      cost: 1,
-      requirements: { strength: 12 },
+      name: 'Punhos de Demolição',
+      type: 'epic',
+      cost: 3,
+      requirements: { strength: 18, agility: 16, resistance: 12 },
       pos: { x: 300, y: -180 }, // Canto direito do losango
       parent: 'artista_brutal_0',
-      flavor: 'Cada soco é uma demolição.',
-      effect: 'Identidade desconhecida.',
+      flavor: 'Cada soco estraçalha.',
+      isActivatable: true,
+      blockedActivatable: ["artista_brutal_0"],
+      effect: 'Substitui: **Postura de Boxeador**.\n**-Habilidade Ativa-**\n**Uma vez por combate**, caso um inimigo **próximo** realizaria um ataque com você como alvo, rolete **1d20** (Sucesso: **9+**): **Cancele** o ataque e realize imediatamente um **Contra-ataque Garantido** usando **Socos** ou **Improviso**. Caso falhe: o ataque torna-se **Garantido**.',
       logic: {}
     },
     {
@@ -112,7 +115,7 @@ export const artista = {
       cost: 1,
       requirements: { resistance: 12 },
       pos: { x: 150, y: -260 }, // Topo do losango
-      parent: 'artista_brutal_1',
+      parent: 'artista_brutal_0',
       flavor: 'Eu aguento mais que você.',
       effect: 'Identidade desconhecida.',
       logic: {}
