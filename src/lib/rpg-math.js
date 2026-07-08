@@ -529,7 +529,7 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.35 * s) + (0.35 * p) + (0.4 * a)+ (0.1 * c)
     }),
     'Machado/Porrete Leve': (s, p, a, r, c) => ({
-      dice: (1.4 * s) + (0.8 * p) + (0.55 * r) + (0.2 * c),
+      dice: (1.4 * s) + (0.8 * p) + (0.85 * r) + (0.2 * c),
       plus: (0.45 * s) + (0.15 * p) + (0.3 * r) + (0.1 * c)
     }),
     'Lança': (s, p, a, r, c) => ({
@@ -545,7 +545,7 @@ export function calculateWeaponPAT(weapon, char) {
       plus: (0.55 * s) + (0.25 * r) + (0.6 * a) + (0.1 * c)
     }),
     'Soco / Improviso': (s, p, a, r, c) => ({
-      dice: (1.2 * s) + (0.51 * r) + (0.25 * c),
+      dice: (1.1 * s) + (0.51 * r) + (0.25 * c),
       plus: (0.25 * s) + (0.12 * r) + (0.8 * c)
     })
   };
