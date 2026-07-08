@@ -13,7 +13,7 @@ export const infiltrador = {
       requirements: { agility: 8, intelligence: 6 },
       pos: { x: 0, y: 0 }, // Centralizado agora
       flavor: 'Invisível como uma sombra.',
-      effect: 'Atacar inimigos **Distraídos** aumenta o **Dano Final** em **25%**.\nLibera a Árvore de Habilidades do **Infiltrador**.',
+      effect: 'A primeira vez que atacar um inimigo **Distraído** você pode aumentar o **Dano Final** em **25%**.\nLibera a Árvore de Habilidades do **Infiltrador**.',
       logic: {}
     },
 
@@ -147,13 +147,13 @@ export const infiltrador = {
     // --- ROTA INFERIOR: O TRIDENTE DE SABOTAGEM ---
     {
       id: 'infiltrador_veneno_0',
-      name: 'Estudioso de Toxinas',
+      name: 'Vulto Habilidoso',
       cost: 1,
-      requirements: { intelligence: 10 },
+      requirements: { concentration: 8, intelligence: 7 },
       pos: { x: 0, y: 150 }, 
       parent: 'infiltrador_initial',
-      flavor: 'O sangue deles ferverá.',
-      effect: 'Identidade desconhecida.',
+      flavor: 'Rota: Furtador Invisível.',
+      effect: 'Ao esgueirar-se, você pode aumentar o **Dado de Sucesso** em **+4**.',
       logic: {}
     },
     {
@@ -215,13 +215,13 @@ export const infiltrador = {
 
     // --- SKILLS EXTRA / CONEXÕES DISTANTES ---
     {
-      id: 'infiltrador_util_0',
+      id: 'infiltrador_vulto_0',
       name: 'Vulto Ágil',
       cost: 2,
       requirements: { concentration: 8, intelligence: 8 },
       pos: { x: 200, y: 100 }, 
       parent: 'infiltrador_initial',
-      flavor: 'Paciência é uma sombria virtude.',
+      flavor: 'Rota: Furtador Invisível.',
       effect: 'Ao esgueirar-se, você pode aumentar o **Dado de Sucesso** em **+4**.',
       logic: {}
     },
