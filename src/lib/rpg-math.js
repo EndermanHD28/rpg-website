@@ -534,7 +534,7 @@ export function calculateWeaponPAT(weapon, char) {
     }),
     'Lança': (s, p, a, r, c) => ({
       dice: (0.83 * s) + (0.65 * p) + (0.35 * r) + (0.6 * c),
-      plus: (0.25 * s) + (0.65 * p) + (0.5 * r) + (0.4 * c)
+      plus: (0.25 * s) + (0.65 * p) + (0.4 * r) + (0.4 * c)
     }),
     'Espada Pesada': (s, p, a, r, c) => ({
       dice: (1.7 * s) + (1.1 * r) + (0.65 * a) + (0.1 * c),
