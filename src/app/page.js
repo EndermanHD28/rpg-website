@@ -707,7 +707,7 @@ export default function Home() {
                 aptitude: Number(sanitized.aptitude) || 1,
                 agility: Number(sanitized.agility) || 1,
                 precision: Number(sanitized.precision) || 1,
-                concentration: Number(sanitized.concentration) || 0,
+                concentration: Number(sanitized.concentration) || 1,
                 armed_pat: sanitized.armed_pat || '0',
                 image_url: sanitized.image_url || null,
                 rank: sanitized.rank || null,

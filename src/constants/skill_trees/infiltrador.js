@@ -10,7 +10,7 @@ export const infiltrador = {
       id: 'infiltrador_initial',
       name: 'Faca nas Costas',
       cost: 3,
-      requirements: { agility: 8, intelligence: 8 },
+      requirements: { agility: 8, intelligence: 6 },
       pos: { x: 0, y: 0 }, // Centralizado agora
       flavor: 'Invisível como uma sombra.',
       effect: 'Atacar inimigos **Distraídos** aumenta o **Dano Final** em **25%**.\nLibera a Árvore de Habilidades do **Infiltrador**.',
@@ -216,23 +216,23 @@ export const infiltrador = {
     // --- SKILLS EXTRA / CONEXÕES DISTANTES ---
     {
       id: 'infiltrador_util_0',
-      name: 'Batedor Solitário',
+      name: 'Vulto Ágil',
       cost: 2,
-      requirements: { agility: 12, intelligence: 12 },
-      pos: { x: 450, y: 100 }, 
+      requirements: { concentration: 8, intelligence: 8 },
+      pos: { x: 200, y: 100 }, 
       parent: 'infiltrador_initial',
-      flavor: 'Sobrevivência acima de tudo.',
-      effect: 'Identidade desconhecida.',
+      flavor: 'Paciência é uma sombria virtude.',
+      effect: 'Ao esgueirar-se, você pode aumentar o **Dado de Sucesso** em **+4**.',
       logic: {}
     },
     {
       id: 'infiltrador_util_1',
-      name: 'Olho do Furacão',
+      name: 'Batedor Solitário',
       cost: 2,
-      requirements: { concentration: 15 },
-      pos: { x: -450, y: 100 }, 
-      parent: 'infiltrador_initial',
-      flavor: 'Paciência é a virtude do carrasco.',
+      requirements: { agility: 12, intelligence: 12 },
+      pos: { x: 400, y: 100 }, 
+      parent: 'infiltrador_util_0',
+      flavor: 'Sobrevivência acima de tudo.',
       effect: 'Identidade desconhecida.',
       logic: {}
     }
