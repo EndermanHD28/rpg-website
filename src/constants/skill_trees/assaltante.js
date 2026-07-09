@@ -278,6 +278,7 @@ export const assaltante = {
       cost: 3,
       type: 'epic',
       requirements: { strength: 12, resistance: 12 },
+      requiredClass: 'Assaltante',
       pos: { x: 150, y: 110 },
       parent: 'assaltante_initial',
       flavor: 'O caos te alimenta.',

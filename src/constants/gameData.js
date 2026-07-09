@@ -252,7 +252,7 @@ export const ANOMALIAS_DESCRIPTIONS = {
   "Marechi": "⭐/🩸 Seu sangue é um banquete para Onis.\nInimigos focam em você, mas recebem <Atordoado> por 1 turno a primeira vez que te morderem"
 };
 
-export const CLASSES_LIST = ["Vanguarda", "Artista", "Atirador", "Assaltante", "Infiltrador"];
+export const CLASSES_LIST = ["Nenhuma", "Vanguarda", "Artista", "Atirador", "Assaltante", "Infiltrador"];
 export const SKILLS_LIST = ["Computação Avançada", "Programação Avançada", "Eletrônica Avançada", "Mecânica Avançada", "Medicina Avançada", "Química Avançada", "Ferraria Avançada"];
 
 export const SKILLS_DESCRIPTIONS = {

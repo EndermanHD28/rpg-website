@@ -158,6 +158,7 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
         if ((character[stat] || 0) < val) return false;
       }
     }
+    if (skill.requiredClass && character.class !== skill.requiredClass) return false;
     return true;
   };
 
@@ -361,6 +362,9 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                             {skill.requirements && Object.entries(skill.requirements).map(([stat, val]) => (
                               <p key={stat} className={`text-[9px] font-bold uppercase ${character[stat] >= val ? 'text-green-500' : 'text-red-500'}`}>{STAT_LABELS[stat] || stat}: {val}</p>
                             ))}
+                            {skill.requiredClass && (
+                              <p className={`text-[9px] font-bold uppercase ${character.class === skill.requiredClass ? 'text-green-500' : 'text-red-500'}`}>Classe: {skill.requiredClass}</p>
+                            )}
                           </div>
                         </>
                       ) : (
