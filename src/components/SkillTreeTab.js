@@ -138,6 +138,16 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
     return learnedSkills.includes(skill.parent);
   };
 
+  // A skill is "revealed" if it's learned, unlockable, or its parent is the root skill.
+  // This lets players see a bit of each route without buying the first skill.
+  const isRevealed = (skill) => {
+    if (learnedSkills.includes(skill.id)) return true;
+    if (!skill.parent) return true;
+    const parentSkill = treeData.skills.find(s => s.id === skill.parent);
+    if (parentSkill && !parentSkill.parent) return true;
+    return learnedSkills.includes(skill.parent);
+  };
+
   const canLearn = (skill) => {
     if (learnedSkills.includes(skill.id)) return false;
     if (!isUnlocked(skill)) return false;
@@ -268,9 +278,11 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
             })}
           </svg>
 
-          {treeData.skills.map(skill => {
+            {treeData.skills.map(skill => {
             const isLearned = learnedSkills.includes(skill.id);
             const unlocked = isUnlocked(skill);
+            const revealed = isRevealed(skill);
+            const previewed = revealed && !unlocked;
             
             const left = skill.pos.x + OFFSET_X - 40;
             const top = skill.pos.y + OFFSET_Y - 40;
@@ -287,7 +299,7 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                 onClick={() => !isLearned && unlocked && handleLearn(skill)}
                 style={{ left, top, zIndex: (isLearned ? 60 : 50) }}
                 className={`skill-node absolute w-20 h-20 border-2 transition-all duration-300 group bg-black
-                  ${isLearned ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:!z-[1000]' : (unlocked ? 'border-zinc-700 hover:border-zinc-400 hover:scale-105 hover:!z-[1000]' : 'border-zinc-900 hover:!z-[1000]')}
+                  ${isLearned ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:!z-[1000]' : (unlocked ? 'border-zinc-700 hover:border-zinc-400 hover:scale-105 hover:!z-[1000]' : (previewed ? 'border-zinc-800 hover:!z-[1000]' : 'border-zinc-900 hover:!z-[1000]'))}
                 `}
               >
                 <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${isLearned ? 'bg-zinc-800' : 'bg-black'} overflow-hidden`}>
@@ -295,12 +307,12 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                       <img 
                         src={skillIconPath} 
                         alt={skill.name} 
-                        className={`w-full h-full object-cover transition-all duration-300 ${isLearned ? 'opacity-100' : (unlocked ? 'opacity-50 grayscale-[0.2]' : 'opacity-50 grayscale-[0.6] brightness-[0.2]')}`}
+                        className={`w-full h-full object-cover transition-all duration-300 ${isLearned ? 'opacity-100' : (unlocked ? 'opacity-50 grayscale-[0.2]' : (previewed ? 'opacity-40 grayscale-[0.4] brightness-[0.45]' : 'opacity-50 grayscale-[0.6] brightness-[0.2]'))}`}
                         onError={() => setImageErrors(prev => ({ ...prev, [skill.id]: true }))}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className={`text-2xl transition-all duration-300 ${isLearned ? 'grayscale-0' : (unlocked ? 'grayscale opacity-50' : 'grayscale opacity-15 brightness-50')}`}>
+                        <span className={`text-2xl transition-all duration-300 ${isLearned ? 'grayscale-0' : (unlocked ? 'grayscale opacity-50' : (previewed ? 'grayscale opacity-35 brightness-75' : 'grayscale opacity-15 brightness-50'))}`}>
                             {selectedClass === 'Vanguarda' && '🛡️'}
                             {selectedClass === 'Artista' && '🎨'}
                             {selectedClass === 'Assaltante' && '🗡️'}
@@ -309,15 +321,15 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                         </span>
                       </div>
                     )}
-                    {!unlocked && !isLearned && (
+                    {!revealed && !isLearned && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                         <span className="text-zinc-700 text-xl">🔒</span>
                       </div>
                     )}
                 </div>
-                <div className={`absolute bottom-0 left-0 right-0 py-1 border-t border-white/5 z-10 pointer-events-none transition-all ${isLearned ? 'bg-white/10' : 'bg-black/90'} ${!unlocked && !isLearned ? 'opacity-50' : ''}`}>
+                <div className={`absolute bottom-0 left-0 right-0 py-1 border-t border-white/5 z-10 pointer-events-none transition-all ${isLearned ? 'bg-white/10' : 'bg-black/90'} ${!revealed && !isLearned ? 'opacity-50' : (previewed ? 'opacity-60' : '')}`}>
                   <p className="text-[7px] font-black uppercase text-center text-white truncate px-1">
-                    {unlocked || isLearned ? skill.name : '????'}
+                    {revealed || isLearned ? skill.name : '????'}
                   </p>
                 </div>
                 
@@ -329,9 +341,9 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                     <div>
                       <div className="flex justify-between items-center">
                         <p className="text-white font-black uppercase text-[11px] leading-tight">
-                          {unlocked || isLearned ? skill.name : 'Habilidade Bloqueada'}
+                          {revealed || isLearned ? skill.name : 'Habilidade Bloqueada'}
                         </p>
-                        {!unlocked && !isLearned && <span className="text-[9px] font-black text-zinc-600 uppercase tracking-tighter">Bloqueada</span>}
+                        {!revealed && !isLearned && <span className="text-[9px] font-black text-zinc-600 uppercase tracking-tighter">Bloqueada</span>}
                       </div>
                       {isMaster && (
                         <p className="text-zinc-600 font-mono text-[8px] uppercase mt-0.5 tracking-tighter">ID: {skill.id}</p>
@@ -339,7 +351,7 @@ export default function SkillTreeTab({ user, character, isMaster, showToast, pla
                     </div>
                     
                     <div className="flex flex-col gap-3">
-                      {unlocked || isLearned ? (
+                      {revealed || isLearned ? (
                         <>
                           {skill.flavor && <p className="text-zinc-500 text-[9px] italic leading-snug border-l border-zinc-700 pl-2">"{skill.flavor}"</p>}
                           <div className="text-zinc-300 text-[10px] leading-relaxed break-words whitespace-normal relative z-[1010]">{formatText(skill.effect)}</div>

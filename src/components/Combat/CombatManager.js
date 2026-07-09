@@ -44,6 +44,8 @@ export default function CombatManager({
 }) {
   const [selectedWeapon, setSelectedWeapon] = useState(null); // { id, name, category, subtype, etc. } or { id: 'disarmed', name: 'Desarmado' }
   const [tirosInput, setTirosInput] = useState("");
+  const [lastAcertoInfo, setLastAcertoInfo] = useState(null); // { weaponId, weaponName, tiros, weaponCategory, weaponSubtype }
+  const [showAmmoWarning, setShowAmmoWarning] = useState(false);
 
   useEffect(() => {
     if (selectedWeapon && selectedWeapon.category === 'Arma de Fogo') {
@@ -76,28 +78,15 @@ export default function CombatManager({
       const actor = targetingRoll.charContext || combatants.find(c => c.id === actorId) || (allPlayers.find(p => p.id === actorId));
       if (!actor) return;
 
-      // Tiros Verification for Arma de Fogo
-      let tirosValue = 0;
-      if (selectedWeapon.category === 'Arma de Fogo') {
-        tirosValue = parseInt(tirosInput);
-        const wStats = calculateWeaponPAT(selectedWeapon, actor);
-        const maxTpT = wStats.tpt || 1;
+        // Tiros Verification for Arma de Fogo
+        let tirosValue = 0;
+        if (selectedWeapon.category === 'Arma de Fogo') {
+          tirosValue = parseInt(tirosInput);
+          const wStats = calculateWeaponPAT(selectedWeapon, actor);
+          const maxTpT = wStats.tpt || 1;
 
-        if (isNaN(tirosValue) || tirosValue < 1 || tirosValue > maxTpT) {
-          const msg = `O número de tiros deve ser entre 1 e ${maxTpT}!`;
-          if (showToast) {
-            showToast(msg, "warning");
-          } else {
-            alert(msg);
-          }
-          return;
-        }
-
-        const ammoId = getAmmoIdForSubtype(selectedWeapon.subtype);
-        if (ammoId) {
-          const availableAmmo = actor.ammunition?.[ammoId] || 0;
-          if (tirosValue > availableAmmo) {
-            const msg = `Você não tem balas suficientes! (Disponível: ${availableAmmo}, Necessário: ${tirosValue})`;
+          if (isNaN(tirosValue) || tirosValue < 1 || tirosValue > maxTpT) {
+            const msg = `O número de tiros deve ser entre 1 e ${maxTpT}!`;
             if (showToast) {
               showToast(msg, "warning");
             } else {
@@ -106,40 +95,85 @@ export default function CombatManager({
             return;
           }
 
-          // Reduce ammo
-          const newAmmoState = {
-            ...(actor.ammunition || {}),
-            [ammoId]: Math.max(0, availableAmmo - tirosValue)
-          };
-          const table = actor.is_npc ? 'npcs' : 'characters';
-          const { error: ammoError } = await supabase.from(table).update({ ammunition: newAmmoState }).eq('id', actor.id);
-          if (ammoError) {
-            console.error("Error reducing ammo:", ammoError);
+          const ammoId = getAmmoIdForSubtype(selectedWeapon.subtype);
+          if (ammoId) {
+            const availableAmmo = actor.ammunition?.[ammoId] || 0;
+            if (tirosValue > availableAmmo) {
+              const msg = `Você não tem balas suficientes! (Disponível: ${availableAmmo}, Necessário: ${tirosValue})`;
+              if (showToast) {
+                showToast(msg, "warning");
+              } else {
+                alert(msg);
+              }
+              return;
+            }
           }
         }
-      }
 
-      // Re-roll/Update dice result based on selected weapon if it's an attack/damage roll
-      let finalDiceResult = targetingRoll.diceResult;
-      let finalInput = targetingRoll.input;
+        // Re-roll/Update dice result based on selected weapon if it's an attack/damage roll
+        let finalDiceResult = targetingRoll.diceResult;
+        let finalInput = targetingRoll.input;
 
-      if (actor && (targetingRoll.diceResult.type === 'dano' || targetingRoll.diceResult.type === 'ataque')) {
-        if (selectedWeapon.id === 'disarmed') {
-          const dStats = calculateDisarmedPAT(actor);
-          finalInput = `/dano ${dStats.tpt}d${Math.floor(dStats.dice)} + ${Math.floor(dStats.plus)}`;
+        if (actor && (targetingRoll.diceResult.type === 'dano' || targetingRoll.diceResult.type === 'ataque')) {
+          // Check for mismatch with last acerto weapon
+          if (selectedWeapon.category === 'Arma de Fogo' && lastAcertoInfo) {
+            if (selectedWeapon.id !== lastAcertoInfo.weaponId) {
+              if (showToast) showToast(`⚠️ Atenção: Você usou ${lastAcertoInfo.weaponName} no Dado de Acerto (${lastAcertoInfo.tiros} tiros), mas está usando uma arma diferente no Dado de Dano.`, "warning");
+            } else if (tirosValue !== lastAcertoInfo.tiros) {
+              if (showToast) showToast(`⚠️ Atenção: Você usou ${lastAcertoInfo.tiros} tiros no Dado de Acerto com ${lastAcertoInfo.weaponName}, mas está usando ${tirosValue} tiros no Dado de Dano.`, "warning");
+            }
+          }
+
+          if (selectedWeapon.id === 'disarmed') {
+            const dStats = calculateDisarmedPAT(actor);
+            finalInput = `/dano ${dStats.tpt}d${Math.floor(dStats.dice)} + ${Math.floor(dStats.plus)}`;
+          } else {
+            const wStats = calculateWeaponPAT(selectedWeapon, actor);
+            const tptValue = selectedWeapon.category === 'Arma de Fogo' ? tirosValue : wStats.tpt;
+            finalInput = `/dano ${tptValue}d${Math.floor(wStats.dice)} + ${Math.floor(wStats.plus)}`;
+          }
+          finalDiceResult = rollDice(finalInput, { ...actor, equipped_weapon: selectedWeapon });
+        } else if (actor && targetingRoll.diceResult.type === 'acerto') {
+          // Save last acerto info for damage roll mismatch checking
+          if (selectedWeapon.category === 'Arma de Fogo') {
+            setLastAcertoInfo({
+              weaponId: selectedWeapon.id,
+              weaponName: selectedWeapon.name,
+              tiros: tirosValue,
+              weaponCategory: selectedWeapon.category,
+              weaponSubtype: selectedWeapon.subtype
+            });
+
+            // Only consume ammo on acerto (hit) rolls, not on damage rolls
+            const ammoId = getAmmoIdForSubtype(selectedWeapon.subtype);
+            if (ammoId) {
+              const availableAmmo = actor.ammunition?.[ammoId] || 0;
+              const newAmmoState = {
+                ...(actor.ammunition || {}),
+                [ammoId]: Math.max(0, availableAmmo - tirosValue)
+              };
+              const table = actor.is_npc ? 'npcs' : 'characters';
+              const { error: ammoError } = await supabase.from(table).update({ ammunition: newAmmoState }).eq('id', actor.id);
+              if (ammoError) {
+                console.error("Error reducing ammo:", ammoError);
+              }
+            }
+          } else {
+            // Not a firearm, clear last acerto info since the weapon changed
+            setLastAcertoInfo(null);
+          }
+          finalDiceResult = rollDice(targetingRoll.input, { ...actor, equipped_weapon: selectedWeapon });
         } else {
-          const wStats = calculateWeaponPAT(selectedWeapon, actor);
-          const tptValue = selectedWeapon.category === 'Arma de Fogo' ? tirosValue : wStats.tpt;
-          finalInput = `/dano ${tptValue}d${Math.floor(wStats.dice)} + ${Math.floor(wStats.plus)}`;
+          // For other roll types (desvio, bloqueio, etc.), clear last acerto info
+          setLastAcertoInfo(null);
         }
-        finalDiceResult = rollDice(finalInput, { ...actor, equipped_weapon: selectedWeapon });
-      } else if (actor && targetingRoll.diceResult.type === 'acerto') {
-        finalDiceResult = rollDice(targetingRoll.input, { ...actor, equipped_weapon: selectedWeapon });
-      }
 
       finishDiceRoll(finalDiceResult, finalInput, targetingRoll.playerName, targetingRoll.playerImage, target, selectedWeapon);
       setTargetingRoll(null);
       setSelectedWeapon(null);
+      // Always clear lastAcertoInfo after any roll completes.
+      // It will be re-set on the next acerto roll if needed.
+      setLastAcertoInfo(null);
     }
   };
 
@@ -317,12 +351,16 @@ export default function CombatManager({
       {targetingRoll && (
         <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-end pb-32 p-8 text-center animate-in fade-in duration-300 pointer-events-none">
           <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px]" />
-          <div className="relative z-[1010] flex flex-col items-center w-full max-w-sm pointer-events-auto">
-            <div className="bg-red-600 text-black px-6 py-2 text-xs font-black uppercase tracking-[0.3em] mb-6 skew-x-[-12deg] shadow-[0_0_30px_rgba(220,38,38,0.5)]">SELECIONE UM ALVO</div>
-            <p className="text-white font-black italic text-base mb-8 uppercase tracking-tight drop-shadow-lg">Escolha sua arma e clique em um combatente</p>
+          <div className="relative z-[1010] flex flex-col items-center w-full max-w-md pointer-events-auto">
+            <div className="bg-red-600 text-black px-7 py-2.5 text-sm font-black uppercase tracking-[0.3em] mb-7 skew-x-[-12deg] shadow-[0_0_30px_rgba(220,38,38,0.5)]">SELECIONE UM ALVO</div>
+            <p className="text-white font-black italic text-lg mb-10 uppercase tracking-tight drop-shadow-lg">
+              {targetingRoll?.diceResult?.type === 'acerto' ? 'Dado de Acerto' : 
+               targetingRoll?.diceResult?.type === 'dano' || targetingRoll?.diceResult?.type === 'ataque' ? 'Dado de Dano' : 
+               'Selecionar Alvo'}
+            </p>
             
             {/* Weapon Selection */}
-            <div className="w-full bg-zinc-950/90 border-2 border-red-500/20 rounded-[32px] p-6 mb-8 space-y-4 shadow-2xl backdrop-blur-xl">
+            <div className="w-full bg-zinc-950/90 border-2 border-red-500/20 rounded-[32px] p-7 mb-10 space-y-5 shadow-2xl backdrop-blur-xl">
               <div className="flex items-center justify-between px-2 border-b border-white/10 pb-2">
                 <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Arsenal</span>
                 {selectedWeapon && <span className="text-[10px] font-black text-red-500 uppercase animate-pulse">Pronto</span>}
@@ -351,22 +389,34 @@ export default function CombatManager({
                     const tpt = stats.tpt || 1;
                     const statsLabel = `${tpt}d${diceVal}${plusVal > 0 ? ` + ${plusVal}` : ""}`;
 
+                    const ammoId = w.category === 'Arma de Fogo' ? getAmmoIdForSubtype(w.subtype) : null;
+                    const availableAmmo = ammoId ? (actor.ammunition?.[ammoId] || 0) : 0;
+                    const isSelected = selectedWeapon?.id === w.id || (selectedWeapon?.id === 'disarmed' && w.id === 'disarmed');
+                    const tirosNum = isSelected ? (parseInt(tirosInput) || 0) : 0;
+
                     return (
                       <button
                         key={w.id || idx}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedWeapon(w); }}
-                        className={`flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 ${selectedWeapon?.id === w.id || (selectedWeapon?.id === 'disarmed' && w.id === 'disarmed') ? 'bg-red-600/20 border-red-500 text-white shadow-[0_0_20px_rgba(220,38,38,0.2)]' : 'bg-black/60 border-white/5 text-zinc-500 hover:border-white/20'}`}
+                        className={`flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 ${isSelected ? 'bg-red-600/20 border-red-500 text-white shadow-[0_0_20px_rgba(220,38,38,0.2)]' : 'bg-black/60 border-white/5 text-zinc-500 hover:border-white/20'}`}
                       >
                         <span className="text-xl">{w.id === 'disarmed' ? '👊' : (w.category === 'Arma de Fogo' ? '🔫' : '⚔️')}</span>
                         <div className="flex flex-col items-start min-w-0 flex-1">
                           <span className="text-[10px] font-black uppercase tracking-tight truncate w-full">{w.name}</span>
-                          <span className={`text-[7px] font-bold uppercase tracking-wider ${selectedWeapon?.id === w.id || (selectedWeapon?.id === 'disarmed' && w.id === 'disarmed') ? 'text-red-400' : 'text-zinc-600'}`}>{w.subtype}</span>
+                          <span className={`text-[7px] font-bold uppercase tracking-wider ${isSelected ? 'text-red-400' : 'text-zinc-600'}`}>{w.subtype}</span>
                         </div>
                         
                         <div className="shrink-0 flex flex-col items-center justify-center p-1.5 min-w-[50px] rounded-lg border border-red-500/10 bg-red-500/5">
                            <span className="text-[6px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 truncate w-full text-center px-1">Dano</span>
                            <span className="text-[10px] font-black font-mono text-red-500 leading-none">{statsLabel}</span>
                         </div>
+
+                        {ammoId && (
+                          <div className="shrink-0 flex flex-col items-center justify-center p-1.5 min-w-[50px] rounded-lg border border-yellow-500/10 bg-yellow-500/5">
+                            <span className="text-[6px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 truncate w-full text-center px-1">Balas</span>
+                            <span className="text-[10px] font-black font-mono leading-none text-yellow-600">{availableAmmo}</span>
+                          </div>
+                        )}
                       </button>
                     );
                   });
@@ -381,6 +431,13 @@ export default function CombatManager({
                 const diceVal = Math.floor(stats.dice);
                 const plusVal = Math.floor(stats.plus);
                 const diceSuffix = `d${diceVal}${plusVal > 0 ? ` + ${plusVal}` : ""}`;
+
+                const ammoId = getAmmoIdForSubtype(selectedWeapon.subtype);
+                const availableAmmo = ammoId ? (actor.ammunition?.[ammoId] || 0) : 0;
+                const tirosNum = parseInt(tirosInput) || 0;
+
+                const isDanoRoll = targetingRoll?.diceResult?.type === 'dano' || targetingRoll?.diceResult?.type === 'ataque';
+                const showMismatchWarning = isDanoRoll && lastAcertoInfo && selectedWeapon.category === 'Arma de Fogo' && (selectedWeapon.id !== lastAcertoInfo.weaponId || tirosNum !== lastAcertoInfo.tiros);
 
                 return (
                   <div className="flex flex-col items-center justify-center p-3 border border-red-500/20 bg-black/40 rounded-2xl gap-1 animate-in fade-in zoom-in-95 duration-200">
@@ -401,6 +458,14 @@ export default function CombatManager({
                       />
                       <span className="text-sm font-black font-mono text-red-500 select-none">{diceSuffix}</span>
                     </div>
+
+                    {showMismatchWarning && (
+                      <div className="mt-2 px-3 py-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-center">
+                        <p className="text-[8px] font-black text-yellow-400 uppercase tracking-wider leading-tight">
+                          ⚠️ Dado de Acerto usou {lastAcertoInfo.weaponName} ({lastAcertoInfo.tiros} tiros)
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
