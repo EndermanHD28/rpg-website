@@ -23,7 +23,7 @@ export const atirador = {
 
     // --- ROTA SUPERIOR ESQUERDA: O GARFO DE PRECISÃO ---
     {
-      id: 'atirador_precisao_0',
+      id: 'atirador_critical_0',
       name: 'Acerto Vital',
       cost: 1,
       requirements: { precision: 11, concentration: 8 },
@@ -35,105 +35,105 @@ export const atirador = {
       logic: {}
     },
     {
-      id: 'atirador_precisao_1',
+      id: 'atirador_critical_1',
       name: 'Longa Distância',
       cost: 1,
       requirements: { precision: 14 },
       pos: { x: -280, y: -160 }, // Dente 1 do garfo (Esquerda)
-      parent: 'atirador_precisao_0',
+      parent: 'atirador_critical_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_precisao_2',
+      id: 'atirador_critical_2',
       name: 'Mira Estabilizada',
       cost: 2,
       requirements: { concentration: 12 },
       pos: { x: -100, y: -240 }, // Dente 2 do garfo (Direita/Cima)
-      parent: 'atirador_precisao_0',
+      parent: 'atirador_critical_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_precisao_3',
+      id: 'atirador_critical_3',
       name: 'Projétil Magnético',
       cost: 1,
       requirements: { precision: 16 },
       pos: { x: -420, y: -200 }, // Extensão do dente 1
-      parent: 'atirador_precisao_1',
+      parent: 'atirador_critical_1',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_precisao_active',
+      id: 'atirador_critical_active',
       name: '????',
       isActivatable: true,
       cost: 2,
       requirements: { precision: 18 },
       pos: { x: -250, y: -360 }, // Ponto de encontro visual no topo
-      parent: 'atirador_precisao_2',
+      parent: 'atirador_critical_2',
       flavor: 'Habilidade de elite.',
       effect: 'Bloqueado.',
       logic: {}
     },
 
-    // --- ROTA SUPERIOR DIREITA: O RAIO DE AGILIDADE (Zigue-zague) ---
+    // --- ROTA SUPERIOR DIREITA: O RAIO DE brute_powerIDADE (Zigue-zague) ---
     {
-      id: 'atirador_agil_0',
+      id: 'atirador_brute_power_0',
       name: 'Saque Veloz',
       cost: 1,
-      requirements: { precision: 9, agility: 8 },
+      requirements: { precision: 9, brute_powerity: 8 },
       pos: { x: 150, y: -80 }, 
       isActivatable: true,
       parent: 'atirador_initial',
       flavor: 'Rota: Disparos Ágeis.',
-      effect: '**-Habilidade Ativa-**\nAo realizar o seu primeiro **disparo** (ou sucessão de disparos) em um combate com um **Revólver**, **Rifle** ou **Pistola**, você pode multiplicar o **Dado de Acerto** por **1,5x**.',
+      effect: '**-Habilidade Ativa-**\nAo realizar o seu primeiro **disparo** (ou sucessão de disparos) em um combate com um **Revólver** ou **Pistola**, você pode multiplicar o **Dado de Acerto** por **1,5x**.',
       logic: {}
     },
     {
-      id: 'atirador_agil_1',
+      id: 'atirador_brute_power_1',
       name: 'Passos Curtos',
       cost: 1,
-      requirements: { agility: 12 },
+      requirements: { brute_powerity: 12 },
       pos: { x: 300, y: -60 }, // "Zigue" para a direita
-      parent: 'atirador_agil_0',
+      parent: 'atirador_brute_power_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_agil_2',
+      id: 'atirador_brute_power_2',
       name: 'Recarga em Movimento',
       cost: 2,
       requirements: { concentration: 10 },
       pos: { x: 200, y: -180 }, // "Zague" voltando pro centro
-      parent: 'atirador_agil_1',
+      parent: 'atirador_brute_power_1',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_agil_3',
+      id: 'atirador_brute_power_3',
       name: 'Fogo Cruzado',
       cost: 1,
-      requirements: { agility: 15 },
+      requirements: { brute_powerity: 15 },
       pos: { x: 380, y: -220 }, // Outro "Zigue"
-      parent: 'atirador_agil_2',
+      parent: 'atirador_brute_power_2',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_agil_active',
+      id: 'atirador_brute_power_active',
       name: '????',
       isActivatable: true,
       cost: 2,
-      requirements: { agility: 18 },
+      requirements: { brute_powerity: 18 },
       pos: { x: 320, y: -380 }, 
-      parent: 'atirador_agil_3',
+      parent: 'atirador_brute_power_3',
       flavor: 'Habilidade de elite.',
       effect: 'Bloqueado.',
       logic: {}
@@ -141,7 +141,7 @@ export const atirador = {
 
     // --- ROTA INFERIOR: A ÂNCORA TÁTICA ---
     {
-      id: 'atirador_tatico_0',
+      id: 'atirador_tactical_0',
       name: 'Sentido Aguçado',
       cost: 1,
       requirements: { intelligence: 10 },
@@ -161,76 +161,60 @@ export const atirador = {
       }
     },
     {
-      id: 'atirador_tatico_1',
+      id: 'atirador_tactical_1',
       name: 'Armadilhas Leves',
       cost: 1,
       requirements: { intelligence: 12 },
       pos: { x: -160, y: 260 }, // Perna esquerda
-      parent: 'atirador_tatico_0',
+      parent: 'atirador_tactical_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_tatico_2',
+      id: 'atirador_tactical_2',
       name: 'Camuflagem Urbana',
       cost: 1,
-      requirements: { agility: 11 },
+      requirements: { brute_powerity: 11 },
       pos: { x: 160, y: 260 }, // Perna direita
-      parent: 'atirador_tatico_0',
+      parent: 'atirador_tactical_0',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_tatico_3',
+      id: 'atirador_tactical_3',
       name: 'Pólvora Quimicamente Alterada',
       cost: 2,
       requirements: { intelligence: 15 },
       pos: { x: -300, y: 350 }, // Extensão da perna esquerda
-      parent: 'atirador_tatico_1',
+      parent: 'atirador_tactical_1',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_tatico_4',
+      id: 'atirador_tactical_4',
       name: 'Sinalizador tático',
       cost: 1,
       requirements: { concentration: 14 },
       pos: { x: 300, y: 350 }, // Extensão da perna direita
-      parent: 'atirador_tatico_2',
+      parent: 'atirador_tactical_2',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'atirador_tatico_active',
+      id: 'atirador_tactical_active',
       name: '????',
       isActivatable: true,
       cost: 2,
       requirements: { intelligence: 18 },
       pos: { x: 0, y: 480 }, // Fundo da âncora
-      parent: 'atirador_tatico_3', // Conectado a um lado só para quebrar a simetria de requisitos
+      parent: 'atirador_tactical_3', // Conectado a um lado só para quebrar a simetria de requisitos
       flavor: 'Habilidade de elite.',
       effect: 'Bloqueado.',
       logic: {}
     },
-
-    // --- SKILL ÉPICA FINAL (CONVERGÊNCIA) ---
-    // Colocada em um lugar de destaque, mas sem conexão direta com as rotas
-    // (O jogador verá os requisitos altos e saberá que é o objetivo final)
-    {
-      id: 'atirador_master_epic',
-      name: 'O Último Suspiro',
-      type: 'epic',
-      cost: 5,
-      requirements: { precision: 25, agility: 20, intelligence: 18 },
-      pos: { x: 500, y: 0 }, // Totalmente isolada à direita
-      parent: 'atirador_initial', 
-      flavor: 'A lenda que nunca erra.',
-      effect: 'Bloqueado.',
-      logic: {}
-    }
   ]
 };

@@ -22,7 +22,7 @@ export const assaltante = {
       }
     },
 
-    // --- ROTA INFERIOR: CHUVA DE BALAS (Metralhadoras / SMGs) ---
+    // --- ROTA INFERIOR: CHUVA DE BALAS (Metralhadoras / Smachine_gunss) ---
     // Esta rota desce e se espalha como se fosse o "coice" de uma arma automática.
 
     {
@@ -45,7 +45,7 @@ export const assaltante = {
       }
     },
     {
-      id: 'assaltante_mg_1',
+      id: 'assaltante_machine_guns_1',
       name: 'Cano Aquecido',
       cost: 1,
       requirements: { concentration: 9 },
@@ -56,47 +56,47 @@ export const assaltante = {
       logic: {}
     },
     {
-      id: 'assaltante_mg_2',
+      id: 'assaltante_machine_guns_2',
       name: 'Pente Estendido',
       cost: 2,
       requirements: { concentration: 12 },
       pos: { x: -100, y: 320 },
-      parent: 'assaltante_mg_1',
+      parent: 'assaltante_machine_guns_1',
       flavor: 'Nunca é munição o suficiente.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_mg_side_1',
+      id: 'assaltante_machine_guns_side_1',
       name: 'Fogo de Supressão',
       cost: 1,
       requirements: { precision: 11 },
       pos: { x: -280, y: 150 }, // RAMIFICAÇÃO PARA O LADO
-      parent: 'assaltante_mg_1',
+      parent: 'assaltante_machine_guns_1',
       flavor: 'Mantenha a cabeça deles abaixada.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_mg_active',
+      id: 'assaltante_machine_guns_active',
       name: '????',
       isActivatable: true,
       cost: 2,
       requirements: { concentration: 15 },
       pos: { x: -220, y: 400 },
-      parent: 'assaltante_mg_2',
+      parent: 'assaltante_machine_guns_2',
       flavor: 'Habilidade de elite.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'assaltante_mg_epic',
+      id: 'assaltante_machine_guns_epic',
       name: '????',
       type: 'epic',
       cost: 3,
       requirements: { precision: 20, concentration: 18 },
       pos: { x: -150, y: 550 }, // O FIM DA LINHA INFERIOR
-      parent: 'assaltante_mg_active',
+      parent: 'assaltante_machine_guns_active',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
@@ -188,14 +188,14 @@ export const assaltante = {
       logic: {}
     },
 
-    // --- ROTA SUPERIOR DIREITA: INFILTRADOR OPERACIONAL (Utilidades / Tático) ---
-    // Uma rota em formato de "S" com satélites de utilitários.
+    // --- ROTA SUPERIOR DIREITA: INFILTRADOR OPERACIONAL (preciseidades / Tático) ---
+    // Uma rota em formato de "S" com satélites de preciseitários.
 
     {
-      id: 'assaltante_util_0',
+      id: 'assaltante_precise_0',
       name: 'Saque Instantâneo',
       cost: 1,
-      requirements: { agility: 8 },
+      requirements: { agility: 9, luck: 6 },
       pos: { x: 120, y: -90 }, // SOBE DIREITA
       parent: 'assaltante_initial',
       flavor: 'Ha! Sou mais rápido.',
@@ -203,69 +203,69 @@ export const assaltante = {
       logic: {}
     },
     {
-      id: 'assaltante_util_1',
+      id: 'assaltante_precise_1',
       name: 'Bandoleira Tática',
       cost: 1,
       requirements: { agility: 10 },
       pos: { x: 220, y: -180 },
-      parent: 'assaltante_util_0',
+      parent: 'assaltante_precise_0',
       flavor: 'Tudo ao alcance dos dedos.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_util_sat_1',
+      id: 'assaltante_precise_sat_1',
       name: 'Mãos Leves',
       cost: 1,
       requirements: { agility: 11 },
       pos: { x: 340, y: -120 }, // SATÉLITE PARA FORA
-      parent: 'assaltante_util_1',
+      parent: 'assaltante_precise_1',
       flavor: 'Recarga sob pressão.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_util_2',
+      id: 'assaltante_precise_2',
       name: 'Granadeiro de Assalto',
       cost: 2,
       requirements: { concentration: 11 },
       pos: { x: 180, y: -300 }, // CURVA DE VOLTA
-      parent: 'assaltante_util_1',
+      parent: 'assaltante_precise_1',
       flavor: 'Explosões resolvem problemas.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_util_3',
+      id: 'assaltante_precise_3',
       name: 'Instinto de Sobrevivência',
       cost: 1,
       requirements: { resistance: 12 },
       pos: { x: 300, y: -380 },
-      parent: 'assaltante_util_2',
+      parent: 'assaltante_precise_2',
       flavor: 'Correr é viver.',
       effect: 'Identidade desconhecida.',
       logic: {}
     },
     {
-      id: 'assaltante_util_active',
+      id: 'assaltante_precise_active',
       name: '????',
       isActivatable: true,
       cost: 2,
       requirements: { agility: 15, concentration: 15 },
       pos: { x: 250, y: -500 },
-      parent: 'assaltante_util_3',
+      parent: 'assaltante_precise_3',
       flavor: 'Tática suprema.',
       effect: 'Bloqueado.',
       logic: {}
     },
     {
-      id: 'assaltante_util_epic',
+      id: 'assaltante_precise_epic',
       name: '????',
       type: 'epic',
       cost: 3,
       requirements: { agility: 20 },
       pos: { x: 420, y: -550 }, // FIM DA ROTA DIREITA
-      parent: 'assaltante_util_active',
+      parent: 'assaltante_precise_active',
       flavor: 'Identidade desconhecida.',
       effect: 'Bloqueado.',
       logic: {}
