@@ -2406,13 +2406,16 @@ export default function CombatLog({
                                   trader.items.map((ti, idx) => {
                                     const fullItem = itemsDB.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
                                     if (!fullItem) return null;
+                                    const tooltipText = `${fullItem.description || ''}\n\n**--INFORMAÇÕES--**\nTipo: **${fullItem.type || 'Item'}**${fullItem.category ? ` | ${fullItem.category}` : ''}${fullItem.subtype ? ` | ${fullItem.subtype}` : ''}\nRaridade: **${fullItem.rarity || 'Comum'}**\nValor Base: **${fullItem.value || 0}$**\nCarga: **${fullItem.carga || 1}**`;
                                     return (
                                       <div key={idx} className={`flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl transition-all ${ti.qty === 0 ? 'opacity-50 grayscale' : 'hover:border-green-500/30'}`}>
                                         <div className="flex justify-between items-start">
-                                          <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-zinc-200">{fullItem.name} <span className={`text-[12px] ml-1 ${ti.qty === 0 ? 'text-zinc-500' : 'text-green-500'}`}>x{ti.qty}</span></span>
-                                            <span className="text-[11px] font-black text-zinc-500 uppercase tracking-tighter">Base: {fullItem.value}$</span>
-                                          </div>
+                                          <TooltipWrapper text={ti.qty > 0 ? tooltipText : ""}>
+                                            <div className={`flex flex-col flex-1 ${ti.qty > 0 ? 'cursor-help' : ''}`}>
+                                              <span className="text-xs font-bold text-zinc-200">{fullItem.name} <span className={`text-[12px] ml-1 ${ti.qty === 0 ? 'text-zinc-500' : 'text-green-500'}`}>x{ti.qty}</span></span>
+                                              <span className="text-[11px] font-black text-zinc-500 uppercase tracking-tighter">Base: {fullItem.value}$</span>
+                                            </div>
+                                          </TooltipWrapper>
                                           <div className="flex flex-col items-end">
                                             <span className={`text-[10px] font-black uppercase ${ti.qty === 0 ? 'text-zinc-500' : 'text-green-500'}`}>${ti.price}</span>
                                             {(
@@ -2448,13 +2451,16 @@ export default function CombatLog({
                                   ) : (
                                     playerChar.inventory.map((invItem, idx) => {
                                       const isPending = pendingOffers.includes(invItem.id);
+                                      const invTooltipText = `${invItem.description || ''}\n\n**--INFORMAÇÕES--**\nTipo: **${invItem.type || 'Item'}**${invItem.category ? ` | ${invItem.category}` : ''}${invItem.subtype ? ` | ${invItem.subtype}` : ''}\nRaridade: **${invItem.rarity || 'Comum'}**\nValor Base: **${invItem.value || 0}$**\nCarga: **${invItem.carga || 1}**`;
                                       return (
                                         <div key={idx} className="flex flex-col gap-2 p-3 bg-black/40 border border-white/5 rounded-xl hover:border-yellow-500/30 transition-all">
                                           <div className="flex justify-between items-center">
-                                            <div className="flex flex-col">
-                                              <span className="text-xs font-bold text-zinc-200">{invItem.name}</span>
-                                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter">Base: {invItem.value}$</span>
-                                            </div>
+                                            <TooltipWrapper text={!isPending ? invTooltipText : ""}>
+                                              <div className={`flex flex-col flex-1 ${!isPending ? 'cursor-help' : ''}`}>
+                                                <span className="text-xs font-bold text-zinc-200">{invItem.name}</span>
+                                                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-tighter">Base: {invItem.value}$</span>
+                                              </div>
+                                            </TooltipWrapper>
                                             <div className="flex gap-2 items-center">
                                               <input
                                                 type="number"
