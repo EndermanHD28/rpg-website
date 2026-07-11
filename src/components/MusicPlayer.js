@@ -14,9 +14,11 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [sfxSearchPlayable, setSfxSearchPlayable] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [songTitle, setSongTitle] = useState('Loading...');
   const [showTitle, setShowTitle] = useState(false);
   const [volume, setVolume] = useState(0.5);
+  const [sfxVolume, setSfxVolume] = useState(1.0); // Independent SFX volume
   const [duration, setDuration] = useState(0);
   const [currentSfxUrl, setCurrentSfxUrl] = useState(null);
   const [currentSfxTriggeredAt, setCurrentSfxTriggeredAt] = useState(null);
@@ -26,16 +28,18 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
 
   // Track volume for callbacks without triggering re-renders
   const volumeRef = useRef(volume);
+  const sfxVolumeRef = useRef(sfxVolume);
   const urlRef = useRef(url);
   const currentSfxUrlRef = useRef(currentSfxUrl);
   const currentSfxTriggeredAtRef = useRef(currentSfxTriggeredAt);
 
   useEffect(() => {
     volumeRef.current = volume;
+    sfxVolumeRef.current = sfxVolume;
     urlRef.current = url;
     currentSfxUrlRef.current = currentSfxUrl;
     currentSfxTriggeredAtRef.current = currentSfxTriggeredAt;
-  }, [volume, url, currentSfxUrl, currentSfxTriggeredAt]);
+  }, [volume, sfxVolume, url, currentSfxUrl, currentSfxTriggeredAt]);
 
   // Track last played SFX to prevent double-triggering on local state changes
   const lastPlayedSfxRef = useRef({ url: null, triggeredAt: null });
@@ -566,10 +570,15 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     const audio = new Audio();
     audio.src = sfxPath;
     audio.autoplay = false;
-    audio.crossOrigin = "anonymous";
+    // Only set crossOrigin for external URLs (YouTube, etc.), not for same-origin sound effects
+    if (sfxPath.startsWith('http')) {
+      audio.crossOrigin = "anonymous";
+    }
     sfxAudioRef.current = audio;
     
-    const targetVolume = (sfxVolume ?? 1.0) * volumeRef.current;
+    // Use independent SFX volume instead of multiplying by music volume
+    // This prevents SFX from being silent when music volume is low
+    const targetVolume = (sfxVolume ?? 1.0) * sfxVolumeRef.current;
     sfxAudioRef.current.volume = Math.max(0, Math.min(1, targetVolume));
     sfxAudioRef.current.loop = sfxLoop;
     
@@ -618,15 +627,41 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
         }
       };
 
-    sfxAudioRef.current.play().catch(err => {
-      if (durationTimeout) clearTimeout(durationTimeout);
-      console.error("Error playing remote SFX:", sfxPath, err);
-      setActiveSounds(prev => {
-        const next = new Set(prev);
-        next.delete(sfxPath);
-        return next;
+    // Try to play the audio. If it fails due to autoplay policy (NotAllowedError),
+    // we attempt to resume the AudioContext on the next user interaction.
+    const playPromise = sfxAudioRef.current.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        if (durationTimeout) clearTimeout(durationTimeout);
+        console.error("Error playing remote SFX:", sfxPath, err);
+        
+        // If the error is due to autoplay policy, try to resume on next interaction
+        if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+          console.warn("SFX blocked by browser autoplay policy. Will retry on next user interaction.");
+          
+          // Store the pending SFX to play on next interaction
+          const retryPlay = () => {
+            if (sfxAudioRef.current && sfxAudioRef.current.src === sfxPath) {
+              sfxAudioRef.current.play().catch(retryErr => {
+                console.error("Retry play failed for SFX:", sfxPath, retryErr);
+              });
+            }
+            window.removeEventListener('click', retryPlay);
+            window.removeEventListener('keydown', retryPlay);
+            window.removeEventListener('touchstart', retryPlay);
+          };
+          window.addEventListener('click', retryPlay, { once: true });
+          window.addEventListener('keydown', retryPlay, { once: true });
+          window.addEventListener('touchstart', retryPlay, { once: true });
+        }
+        
+        setActiveSounds(prev => {
+          const next = new Set(prev);
+          next.delete(sfxPath);
+          return next;
+        });
       });
-    });
+    }
   };
 
   const handleUpdateMusic = async () => {
@@ -668,8 +703,9 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     }
   };
 
-  if (!url && !isMaster) return null;
-
+  // Always render the component to keep the SFX realtime subscription alive,
+  // even when no music is playing and the user is not the master.
+  // The UI elements below are conditional based on state.
   return (
     <div
       className="fixed bottom-8 right-8 z-[200] flex flex-col items-end gap-3"
