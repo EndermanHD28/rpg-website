@@ -37,8 +37,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
             
             const formatAttack = (s) => {
               if (!s) return "";
-              const d = Math.round(s.dice);
-              const p = Math.round(s.plus);
+              const d = Math.floor(s.dice);
+              const p = Math.floor(s.plus);
               const tpt = s.tpt || 1;
               return `${tpt}d${d}${p > 0 ? ` + ${p}` : ""}`;
             };
@@ -46,8 +46,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
             const getTooltipText = (baseItem, weaponStats) => {
               let text = baseItem.description || '';
               if (weaponStats) {
-                const d = Math.round(weaponStats.dice);
-                const p = Math.round(weaponStats.plus);
+                const d = Math.floor(weaponStats.dice);
+                const p = Math.floor(weaponStats.plus);
                 const tpt = weaponStats.tpt || 1;
                 
                 text += (text ? '\n\n' : '') + 
@@ -251,8 +251,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                       const getTooltipText = (baseItem, weaponStats) => {
                         let text = baseItem.description || '';
                         if (weaponStats) {
-                          const d = Math.round(weaponStats.dice);
-                          const p = Math.round(weaponStats.plus);
+                          const d = Math.floor(weaponStats.dice);
+                          const p = Math.floor(weaponStats.plus);
                           const tpt = weaponStats.tpt || 1;
                           
                           text += (text ? '\n\n' : '') + 
@@ -292,8 +292,8 @@ export default function Inventory({ inventory = [], activeChar, isActingAsMaster
                     <span className={`text-[11px] font-black uppercase tracking-tighter ${rarityConfig[item.rarity]?.color}`}>{item.rarity}</span>
                     {(item.category === 'Arma Branca' || item.category === 'Arma de Fogo') && (() => {
                       const stats = calculateWeaponPAT(item, activeChar);
-                      const d = Math.round(stats.dice);
-                      const p = Math.round(stats.plus);
+                      const d = Math.floor(stats.dice);
+                      const p = Math.floor(stats.plus);
                       const tpt = stats.tpt || 1;
                       return (
                         <span className="text-[11px] font-black uppercase tracking-tighter text-red-600">

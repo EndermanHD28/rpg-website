@@ -13,6 +13,8 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
     min_extra_rolls: 0,
     max_extra_rolls: 0,
     extra_roll_chance: 0,
+    block_repeating: false,
+    replace_tries: 0,
     items: []
   });
 
@@ -30,6 +32,8 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
           min_extra_rolls: initialData.min_extra_rolls || 0,
           max_extra_rolls: initialData.max_extra_rolls || 0,
           extra_roll_chance: initialData.extra_roll_chance || 0,
+          block_repeating: initialData.block_repeating === true,
+          replace_tries: initialData.replace_tries || 0,
           items: (initialData.items || []).map(item => ({
             ...item,
             weight: item.weight !== undefined ? item.weight : (item.generalChance || 1)
@@ -45,6 +49,8 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
           min_extra_rolls: 0,
           max_extra_rolls: 0,
           extra_roll_chance: 0,
+          block_repeating: false,
+          replace_tries: 0,
           items: []
         });
         setIsNew(true);
@@ -144,6 +150,27 @@ export default function LootTableEditorModal({ isOpen, closeModal, library, show
               <label className="text-[8px] font-black uppercase text-zinc-500">Max Extra Rolls</label>
               <input type="number" value={localData.max_extra_rolls} onChange={(e) => setLocalData({...localData, max_extra_rolls: parseInt(e.target.value) || 0})} className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-xs text-white" />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 bg-black/20 p-6 rounded-3xl border border-white/5 mt-4">
+            <div className="space-y-2">
+              <label className="text-[8px] font-black uppercase text-zinc-500">Bloquear Repetição</label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setLocalData(prev => ({ ...prev, block_repeating: !prev.block_repeating, replace_tries: !prev.block_repeating ? prev.replace_tries : 0 }))}
+                  className={`relative w-12 h-6 rounded-full transition-all ${localData.block_repeating ? 'bg-yellow-500' : 'bg-slate-700'}`}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${localData.block_repeating ? 'left-6' : 'left-0.5'}`}></div>
+                </button>
+                <span className="text-[10px] text-zinc-400 font-bold">{localData.block_repeating ? 'Ligado' : 'Desligado'}</span>
+              </div>
+            </div>
+            {localData.block_repeating && (
+              <div className="space-y-1">
+                <label className="text-[8px] font-black uppercase text-zinc-500">Tentativas de Substituição</label>
+                <input type="number" min="0" value={localData.replace_tries} onChange={(e) => setLocalData({...localData, replace_tries: parseInt(e.target.value) || 0})} className="w-full bg-slate-800 border border-white/10 rounded px-3 py-2 text-xs text-white" />
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">

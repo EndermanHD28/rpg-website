@@ -907,14 +907,20 @@ export const rollLoot = (lootTable, multiplier = 1) => {
     return { ...item, _effectiveWeight: newWeight };
   });
 
+  // Block Repeating logic
+  const blockRepeating = lootTable.block_repeating === true;
+  const replaceTries = blockRepeating ? (Number(lootTable.replace_tries) || 0) : 0;
+  const alreadyRolledItemIds = new Set(); // Track distinct item_ids rolled this session
+
   // 3. Roll for each slot (Weight-based selection)
   for (let i = 0; i < rolls; i++) {
     const totalWeight = adjustedItems.reduce((sum, item) => sum + item._effectiveWeight, 0);
     if (totalWeight <= 0) continue;
 
-    let random = Math.random() * totalWeight;
     let selectedItem = null;
 
+    // Weighted selection
+    let random = Math.random() * totalWeight;
     for (const itemConfig of adjustedItems) {
       const weight = itemConfig._effectiveWeight;
       if (random < weight) {
@@ -922,6 +928,58 @@ export const rollLoot = (lootTable, multiplier = 1) => {
         break;
       }
       random -= weight;
+    }
+
+    if (!selectedItem) continue;
+
+    // BLOCK REPEATING: If this item was already rolled this session
+    if (blockRepeating && alreadyRolledItemIds.has(selectedItem.item_id)) {
+      // Replace Tries: attempt to re-roll for a different item
+      if (replaceTries > 0) {
+        // Calculate available items that haven't been rolled yet
+        const availableItems = adjustedItems.filter(item => !alreadyRolledItemIds.has(item.item_id));
+        
+        if (availableItems.length === 0) {
+          // All items already collected, this roll does nothing
+          continue;
+        }
+
+        let replaced = false;
+        for (let attempt = 0; attempt < replaceTries; attempt++) {
+          const availTotalWeight = availableItems.reduce((sum, item) => sum + item._effectiveWeight, 0);
+          if (availTotalWeight <= 0) break;
+
+          let availRandom = Math.random() * availTotalWeight;
+          let candidateItem = null;
+          for (const availItem of availableItems) {
+            if (availRandom < availItem._effectiveWeight) {
+              candidateItem = availItem;
+              break;
+            }
+            availRandom -= availItem._effectiveWeight;
+          }
+
+          if (candidateItem && !alreadyRolledItemIds.has(candidateItem.item_id)) {
+            // Found a replacement that hasn't been rolled yet
+            selectedItem = candidateItem;
+            replaced = true;
+            break;
+          }
+        }
+
+        if (!replaced) {
+          // Could not find a replacement after all tries, this roll does nothing
+          continue;
+        }
+      } else {
+        // replaceTries is 0: simply skip this duplicate roll
+        continue;
+      }
+    }
+
+    // Mark this item as rolled (for block repeating)
+    if (blockRepeating) {
+      alreadyRolledItemIds.add(selectedItem.item_id);
     }
 
     if (selectedItem) {
@@ -942,7 +1000,7 @@ export const rollLoot = (lootTable, multiplier = 1) => {
     }
   }
   
-  // Group results
+  // Group results (combine quantities of same item)
   const grouped = results.reduce((acc, curr) => {
     const existing = acc.find(x => x.item_id === curr.item_id);
     if (existing) existing.amount += curr.amount;

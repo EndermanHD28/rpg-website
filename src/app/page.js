@@ -2007,6 +2007,7 @@ export default function Home() {
               setModal={setModal}
               closeModal={closeModal}
               playerCharacter={character}
+              itemLibrary={itemLibrary}
             />
           </div>
         )}

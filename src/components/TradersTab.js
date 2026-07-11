@@ -5,16 +5,13 @@ import { supabase } from '../lib/supabase';
 import { useSound } from '../hooks/useSound';
 import { RARITY_CONFIG } from '../constants/gameData';
 import AddItemToTraderModal from './AddItemToTraderModal';
-import itemsData from '../constants/items-db.json';
-
-export default function TradersTab({ isActingAsMaster, showToast, setModal, closeModal, playerCharacter }) {
+export default function TradersTab({ isActingAsMaster, showToast, setModal, closeModal, playerCharacter, itemLibrary = [] }) {
   const { playSound } = useSound();
   const [traders, setTraders] = useState([]);
   const [tradeRequests, setTradeRequests] = useState([]);
   const [npcs, setNpcs] = useState([]);
   const [activeTrader, setActiveTrader] = useState(null);
   const [activeTab, setActiveTab] = useState('Gerenciar'); // Just one tab really
-  const [itemsDB, setItemsDB] = useState(itemsData);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
 
   useEffect(() => {
@@ -259,7 +256,7 @@ export default function TradersTab({ isActingAsMaster, showToast, setModal, clos
                     <p className="col-span-full text-center text-zinc-500 text-xs py-10 uppercase font-black tracking-widest">Este comerciante não tem itens</p>
                   ) : (
                     activeTrader.items.map((ti, idx) => {
-                      const item = itemsDB.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
+                      const item = itemLibrary.find(i => i.id === ti.item_id || i.item_id === ti.item_id);
                       if (!item) return null;
                       return (
                         <div key={idx} className={`bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between group ${ti.qty === 0 ? 'opacity-70' : ''}`}>
@@ -314,7 +311,7 @@ export default function TradersTab({ isActingAsMaster, showToast, setModal, clos
       <AddItemToTraderModal
         isOpen={isAddItemModalOpen}
         closeModal={() => setIsAddItemModalOpen(false)}
-        library={itemsDB}
+        library={itemLibrary}
         showToast={showToast}
         trader={activeTrader}
         onConfirm={confirmAddItem}
