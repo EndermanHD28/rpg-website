@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0.5 }) {
@@ -15,6 +15,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
   const [inputValue, setInputValue] = useState('');
   const [hasInteracted, setHasInteracted] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const audioContextRef = useRef(null);
   const [songTitle, setSongTitle] = useState('Loading...');
   const [showTitle, setShowTitle] = useState(false);
   const [volume, setVolume] = useState(0.5);
@@ -284,9 +285,47 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
     }
   }, [volume]);
 
+  // Browser autoplay policy: browsers block new Audio().play() when called outside
+  // of a user gesture (like inside a Supabase Realtime callback). However, once you
+  // successfully play ANY audio during a user gesture, the browser grants permission
+  // for the entire session. We play a silent 1-pixel audio primer on first interaction.
+  const audioPrimedRef = useRef(false);
+
+  const primeAudio = useCallback(() => {
+    if (audioPrimedRef.current) return;
+    try {
+      // Play a short silent audio to prime the browser's audio system.
+      // Once primed, all subsequent new Audio().play() calls work.
+      const primer = new Audio();
+      // 0.01 second silent segment via data URI (smallest valid silent WAV)
+      primer.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      primer.volume = 0.001; // near-silent
+      primer.play().then(() => {
+        audioPrimedRef.current = true;
+      }).catch(() => {
+        // If even silent audio fails, AudioContext fallback
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          if (ctx.state === 'suspended') {
+            ctx.resume().then(() => {
+              audioPrimedRef.current = true;
+            }).catch(() => {});
+          } else {
+            audioPrimedRef.current = true;
+          }
+          audioContextRef.current = ctx;
+        } catch (e) {}
+      });
+    } catch (e) {
+      // Audio not supported - mark as primed anyway to avoid retrying
+      audioPrimedRef.current = true;
+    }
+  }, []);
+
   useEffect(() => {
     const handleFirstInteraction = () => {
       setHasInteracted(true);
+      primeAudio();
       window.removeEventListener('mousedown', handleFirstInteraction);
       window.removeEventListener('keydown', handleFirstInteraction);
       window.removeEventListener('touchstart', handleFirstInteraction);
@@ -299,7 +338,7 @@ export default function MusicPlayer({ isMaster, currentVolume: initialVolume = 0
       window.removeEventListener('keydown', handleFirstInteraction);
       window.removeEventListener('touchstart', handleFirstInteraction);
     };
-  }, []);
+  }, [primeAudio]);
 
   useEffect(() => {
     const fetchSongTitle = async (videoUrl) => {
