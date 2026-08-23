@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSound } from '../hooks/useSound';
 import { RARITY_CONFIG } from '../constants/gameData';
-import { calculateAcerto, calculateDesvio, calculateBloqueio, calculateDisarmedPAT } from '../lib/rpg-math';
+import { calculateAcerto, calculateDesvio, calculateBloqueio, calculateDisarmedPAT, calculateDerivedStats } from '../lib/rpg-math';
 
 export default function NPCEditor({ isActingAsMaster, showToast, setModal, closeModal, onVisualizeComplex }) {
   const { playSound } = useSound();
@@ -123,11 +123,12 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
     const stats = calculateDisarmedPAT(npc);
     const dDice = Math.floor(stats.dice);
     const dPlus = Math.floor(stats.plus);
+    const derived = calculateDerivedStats(npc) || {};
 
     return {
-      life: s + (r * 7) + (c * 3),
+      life: derived.life ?? (s + (r * 7) + (c * 3)),
       presence: s + r + a + ag + p + c,
-      posture: 2 * (r * 1.2) + (a * 3.4) + (c * 2),
+      posture: derived.posture ?? (2 * (r * 1.2) + (a * 3.4) + (c * 2)),
       disarmed_pat: `${dDice > 0 ? `1d${dDice}` : ''}${dPlus > 0 ? (dDice > 0 ? ' + ' : '') + dPlus : ''}`,
       acerto: `${calculateAcerto(npc)}`,
       desvio: `${calculateDesvio(npc)}`,
@@ -325,7 +326,7 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-black/40 p-2 rounded-xl border border-white/5 text-center">
                     <p className="text-[8px] font-black text-red-500 uppercase mb-1">Vida</p>
-                    <p className="text-sm font-bold">{stats.life !== '?' ? stats.life : Number(npc.strength) + (Number(npc.resistance) * 7)}</p>
+                    <p className="text-sm font-bold">{stats.life !== '?' ? stats.life : (calculateDerivedStats(npc)?.life ?? Number(npc.strength) + (Number(npc.resistance) * 7))}</p>
                   </div>
                   <div className="bg-black/40 p-2 rounded-xl border border-white/5 text-center">
                     <p className="text-[8px] font-black text-blue-500 uppercase mb-1">Presença</p>
@@ -333,7 +334,7 @@ export default function NPCEditor({ isActingAsMaster, showToast, setModal, close
                   </div>
                   <div className="bg-black/40 p-2 rounded-xl border border-white/5 text-center">
                     <p className="text-[8px] font-black text-green-500 uppercase mb-1">Postura</p>
-                    <p className="text-sm font-bold">{stats.posture !== '?' ? Math.floor(stats.posture) : Math.floor((Number(npc.resistance) * 1.2) + (Number(npc.aptitude) * 3.4))}</p>
+                    <p className="text-sm font-bold">{stats.posture !== '?' ? Math.floor(stats.posture) : Math.floor(calculateDerivedStats(npc)?.posture ?? ((Number(npc.resistance) * 1.2) + (Number(npc.aptitude) * 3.4)))}</p>
                   </div>
                 </div>
 

@@ -18,6 +18,7 @@ import { RARITY_CONFIG } from '../../constants/gameData';
 import GifPicker from '../GifPicker';
 import { TooltipWrapper } from '../UIElements';
 import { createPortal } from 'react-dom';
+import TaskFlowManager from './TaskFlowManager';
 
 /* 
   NOTE: This system uses a server-side RPC function 'toggle_session' to clear the chat.
@@ -3085,6 +3086,16 @@ export default function CombatLog({
           </div>
         </div>
       )}
+
+      {/* TASK FLOW MANAGER - Master only */}
+      <TaskFlowManager
+        isActingAsMaster={isActingAsMaster}
+        allPlayers={allPlayers}
+        allNPCs={allNPCs}
+        combatants={combatants}
+        isCombatActive={isCombatActive}
+        showToast={showToast}
+      />
 
       {/* PORTAL TOOLTIP - Renders outside any overflow container */}
       {hoveredSkill && typeof document !== 'undefined' && createPortal(

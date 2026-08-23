@@ -273,7 +273,7 @@ export const RARITY_CONFIG = {
 
 export const WEAPON_CATEGORIES = ["Arma de Fogo", "Arma Branca"];
 export const WEAPON_SUBTYPES = {
-  "Arma de Fogo": ["Rifle", "Pistola", "Revólver", "Escopeta", "Metralhadora", "Submetralhadora"],
+  "Arma de Fogo": ["Rifle", "Pistola", "Revólver", "Escopeta", "Metralhadora", "Submetralhadora", "Explosiva"],
   "Arma Branca": ["Lâmina Curta", "Arma de Impacto Leve", "Espada Leve", "Lança", "Machado/Porrete Leve", "Espada Pesada", "Machado/Martelo Pesado", "Soco / Improviso"]
 };
 export const HANDS_OPTIONS = ["Uma Mão", "Duas Mãos"];

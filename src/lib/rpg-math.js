@@ -547,6 +547,10 @@ export function calculateWeaponPAT(weapon, char) {
     'Soco / Improviso': (s, p, a, r, c) => ({
       dice: (1.1 * s) + (0.51 * r) + (0.25 * c),
       plus: (0.25 * s) + (0.12 * r) + (0.8 * c)
+    }),
+    'Explosiva': (s, p, a, r, c) => ({
+      dice: (0.6 * s + 0.6 * p + 0.6 * a + 0.6 * r + 0.6 * c) * 0.15,
+      plus: (0.6 * s + 0.6 * p + 0.6 * a + 0.6 * r + 0.6 * c) * 0.85
     })
   };
   

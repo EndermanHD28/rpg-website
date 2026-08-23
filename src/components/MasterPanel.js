@@ -314,7 +314,7 @@ export default function MasterPanel({ requests, setRequests, allPlayers, onVisua
         await supabase.from('characters').update({
           strength: 1, resistance: 1, aptitude: 1, agility: 1, precision: 1,
           intelligence: 1, luck: 1, charisma: 1, stat_points_available: 0,
-          dollars: 0, age: 0, height: '0,00m', class: 'Civil', rank: 'E - Recruta',
+          dollars: 0, age: 0, height: '0,00m', class: 'Nenhuma', rank: 'E - Recruta',
           breathing_lvl: 1, breathing_style: 'Nenhuma', anomalies: [], skills: [],
           inventory: [], is_in_combat: false, approved_once: false
         }).eq('id', p.id);
