@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "sync-db": "node sync-db.js",
+    "sync-db": "node scripts/sync-db.js",
     "build": "npm run sync-db && next build",
     "start": "next start",
     "lint": "eslint"

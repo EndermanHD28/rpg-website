@@ -33,7 +33,7 @@ async function syncDB() {
   if (itemsError) {
     console.error('Error fetching items:', itemsError);
   } else {
-    const itemsPath = path.join(__dirname, 'src', 'constants', 'items-db.json');
+    const itemsPath = path.join(__dirname, '..', 'src', 'constants', 'items-db.json');
     fs.writeFileSync(itemsPath, JSON.stringify(items, null, 2), 'utf-8');
     console.log(`Successfully synced ${items.length} items to ${itemsPath}`);
   }
@@ -45,7 +45,7 @@ async function syncDB() {
   if (lootError) {
     console.error('Error fetching loot tables:', lootError);
   } else {
-    const lootPath = path.join(__dirname, 'src', 'constants', 'loot-db.json');
+    const lootPath = path.join(__dirname, '..', 'src', 'constants', 'loot-db.json');
     fs.writeFileSync(lootPath, JSON.stringify(lootTables, null, 2), 'utf-8');
     console.log(`Successfully synced ${lootTables.length} loot tables to ${lootPath}`);
   }

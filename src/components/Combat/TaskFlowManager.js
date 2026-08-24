@@ -10,7 +10,8 @@ const TASK_TYPES = {
   sfx: { label: 'Efeito Sonoro', emoji: '🔊', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
   wait: { label: 'Esperar', emoji: '⏳', color: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' },
   image: { label: 'Imagem', emoji: '🖼️', color: 'text-pink-400 border-pink-500/30 bg-pink-500/10' },
-  revealImage: { label: 'Revelar Imagem', emoji: '🔍', color: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10' }
+  revealImage: { label: 'Revelar Imagem', emoji: '🔍', color: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10' },
+  hideImage: { label: 'Ocultar Imagem', emoji: '🙈', color: 'text-zinc-400 border-zinc-500/30 bg-zinc-500/10' }
 };
 
 export default function TaskFlowManager({
@@ -163,6 +164,9 @@ export default function TaskFlowManager({
     } else if (type === 'revealImage') {
       newTask.imageUrl = '';
       newTask.imageTitle = '';
+      newTask.imageContrast = false;
+    } else if (type === 'hideImage') {
+      // No extra fields needed
     }
     setEditingFlow(prev => ({ ...prev, tasks: [...prev.tasks, newTask] }));
     setShowAddTaskMenu(false);
@@ -337,9 +341,17 @@ export default function TaskFlowManager({
         await supabase.from('global').update({
           image_url: task.imageUrl,
           image_title: task.imageTitle || null,
+          image_contrast: task.imageContrast || false
+        }).eq('id', 1);
+        updateLogEntry(index, 'success', `Imagem revelada: ${task.imageTitle || task.imageUrl}${task.imageContrast ? ' (Contraste)' : ''}`);
+      } else if (task.type === 'hideImage') {
+        // Same mechanism as /hideimage command - clears the global image
+        await supabase.from('global').update({
+          image_url: null,
+          image_title: null,
           image_contrast: false
         }).eq('id', 1);
-        updateLogEntry(index, 'success', `Imagem revelada: ${task.imageTitle || task.imageUrl}`);
+        updateLogEntry(index, 'success', 'Imagem ocultada');
       }
     } catch (err) {
       updateLogEntry(index, 'error', err.message || "Erro ao executar tarefa");
@@ -420,7 +432,9 @@ export default function TaskFlowManager({
       case 'image':
         return `🖼️ ${task.imageUrl ? 'Enviar imagem no chat' : 'URL não definida'}`;
       case 'revealImage':
-        return `🔍 ${task.imageTitle || 'Revelar imagem'}${task.imageUrl ? '' : ' (URL não definida)'}`;
+        return `🔍 ${task.imageTitle || 'Revelar imagem'}${task.imageUrl ? '' : ' (URL não definida)'}${task.imageContrast ? ' (Contraste)' : ''}`;
+      case 'hideImage':
+        return '🙈 Ocultar imagem revelada';
       default:
         return 'Tarefa';
     }
@@ -654,10 +668,22 @@ export default function TaskFlowManager({
                 className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/50"
               />
             </div>
+            <button
+              onClick={() => updateTask(index, { imageContrast: !task.imageContrast })}
+              className={`w-full py-2 rounded-lg text-[9px] font-black uppercase transition-all ${task.imageContrast ? 'bg-cyan-600 text-white' : 'bg-zinc-900 text-zinc-500 hover:text-white'}`}
+            >
+              {task.imageContrast ? '⚡ Contraste: ON' : '⚡ Contraste: OFF'}
+            </button>
             <p className="text-[9px] text-zinc-500 italic">
-              Revela a imagem em destaque na tela para todos os jogadores, com título opcional.
+              Revela a imagem em destaque na tela para todos os jogadores, com título opcional. Contraste amplia a imagem temporariamente.
             </p>
           </div>
+        )}
+
+        {task.type === 'hideImage' && (
+          <p className="text-[10px] text-zinc-500 italic">
+            Oculta a imagem atualmente revelada em destaque na tela.
+          </p>
         )}
       </div>
     );
